@@ -1,0 +1,20 @@
+<!-- OpenFill - Metadata: wersja 0.2, data 2026-10-05 15:15 -->
+<Project>
+  <!-- Code version: updated with every package release. The build time is appended automatically. -->
+  <PropertyGroup>
+    <OpenFillVersion>1.17</OpenFillVersion>
+    <OpenFillVersionDate>2026-10-05T20:58</OpenFillVersionDate>
+    <OpenFillBuildUtc>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</OpenFillBuildUtc>
+    <Version>$(OpenFillVersion)</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="OpenFillVersion" Value="$(OpenFillVersion)" />
+    <AssemblyMetadata Include="OpenFillVersionDate" Value="$(OpenFillVersionDate)" />
+    <AssemblyMetadata Include="OpenFillBuildUtc" Value="$(OpenFillBuildUtc)" />
+  </ItemGroup>
+</Project>

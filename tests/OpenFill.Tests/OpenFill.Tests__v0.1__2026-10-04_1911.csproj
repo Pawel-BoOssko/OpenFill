@@ -1,0 +1,17 @@
+<!-- OpenFill - Metadata: wersja 0.1, data 2026-10-04 19:11 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>OpenFill.Tests</AssemblyName>
+    <RootNamespace>OpenFill.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenFill.Core\*.csproj" />
+    <ProjectReference Include="..\..\src\OpenFill.Cli\*.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="testsite\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="testsite" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<!-- OpenFill - Metadata: wersja 0.2, data 2026-10-05 15:15 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>OpenFill.Core</AssemblyName>
+    <RootNamespace>OpenFill.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Files on disk have versions in their names; in the code they appear under the name without a version. -->
+    <EmbeddedResource Include="Assets\extractor*.js" LogicalName="OpenFill.Assets.extractor.js" />
+    <EmbeddedResource Include="Assets\actions*.js" LogicalName="OpenFill.Assets.actions.js" />
+    <EmbeddedResource Include="Assets\panel*.html" LogicalName="OpenFill.Assets.panel.html" />
+  </ItemGroup>
+</Project>

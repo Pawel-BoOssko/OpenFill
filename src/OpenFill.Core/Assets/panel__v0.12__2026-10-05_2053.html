@@ -1,0 +1,711 @@
+﻿<!doctype html>
+<!-- OpenFill - Metadata: wersja 0.12, data 2026-10-05 20:53 -->
+<!--
+  OpenFill - live control and trace panel
+  Metadata:
+    version: 0.2
+    date:    2026-10-04 19:11
+  The same file runs in the Windows app (WebView2, chrome.webview.postMessage)
+  and in the CLI (WebSocket at /panel). Protocol: JSON objects with a "kind" field.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenFill</title>
+<style>
+  :root {
+    --paper:#eef1f4; --sheet:#ffffff; --line:#d5dbe3; --line-soft:#e4e8ee;
+    --graphite:#23272e; --pencil:#5d6673; --faint:#8a93a0;
+    --ink:#1f3a93; --ink-soft:#e3e9fa;
+    --marker:#f6e27a; --marker-edge:#d9bf3a;
+    --stamp:#b3261e; --stamp-soft:#fbe9e7;
+    --ok:#2e7d4f; --ok-soft:#e5f3ea;
+    --violet:#6b3fa0; --teal:#0f7c86;
+    --ui: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    --code: "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#151a22; --sheet:#1c222c; --line:#2c3440; --line-soft:#242b36;
+      --graphite:#e4e8ee; --pencil:#a3adbb; --faint:#78828f;
+      --ink:#8fa8ff; --ink-soft:#232d4a;
+      --marker:#4a4116; --marker-edge:#b39a2a;
+      --stamp:#ff8a80; --stamp-soft:#3a2020;
+      --ok:#6fd39a; --ok-soft:#1d3327;
+      --violet:#c29bf0; --teal:#5fd0da;
+    }
+  }
+  * { box-sizing:border-box; }
+  /* Layout: header on top, the middle (task + settings + events) fills the rest, footer at the bottom.
+     The page itself never scrolls; only the event list does, and the newest event is always on top. */
+  html, body { height:100%; margin:0; background:var(--paper); color:var(--graphite); font:14px/1.45 var(--ui); }
+  body { display:flex; flex-direction:column; overflow:hidden; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+
+  /* Header: the version stamp with its date is the most important thing, so it sits at the very top */
+  header { flex:none; z-index:5; background:var(--sheet); border-bottom:1px solid var(--line); padding:10px 14px 9px; }
+  .stamp { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .brand { font-weight:700; letter-spacing:.01em; }
+  .vdate { font-size:22px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; line-height:1;
+           border:2px solid var(--ink); border-radius:4px; padding:3px 8px 2px; transform:rotate(-1.2deg); }
+  .vmeta { color:var(--pencil); font-size:12px; }
+  .state { margin-left:auto; display:flex; align-items:center; gap:6px; font-size:13px; color:var(--pencil); }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--faint); }
+  .state.running .dot { background:var(--ink); animation:pulse 1.2s ease-in-out infinite; }
+  .state.running { color:var(--ink); font-weight:700; }
+  .state.offline .dot { background:var(--stamp); }
+  @keyframes pulse { 50% { opacity:.25; } }
+  @media (prefers-reduced-motion: reduce) { .state.running .dot { animation:none; } }
+
+  main { flex:1; min-height:0; overflow-y:auto; padding:12px 14px; display:flex; flex-direction:column; gap:12px; }
+  main > * { flex:none; }
+
+  /* Task */
+  .task { background:var(--sheet); border:1px solid var(--line); border-radius:6px; padding:10px; }
+  .task label { display:block; font-weight:700; margin-bottom:6px; }
+  textarea#task { width:100%; min-height:96px; resize:vertical; border:1px solid var(--line); border-radius:4px; padding:8px 10px;
+                  background:var(--paper); line-height:1.5; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  .btn { border:1px solid var(--line); background:var(--sheet); border-radius:4px; padding:6px 14px; cursor:pointer; }
+  .btn:hover { border-color:var(--pencil); }
+  .btn.primary { background:var(--ink); border-color:var(--ink); color:#fff; font-weight:700; }
+  .btn.primary:disabled { opacity:.45; cursor:default; }
+  .btn.danger { color:var(--stamp); border-color:var(--stamp); }
+  .btn.danger:disabled { opacity:.35; cursor:default; }
+  .hint { color:var(--faint); font-size:12px; }
+  .grow { flex:1; }
+  .nav { display:flex; gap:6px; margin-top:8px; }
+  .nav input { flex:1; min-width:0; border:1px solid var(--line); border-radius:4px; padding:5px 8px; background:var(--paper); }
+
+  /* Question and approval cards - like a marker highlight on a form */
+  .card { border:1px solid var(--marker-edge); background:var(--marker); border-radius:6px; padding:10px 12px; color:#23272e; }
+  .card h3 { margin:0 0 6px; font-size:14px; }
+  .card p { margin:0 0 8px; white-space:pre-wrap; }
+  .card input { width:100%; min-width:0; border:1px solid var(--marker-edge); border-radius:4px; padding:6px 8px; background:var(--sheet); color:var(--graphite); }
+  .card .btn { color:#23272e; }
+  .card .btn.primary { color:#fff; }
+  .opts { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+
+  .notice { border-radius:6px; padding:8px 12px; background:var(--ink-soft); }
+  .notice.error { background:var(--stamp-soft); color:var(--stamp); }
+  .notice.warn { background:var(--marker); color:#23272e; }
+  .notice.ok { background:var(--ok-soft); color:var(--ok); }
+
+  .result { border-left:4px solid var(--ink); background:var(--sheet); padding:10px 12px; border-radius:0; }
+  .result.success { border-left-color:var(--ok); }
+  .result.failed { border-left-color:var(--stamp); }
+  .result.partial { border-left-color:var(--marker-edge); }
+  .result b { display:block; margin-bottom:2px; }
+  .result p { margin:0; white-space:pre-wrap; }
+
+  /* Settings */
+  details.settings { background:var(--sheet); border:1px solid var(--line); border-radius:6px; }
+  details.settings summary { cursor:pointer; padding:8px 12px; font-weight:700; }
+  .grid { display:grid; grid-template-columns:auto 1fr; gap:8px 10px; padding:4px 12px 12px; align-items:center; }
+  .grid input[type=text], .grid input[type=password], .grid select { width:100%; border:1px solid var(--line); border-radius:4px; padding:5px 8px; background:var(--paper); }
+  .keyinfo { color:var(--pencil); font-size:12px; }
+
+  /* Live events: fills the remaining height; this is the only part that scrolls */
+  .trace { flex:1 0 260px; min-height:260px; display:flex; flex-direction:column; background:var(--sheet); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .filters { flex:none; display:flex; gap:4px; flex-wrap:wrap; padding:8px 10px; border-bottom:1px solid var(--line); align-items:center; }
+  .chip { border:1px solid var(--line); background:transparent; border-radius:999px; padding:2px 10px; font-size:12px; cursor:pointer; color:var(--pencil); }
+  .chip[aria-pressed=true] { background:var(--ink-soft); border-color:var(--ink); color:var(--ink); font-weight:700; }
+  .count { margin-left:auto; color:var(--faint); font-size:12px; font-variant-numeric:tabular-nums; }
+  #events { flex:1; min-height:0; overflow-y:auto; }
+  .ev { display:grid; grid-template-columns:64px 92px 1fr; gap:8px; padding:5px 10px; border-bottom:1px solid var(--line-soft); cursor:default; }
+  .ev.has-data { cursor:pointer; }
+  .ev .t { color:var(--faint); font-size:12px; font-variant-numeric:tabular-nums; padding-top:1px; }
+  .ev .s { font-size:12px; font-weight:700; padding-top:1px; }
+  .ev .m { white-space:pre-wrap; word-break:break-word; }
+  .ev.g-tool .m { font-family:var(--code); font-size:12.5px; }
+  .ev .d { grid-column:2 / 4; font-family:var(--code); font-size:12px; color:var(--pencil); white-space:pre-wrap; word-break:break-word;
+           background:var(--paper); border-radius:4px; padding:6px 8px; display:none; }
+  .ev.open .d { display:block; }
+  .g-model .s { color:var(--violet); } .g-tool .s { color:var(--ink); } .g-browser .s { color:var(--teal); }
+  .g-network .s { color:var(--pencil); } .g-session .s { color:var(--graphite); } .g-app .s { color:var(--graphite); }
+  .g-gap .s { color:var(--marker-edge); }
+  .ev.st-error { background:var(--stamp-soft); } .ev.st-error .s { color:var(--stamp); }
+  .ev.st-warn { background:color-mix(in srgb, var(--marker) 45%, transparent); }
+  .ev.boundary { border-top:2px solid var(--line); }
+  .empty { padding:16px 12px; color:var(--pencil); }
+
+  footer { flex:none; background:var(--sheet); border-top:1px solid var(--line); padding:6px 14px;
+           font-size:12px; color:var(--pencil); display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  footer button { border:0; background:none; color:var(--ink); padding:0; cursor:pointer; font-size:12px; }
+  #usage { font-variant-numeric:tabular-nums; }
+
+  [hidden] { display:none !important; }
+
+  /* Status banner: always visible under the header, so it is clear at a glance whether a task is running or finished */
+  .banner { flex:none; display:flex; align-items:center; gap:12px; padding:9px 14px; border-bottom:1px solid var(--line); }
+  .banner .b-main { flex:1; min-width:0; }
+  .banner .b-title { font-weight:700; font-size:15px; }
+  .banner .b-sub { color:inherit; opacity:.85; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .banner .b-time { font-variant-numeric:tabular-nums; font-weight:700; }
+  .banner button { border:1px solid currentColor; background:transparent; color:inherit; border-radius:4px; padding:3px 10px; cursor:pointer; font-size:12px; }
+  .banner.running { background:#1f3a93; color:#fff; }
+  .banner.running .b-dot { width:12px; height:12px; border-radius:50%; background:#fff; animation:pulse 1.2s ease-in-out infinite; flex:none; }
+  .banner.done { background:var(--ok-soft); color:var(--ok); }
+  .banner.partial { background:var(--marker); color:#23272e; }
+  .banner.failed, .banner.stopped { background:var(--stamp-soft); color:var(--stamp); }
+  .banner:not(.running) .b-dot { display:none; }
+  @media (prefers-reduced-motion: reduce) { .banner.running .b-dot { animation:none; } }
+
+  textarea#task[readonly] { opacity:.6; cursor:not-allowed; }
+  .lockhint { color:var(--ink); font-weight:700; font-size:12.5px; }
+
+  /* Tabs */
+  .tabs { flex:none; display:flex; gap:4px; padding:6px 14px 0; background:var(--paper); border-bottom:1px solid var(--line); }
+  .tab { border:1px solid var(--line); border-bottom:0; background:var(--sheet); border-radius:6px 6px 0 0; padding:6px 16px; cursor:pointer; color:var(--pencil); }
+  .tab[aria-pressed=true] { color:var(--ink); font-weight:700; border-color:var(--ink); }
+
+  /* History */
+  .hitem { background:var(--sheet); border:1px solid var(--line); border-left:4px solid var(--faint); border-radius:6px; padding:9px 12px; }
+  .hitem.s-success { border-left-color:var(--ok); } .hitem.s-partial { border-left-color:var(--marker-edge); }
+  .hitem.s-failed, .hitem.s-stopped, .hitem.s-interrupted { border-left-color:var(--stamp); }
+  .hitem.s-running { border-left-color:var(--ink); }
+  .hhead { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12.5px; color:var(--pencil); }
+  .pill { border-radius:999px; padding:1px 9px; font-weight:700; font-size:12px; background:var(--line-soft); color:var(--graphite); }
+  .pill.success { background:var(--ok-soft); color:var(--ok); } .pill.partial { background:var(--marker); color:#23272e; }
+  .pill.failed, .pill.stopped, .pill.interrupted { background:var(--stamp-soft); color:var(--stamp); }
+  .pill.running { background:var(--ink-soft); color:var(--ink); }
+  .htask { margin:6px 0 4px; white-space:pre-wrap; word-break:break-word; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+  .htask.open { display:block; }
+  .hsum { margin:4px 0; white-space:pre-wrap; word-break:break-word; }
+  .hbtns { display:flex; gap:6px; margin-top:6px; }
+  .hbtns .btn { padding:3px 10px; font-size:12px; }
+  .hsteps { margin-top:6px; border-top:1px solid var(--line-soft); max-height:300px; overflow-y:auto; font-size:12.5px; }
+  .hstep { display:grid; grid-template-columns:62px 70px 1fr; gap:8px; padding:3px 0; border-bottom:1px solid var(--line-soft); }
+  .hstep .t { color:var(--faint); font-variant-numeric:tabular-nums; } .hstep .s { color:var(--pencil); font-weight:700; }
+  .hstep .m { white-space:pre-wrap; word-break:break-word; }
+</style>
+</head>
+<body>
+<header>
+  <div class="stamp">
+    <span class="brand">OpenFill</span>
+    <span class="vdate" id="vdate" title="Version date">-</span>
+    <span class="vmeta" id="vmeta"></span>
+    <span class="state offline" id="state" role="status"><span class="dot"></span><span id="stateText">connecting...</span></span>
+  </div>
+</header>
+
+<div class="banner" id="banner" role="status" hidden>
+  <span class="b-dot"></span>
+  <div class="b-main"><div class="b-title" id="bTitle"></div><div class="b-sub" id="bSub"></div></div>
+  <span class="b-time" id="bTime"></span>
+  <button id="bHist" type="button">History</button>
+  <button id="bClose" type="button" aria-label="Dismiss">&times;</button>
+</div>
+
+<nav class="tabs">
+  <button class="tab" id="tabWork" type="button" aria-pressed="true">Task</button>
+  <button class="tab" id="tabHist" type="button" aria-pressed="false">History <span id="histCount"></span></button>
+</nav>
+
+<main id="viewHist" hidden>
+  <div id="histList"><div class="empty">No tasks yet. Every task you or another model starts shows up here with its result.</div></div>
+</main>
+
+<main id="viewWork">
+  <section class="task">
+    <label for="task">What should I do?</label>
+    <textarea id="task" placeholder="E.g. Go to example.com/jobs and fill in my profile: position Software Engineer, company Acme, city Berlin."></textarea>
+    <div class="row">
+      <button class="btn primary" id="run">Run</button>
+      <button class="btn danger" id="stop" disabled>Stop</button>
+      <span class="hint" id="runhint">Ctrl+Enter runs</span>
+      <span class="lockhint" id="lockhint" hidden></span>
+    </div>
+    <div class="nav">
+      <input id="url" type="text" placeholder="Page address (optional)" aria-label="Page address">
+      <button class="btn" id="go">Open</button>
+    </div>
+  </section>
+
+  <div id="cards"></div>
+  <div id="notices"></div>
+  <div id="result"></div>
+
+  <details class="settings" id="settings">
+    <summary>Settings</summary>
+    <div class="grid">
+      <label for="key">OpenAI key</label>
+      <div class="row" style="margin:0">
+        <input id="key" type="password" placeholder="sk-..." autocomplete="off" class="grow">
+        <button class="btn" id="saveKey">Save key</button>
+      </div>
+      <span></span><span class="keyinfo" id="keyinfo">no key</span>
+      <label for="model">Model</label>
+      <input id="model" type="text">
+      <label for="effort">Reasoning</label>
+      <select id="effort">
+        <option value="low">low - fastest</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+        <option value="xhigh">xhigh</option>
+        <option value="max">max</option>
+      </select>
+      <label for="confirm">Approval</label>
+      <label style="display:flex;gap:8px;align-items:center"><input id="confirm" type="checkbox"> ask before payment and final submit</label>
+      <label for="maxTabs">Open tabs</label>
+      <input id="maxTabs" type="number" min="1" max="12" step="1" style="width:70px" title="One tab per task. Past this number the oldest finished tab is closed.">
+      <label for="costInfo">Cost notice</label>
+      <span><input id="costInfo" type="number" min="0.01" step="0.01" style="width:70px" title="Per task: past this you get a warning that something may be wrong."> USD per task</span>
+      <label for="costWarn">Cost question</label>
+      <span><input id="costWarn" type="number" min="0.01" step="0.01" style="width:70px" title="Per task: past this OpenFill asks you whether to go on (and again at each further multiple)."> USD per task</span>
+      <label for="domainLimit">Domain limit</label>
+      <span><input id="domainLimit" type="number" min="0.05" step="0.05" style="width:70px" title="Hard stop per web domain, cumulative. The domain is blocked until you lift it here."> USD per site, total</span>
+      <label for="sharedFolder">Shared folder</label>
+      <input id="sharedFolder" type="text" placeholder="" title="Files are exchanged here with the calling model. Point it at a folder synced with Google Drive. Empty = the default folder.">
+      <label for="domainLifetime">Lifetime limit</label>
+      <span><input id="domainLifetime" type="number" min="0.1" step="0.1" style="width:70px" title="Everything ever spent on one site. Unblock resets the 0.40 count but never this ceiling."> USD per site, ever</span>
+      <label for="maxSteps">Max steps</label>
+      <span><input id="maxSteps" type="number" min="5" max="1000" step="5" style="width:70px" title="Model rounds per task before OpenFill stops or extends the task."> per task</span>
+      <label for="maxStepExtensions">Step extensions</label>
+      <span><input id="maxStepExtensions" type="number" min="0" max="20" step="1" style="width:70px" title="A task that is still making progress at the step limit is extended by the same number of steps, up to this many times. 0 = never extend."> times</span>
+      <label for="taskTimeoutMin">Task timeout</label>
+      <span><input id="taskTimeoutMin" type="number" min="1" max="600" step="1" style="width:70px" title="Time limit of the whole task."> minutes</span>
+      <label for="toolTimeoutSec">Tool timeout</label>
+      <span><input id="toolTimeoutSec" type="number" min="5" max="600" step="5" style="width:70px" title="Time limit of one browser tool call. Waiting for a person is not counted."> seconds</span>
+      <label for="userAnswerMin">Your answer wait</label>
+      <span><input id="userAnswerMin" type="number" min="1" max="240" step="1" style="width:70px" title="How long a question card waits for you before the task goes on without an answer."> minutes</span>
+      <label for="callerAnswerMin">Chat answer wait</label>
+      <span><input id="callerAnswerMin" type="number" min="1" max="60" step="1" style="width:70px" title="How long OpenFill waits for the calling chat model to answer a question (applies after restart)."> minutes</span>
+      <label for="homeUrl">Start page</label>
+      <input id="homeUrl" type="text" placeholder="about:blank" title="Address opened in a new tab.">
+      <label for="mcpEnabled">MCP</label>
+      <label style="display:flex;gap:8px;align-items:center"><input id="mcpEnabled" type="checkbox"> let a chat model use OpenFill (restart needed)</label>
+      <label for="mcpPublicUrl">Public address</label>
+      <input id="mcpPublicUrl" type="text" placeholder="empty = Cloudflare quick tunnel" title="Stable public HTTPS address of your own tunnel (Tailscale Funnel, Cloudflare named tunnel). Restart needed.">
+      <label for="mcpPort">MCP port</label>
+      <span><input id="mcpPort" type="number" min="0" max="65535" step="1" style="width:80px" title="0 = pick a free port each start. Use a fixed port with your own tunnel. Restart needed."> 0 = automatic</span>
+      <label for="mcpTunnel">Quick tunnel</label>
+      <label style="display:flex;gap:8px;align-items:center"><input id="mcpTunnel" type="checkbox"> use a Cloudflare quick tunnel when no public address is set</label>
+      <label>Sites</label>
+      <div id="costList" class="costlist">no costs yet</div>
+      <span></span>
+      <div class="row" style="margin:0"><button class="btn" id="saveSettings">Save settings</button></div>
+    </div>
+  </details>
+
+  <section class="trace" aria-label="Live events">
+    <div class="filters" id="filters">
+      <button class="chip" data-g="all" aria-pressed="true">All</button>
+      <button class="chip" data-g="model" aria-pressed="false">Model</button>
+      <button class="chip" data-g="tool" aria-pressed="false">Tools</button>
+      <button class="chip" data-g="browser" aria-pressed="false">Browser</button>
+      <button class="chip" data-g="network" aria-pressed="false">Network</button>
+      <button class="chip" data-g="problems" aria-pressed="false">Problems</button>
+      <span class="count" id="count">0 events</span>
+    </div>
+    <div id="events"><div class="empty" id="empty">Every step shows up here, newest first: what the model decided, which tool it called, what the page answered.</div></div>
+  </section>
+</main>
+
+<footer>
+  <span id="run-id">no task yet</span>
+  <span id="usage" title="Model usage in the current task"></span>
+  <button data-open="runs">Task logs</button>
+  <button data-open="notes">Site notes</button>
+  <button data-open="downloads">Downloads</button>
+  <button data-open="shared">Shared folder</button>
+  <span id="build"></span>
+</footer>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const labels = { model:'model', tool:'tool', browser:'browser', network:'network', session:'task', app:'app', gap:'gap', notes:'notes' };
+  const MAX_ROWS = 2500;
+  let total = 0, running = false, filter = 'all';
+
+  // ---------------------------------------------------------------- transport
+  const wv = window.chrome && window.chrome.webview;
+  let sock = null; const queue = [];
+  function send(o) {
+    if (wv) { wv.postMessage(o); return; }
+    if (sock && sock.readyState === 1) sock.send(JSON.stringify(o)); else queue.push(o);
+  }
+  function connect() {
+    const params = new URLSearchParams(location.search);
+    const host = params.get('ws') ? ('127.0.0.1:' + params.get('ws')) : location.host;
+    if (!host) { setConn(false); return; }
+    sock = new WebSocket('ws://' + host + '/panel');
+    sock.onopen = () => { clearEvents(); setConn(true); sock.send(JSON.stringify({ kind:'hello' })); while (queue.length) sock.send(JSON.stringify(queue.shift())); };
+    sock.onmessage = m => { try { handle(JSON.parse(m.data)); } catch (e) {} };
+    sock.onclose = () => { setConn(false); setTimeout(connect, 1500); };
+  }
+  if (wv) {
+    wv.addEventListener('message', e => { const o = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; handle(o); });
+    setConn(true); send({ kind:'hello' });
+  } else connect();
+
+  // ---------------------------------------------------------------- incoming
+  function handle(o) {
+    switch (o.kind) {
+      case 'headline': return setHeadline(o);
+      case 'settings': return setSettings(o);
+      case 'state': return setRunning(!!o.running, o.runId, o.current);
+      case 'history': return setHistory(o.items || []);
+      case 'historyEvents': return showHistEvents(o);
+      case 'event': return addEvent(o.ev);
+      case 'ask': return showAsk(o);
+      case 'confirm': return showConfirm(o);
+      case 'filePicked': return filePicked(o);
+      case 'closeCard': { const c = document.querySelector('[data-card="' + o.id + '"]'); if (c) c.remove(); return; }
+      case 'result': return showResult(o);
+      case 'notice': return notice(o.text, o.level);
+      case 'costs': return showCosts(o);
+    }
+  }
+
+  function setConn(on) {
+    if (!on) { $('state').className = 'state offline'; $('stateText').textContent = 'no connection to the app'; }
+    else if (!running) { $('state').className = 'state'; $('stateText').textContent = 'connecting...'; }
+  }
+
+  function setHeadline(h) {
+    if (!running) { $('state').className = 'state'; $('stateText').textContent = 'ready'; }
+    $('vdate').textContent = h.date || '-';
+    $('vmeta').textContent = 'v' + (h.version || '?') + (h.instance ? '  ' + h.instance : '');
+    $('build').textContent = h.build ? ('built ' + h.build) : '';
+    document.title = 'OpenFill - ' + (h.date || '?') + (h.version ? ' v' + h.version : '');
+  }
+
+  function setSettings(s) {
+    if (document.activeElement !== $('model')) $('model').value = s.model || '';
+    $('effort').value = s.effort || 'low';
+    $('confirm').checked = !!s.confirmIrreversible;
+    if (document.activeElement !== $('maxTabs')) $('maxTabs').value = s.maxTabs || 5;
+    if (document.activeElement !== $('sharedFolder')) { $('sharedFolder').value = s.sharedFolder || ''; $('sharedFolder').placeholder = s.sharedFolderEffective || ''; }
+    if (document.activeElement !== $('domainLifetime')) $('domainLifetime').value = s.domainLifetime || 1;
+    const fill = (id, v) => { if (document.activeElement !== $(id)) $(id).value = v; };
+    fill('maxSteps', s.maxSteps || 60); fill('maxStepExtensions', s.maxStepExtensions ?? 5);
+    fill('taskTimeoutMin', s.taskTimeoutMin || 30); fill('toolTimeoutSec', s.toolTimeoutSec || 60);
+    fill('userAnswerMin', s.userAnswerMin || 20); fill('callerAnswerMin', s.callerAnswerMin || 5);
+    fill('homeUrl', s.homeUrl && s.homeUrl !== 'about:blank' ? s.homeUrl : '');
+    fill('mcpPublicUrl', s.mcpPublicUrl || ''); fill('mcpPort', s.mcpPort || 0);
+    $('mcpEnabled').checked = !!s.mcpEnabled; $('mcpTunnel').checked = s.mcpTunnel !== false;
+    if (document.activeElement !== $('costInfo')) $('costInfo').value = s.costInfo || 0.1;
+    if (document.activeElement !== $('costWarn')) $('costWarn').value = s.costWarn || 0.15;
+    if (document.activeElement !== $('domainLimit')) $('domainLimit').value = s.domainLimit || 0.4;
+    $('keyinfo').textContent = s.mock ? 'test mode (mock) - no key needed'
+      : (s.keyMask ? ('saved ' + s.keyMask + ', source: ' + s.keySource) : 'no key - paste it above');
+    if (!s.mock && !s.keyMask) $('settings').open = true;
+  }
+
+  const SOURCES = { mcp:'another model (MCP)', panel:'this panel' };
+  function showCosts(o) {
+    const box = $('costList'); box.textContent = '';
+    const items = o.items || [];
+    if (!items.length) { box.textContent = 'no costs yet'; return; }
+    let anyBlocked = false;
+    for (const it of items) {
+      const row = document.createElement('div'); row.className = 'costrow';
+      const name = document.createElement('span'); name.textContent = it.domain; name.style.fontWeight = '600';
+      const amt = document.createElement('span'); amt.textContent = ' $' + Number(it.spent).toFixed(3) + ' / $' + Number(o.limit).toFixed(2);
+      row.append(name, amt);
+      if (it.blocked) {
+        anyBlocked = true;
+        const b = document.createElement('button'); b.className = 'btn'; b.type = 'button'; b.textContent = 'Unblock'; b.style.marginLeft = '8px';
+        b.onclick = () => send({ kind:'unblock', domain:it.domain });
+        const tag = document.createElement('span'); tag.textContent = '  BLOCKED'; tag.style.color = '#c0392b'; tag.style.fontWeight = '700';
+        if (it.locked) { b.disabled = true; b.title = 'Lifetime limit reached'; tag.textContent = '  BLOCKED (lifetime limit)'; }
+        row.append(tag, b);
+      }
+      box.append(row);
+    }
+    if (anyBlocked) $('settings').open = true;
+  }
+
+  const STATUS = { blocked:'Blocked (cost limit)', running:'Working', success:'Done', partial:'Partly done', failed:'Failed', stopped:'Stopped', interrupted:'Interrupted' };
+  let bannerTimer = null, bannerStart = 0;
+
+  function fmtDur(ms) {
+    const s = Math.max(0, Math.round(ms / 1000)), p = x => String(x).padStart(2, '0');
+    return s >= 3600 ? Math.floor(s / 3600) + ':' + p(Math.floor(s % 3600 / 60)) + ':' + p(s % 60) : p(Math.floor(s / 60)) + ':' + p(s % 60);
+  }
+
+  function setBanner(cls, title, sub, time) {
+    const b = $('banner');
+    b.hidden = false; b.className = 'banner ' + cls;
+    $('bTitle').textContent = title; $('bSub').textContent = sub || ''; $('bSub').title = sub || '';
+    $('bTime').textContent = time || '';
+    $('bClose').hidden = cls === 'running'; $('bHist').hidden = cls === 'running';
+  }
+
+  function lockInputs(on, source) {
+    $('task').readOnly = on; $('url').disabled = on; $('go').disabled = on;
+    $('lockhint').hidden = !on; $('runhint').hidden = on;
+    if (on) $('lockhint').textContent = 'Locked: a task is running (started from ' + (SOURCES[source] || 'the app') + '). Stop it or wait for the end.';
+  }
+
+  function setRunning(r, runId, current) {
+    const wasRunning = running;
+    running = r;
+    $('run').disabled = r; $('stop').disabled = !r;
+    $('state').className = 'state' + (r ? ' running' : '');
+    $('stateText').textContent = r ? 'working...' : 'ready';
+    lockInputs(r, current && current.source);
+    clearInterval(bannerTimer); bannerTimer = null;
+    if (r) {
+      $('result').innerHTML = ''; if (!wasRunning) $('usage').textContent = '';
+      bannerStart = current && current.startedUtc ? Date.parse(current.startedUtc) : Date.now();
+      const tick = () => { $('bTime').textContent = fmtDur(Date.now() - bannerStart); };
+      setBanner('running', 'Working on a task...', (current ? ('From ' + (SOURCES[current.source] || current.source) + ': ' + current.task.replace(/\s+/g, ' ')) : ''), '');
+      tick(); bannerTimer = setInterval(tick, 1000);
+    }
+    if (runId) $('run-id').textContent = 'task ' + runId;
+  }
+
+  function groupOf(ev) {
+    if (ev.source === 'gap') return 'gap';
+    return labels[ev.source] ? ev.source : 'app';
+  }
+
+  function visibleFor(row) {
+    if (filter === 'all') return true;
+    if (filter === 'problems') return row.dataset.problem === '1';
+    return row.dataset.g === filter;
+  }
+
+  function hhmmss(iso) { const d = new Date(iso); const p = x => String(x).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+
+  const nf = n => (n || 0).toLocaleString('en-US');
+
+  // Footer summary of model usage for the current task (running totals come with every "usage" event)
+  function updateUsage(d) {
+    const t = d && d.totals;
+    if (!t) return;
+    let s = 'model calls ' + t.calls + ' | in ' + nf(t.inputTokens) + (t.cachedTokens ? ' (cached ' + nf(t.cachedTokens) + ')' : '') +
+            ' | out ' + nf(t.outputTokens) + (t.reasoningTokens ? ' (reasoning ' + nf(t.reasoningTokens) + ')' : '') +
+            ' | model time ' + (t.modelMs / 1000).toFixed(1) + ' s';
+    if (t.costUsd != null) s += ' | ~$' + t.costUsd.toFixed(4);
+    $('usage').textContent = s;
+  }
+
+  function addEvent(ev) {
+    if (!ev) return;
+    const empty = $('empty'); if (empty) empty.remove();
+    total++;
+    const g = groupOf(ev);
+    const row = document.createElement('div');
+    row.className = 'ev g-' + g + ' st-' + (ev.status || 'ok');
+    row.dataset.g = g;
+    row.dataset.problem = (ev.status === 'error' || ev.status === 'warn' || g === 'gap') ? '1' : '0';
+    if (ev.source === 'session' && ev.eventType === 'start') row.classList.add('boundary');
+    if (ev.source === 'model' && ev.eventType === 'usage') updateUsage(ev.data);
+    const t = document.createElement('div'); t.className = 't'; t.textContent = hhmmss(ev.tsUtc);
+    const s = document.createElement('div'); s.className = 's'; s.textContent = labels[g] || ev.source;
+    const m = document.createElement('div'); m.className = 'm'; m.textContent = ev.message || ev.eventType;
+    row.append(t, s, m);
+    if (ev.data != null) {
+      const d = document.createElement('div'); d.className = 'd';
+      d.textContent = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data, null, 2);
+      row.append(d); row.classList.add('has-data');
+      row.addEventListener('click', () => row.classList.toggle('open'));
+      row.title = 'Click for details';
+    }
+    if (!visibleFor(row)) row.style.display = 'none';
+    const box = $('events');
+    const scrolled = box.scrollTop > 4;
+    const before = box.scrollHeight;
+    box.prepend(row);                                   // newest on top
+    while (box.children.length > MAX_ROWS) box.lastElementChild.remove();
+    if (scrolled) box.scrollTop += box.scrollHeight - before;   // keep the view still if the user scrolled down to read
+    $('count').textContent = total + (total === 1 ? ' event' : ' events');
+  }
+
+  function clearEvents() {
+    total = 0; $('events').innerHTML = ''; $('count').textContent = '0 events';
+    $('cards').innerHTML = '';
+  }
+
+  function showAsk(o) {
+    if (document.querySelector('[data-card="' + o.id + '"]')) return;
+    const c = document.createElement('div'); c.className = 'card'; c.dataset.card = o.id;
+    c.innerHTML = '<h3>The model asks</h3><p></p><div class="opts"></div>' +
+      '<div class="row" style="margin:0"><input type="text" placeholder="Your answer" class="grow"><button class="btn pick">Choose file...</button><button class="btn primary answer">Answer</button></div>';
+    c.querySelector('p').textContent = o.question;
+    if (o.human) {
+      // Only the person at the computer can answer this (e.g. a code from an e-mail): the calling model never sees the answer.
+      c.querySelector('h3').textContent = 'OpenFill is waiting for you';
+      c.style.borderColor = '#e0a82e';
+      const hint = document.createElement('p'); hint.style.cssText = 'font-size:12px;opacity:.75;margin:4px 0 8px';
+      hint.textContent = 'Type or paste it here. It goes straight to OpenFill and is not sent to the chat that gave it the task.';
+      c.querySelector('p').after(hint);
+      c.querySelector('input').placeholder = 'Type or paste the code';
+      c.querySelector('.pick').style.display = 'none';
+    }
+    const input = c.querySelector('input');
+    const reply = text => { send({ kind:'answer', id:o.id, text }); c.remove(); };
+    (o.options || []).forEach(opt => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = opt; b.onclick = () => reply(opt); c.querySelector('.opts').append(b); });
+    c.querySelector('.answer').onclick = () => reply(input.value);
+    c.querySelector('.pick').onclick = () => send({ kind:'pickFile', id:o.id });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') reply(input.value); });
+    showTab('work');
+    $('cards').append(c); input.focus();
+    $('cards').scrollIntoView({ block:'nearest' });
+  }
+
+  // The app opened a native file dialog; put the chosen full path into the answer field
+  function filePicked(o) {
+    const c = document.querySelector('[data-card="' + o.id + '"]');
+    if (!c || !o.path) return;
+    const input = c.querySelector('input');
+    input.value = o.path; input.focus();
+  }
+
+  function showConfirm(o) {
+    if (document.querySelector('[data-card="' + o.id + '"]')) return;
+    const c = document.createElement('div'); c.className = 'card'; c.dataset.card = o.id;
+    c.innerHTML = '<h3>Your approval is needed</h3><p></p><div class="row" style="margin:0"><button class="btn primary">Yes, do it</button><button class="btn">No</button></div>';
+    c.querySelector('p').textContent = o.what;
+    const [yes, no] = c.querySelectorAll('button');
+    yes.onclick = () => { send({ kind:'confirmReply', id:o.id, ok:true }); c.remove(); };
+    no.onclick = () => { send({ kind:'confirmReply', id:o.id, ok:false }); c.remove(); };
+    showTab('work');
+    $('cards').append(c); yes.focus();
+    $('viewWork').scrollTo(0, 0);
+  }
+
+  function showResult(o) {
+    const names = { success:'Done', partial:'Partially done', failed:'Failed' };
+    const r = document.createElement('div'); r.className = 'result ' + (o.status || '');
+    const b = document.createElement('b'); b.textContent = names[o.status] || o.status;
+    const p = document.createElement('p'); p.textContent = o.summary || '';
+    r.append(b, p);
+    $('result').innerHTML = ''; $('result').append(r);
+
+    // Finished banner: stays until dismissed or until the next task starts
+    const cls = o.stopped ? 'stopped' : (o.status === 'success' ? 'done' : (o.status === 'partial' ? 'partial' : 'failed'));
+    const title = o.stopped ? 'Task stopped' : (o.status === 'success' ? 'Task finished: done' : (o.status === 'partial' ? 'Task finished: partly done' : 'Task finished: failed'));
+    const took = o.startedUtc && o.endedUtc ? ' (' + fmtDur(Date.parse(o.endedUtc) - Date.parse(o.startedUtc)) + ')' : '';
+    setBanner(cls, title + took, (o.summary || '').replace(/\s+/g, ' '), '');
+  }
+
+  // ---------------------------------------------------------------- history
+  const stepCache = {}, openSteps = new Set(), openTasks = new Set();
+  let histItems = [];
+
+  function fmtWhen(iso) {
+    const d = new Date(iso), p = x => String(x).padStart(2, '0');
+    return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  function setHistory(items) {
+    histItems = items;
+    $('histCount').textContent = items.length ? '(' + items.length + ')' : '';
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const box = $('histList');
+    if (!histItems.length) { box.innerHTML = '<div class="empty">No tasks yet. Every task you or another model starts shows up here with its result.</div>'; return; }
+    const keep = $('viewHist').scrollTop;
+    box.innerHTML = '';
+    histItems.forEach(it => {
+      const card = document.createElement('div'); card.className = 'hitem s-' + it.status;
+      const head = document.createElement('div'); head.className = 'hhead';
+      const pill = document.createElement('span'); pill.className = 'pill ' + it.status; pill.textContent = STATUS[it.status] || it.status;
+      const src = document.createElement('span'); src.textContent = 'from ' + (SOURCES[it.source] || it.source);
+      const when = document.createElement('span'); when.textContent = fmtWhen(it.startedUtc);
+      head.append(pill, when, src);
+      if (it.endedUtc) { const du = document.createElement('span'); du.textContent = 'took ' + fmtDur(Date.parse(it.endedUtc) - Date.parse(it.startedUtc)); head.append(du); }
+      const task = document.createElement('div'); task.className = 'htask' + (openTasks.has(it.id) ? ' open' : ''); task.textContent = it.task;
+      task.title = 'Click to expand or collapse';
+      task.onclick = () => { openTasks.has(it.id) ? openTasks.delete(it.id) : openTasks.add(it.id); task.classList.toggle('open'); };
+      card.append(head, task);
+      if (it.summary) { const sm = document.createElement('div'); sm.className = 'hsum'; sm.textContent = it.summary; card.append(sm); }
+      const btns = document.createElement('div'); btns.className = 'hbtns';
+      if (it.runId) {
+        const st = document.createElement('button'); st.className = 'btn'; st.textContent = openSteps.has(it.id) ? 'Hide steps' : 'Show steps';
+        st.onclick = () => {
+          if (openSteps.has(it.id)) openSteps.delete(it.id); else { openSteps.add(it.id); if (!stepCache[it.runId] || it.status === 'running') send({ kind:'historyEvents', runId:it.runId }); }
+          renderHistory();
+        };
+        btns.append(st);
+      }
+      const again = document.createElement('button'); again.className = 'btn'; again.textContent = 'Use this task again'; again.disabled = running;
+      again.onclick = () => { $('task').value = it.task; showTab('work'); $('task').focus(); };
+      btns.append(again);
+      card.append(btns);
+      if (it.runId && openSteps.has(it.id)) {
+        const steps = document.createElement('div'); steps.className = 'hsteps';
+        const data = stepCache[it.runId];
+        if (!data) steps.textContent = 'Loading...';
+        else if (!data.events.length) steps.textContent = 'No steps stored for this task.';
+        else {
+          data.events.forEach(e => {
+            const r = document.createElement('div'); r.className = 'hstep';
+            const t = document.createElement('span'); t.className = 't'; t.textContent = hhmmss(e.tsUtc);
+            const s = document.createElement('span'); s.className = 's'; s.textContent = e.source;
+            const m = document.createElement('span'); m.className = 'm'; m.textContent = e.message || e.eventType;
+            r.append(t, s, m); steps.append(r);
+          });
+          if (data.truncated) { const n = document.createElement('div'); n.className = 'hint'; n.textContent = 'Only the first ' + data.events.length + ' steps are shown. The full log is in the task logs folder.'; steps.append(n); }
+        }
+        card.append(steps);
+      }
+      box.append(card);
+    });
+    $('viewHist').scrollTop = keep;
+  }
+
+  function showHistEvents(o) {
+    stepCache[o.runId] = { events:o.events || [], truncated:!!o.truncated };
+    renderHistory();
+  }
+
+  function showTab(which) {
+    const hist = which === 'hist';
+    $('viewHist').hidden = !hist; $('viewWork').hidden = hist;
+    $('tabHist').setAttribute('aria-pressed', hist ? 'true' : 'false');
+    $('tabWork').setAttribute('aria-pressed', hist ? 'false' : 'true');
+  }
+  $('tabWork').onclick = () => showTab('work');
+  $('tabHist').onclick = () => showTab('hist');
+  $('bHist').onclick = () => showTab('hist');
+  $('bClose').onclick = () => { $('banner').hidden = true; };
+
+  function notice(text, level) {
+    const n = document.createElement('div'); n.className = 'notice ' + (level || 'info'); n.textContent = text;
+    $('notices').append(n);
+    setTimeout(() => n.remove(), level === 'error' ? 12000 : 5000);
+  }
+
+  // ---------------------------------------------------------------- actions
+  function run() {
+    if (running) { notice('A task is already running. Stop it or wait for the end.', 'warn'); return; }
+    const task = $('task').value.trim();
+    if (!task) { notice('Type what I should do.', 'warn'); $('task').focus(); return; }
+    const url = $('url').value.trim();
+    send({ kind:'run', task: url ? ('Start from this page: ' + url + '\n\n' + task) : task });
+  }
+  $('run').onclick = run;
+  $('stop').onclick = () => send({ kind:'stop' });
+  $('task').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); } });
+  $('go').onclick = () => { const u = $('url').value.trim(); if (u) send({ kind:'navigate', url:u }); };
+  $('url').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
+  $('saveKey').onclick = () => { const k = $('key').value.trim(); if (!k) { notice('Paste your OpenAI key.', 'warn'); return; } send({ kind:'setKey', key:k }); $('key').value = ''; };
+  $('saveSettings').onclick = () => send({ kind:'setSettings', model:$('model').value.trim(), effort:$('effort').value, confirmIrreversible:$('confirm').checked, maxTabs:parseInt($('maxTabs').value, 10) || 5, costInfo:parseFloat($('costInfo').value) || 0, costWarn:parseFloat($('costWarn').value) || 0, domainLimit:parseFloat($('domainLimit').value) || 0, sharedFolder:$('sharedFolder').value.trim(), domainLifetime:parseFloat($('domainLifetime').value) || 0,
+    maxSteps:parseInt($('maxSteps').value, 10) || 60, maxStepExtensions:parseInt($('maxStepExtensions').value, 10) || 0,
+    taskTimeoutMin:parseInt($('taskTimeoutMin').value, 10) || 30, toolTimeoutSec:parseInt($('toolTimeoutSec').value, 10) || 60,
+    userAnswerMin:parseInt($('userAnswerMin').value, 10) || 20, callerAnswerMin:parseInt($('callerAnswerMin').value, 10) || 5,
+    homeUrl:$('homeUrl').value.trim(), mcpEnabled:$('mcpEnabled').checked, mcpTunnel:$('mcpTunnel').checked,
+    mcpPort:parseInt($('mcpPort').value, 10) || 0, mcpPublicUrl:$('mcpPublicUrl').value.trim() });
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => send({ kind:'openFolder', which:b.dataset.open }));
+  document.querySelectorAll('#filters .chip').forEach(ch => ch.onclick = () => {
+    filter = ch.dataset.g;
+    document.querySelectorAll('#filters .chip').forEach(x => x.setAttribute('aria-pressed', x === ch ? 'true' : 'false'));
+    document.querySelectorAll('#events .ev').forEach(r => r.style.display = visibleFor(r) ? '' : 'none');
+  });
+
+  window.openfillPanel = { handle, send };
+})();
+</script>
+</body>
+</html>

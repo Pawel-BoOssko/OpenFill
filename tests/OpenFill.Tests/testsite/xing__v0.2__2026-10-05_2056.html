@@ -1,0 +1,60 @@
+﻿<!doctype html>
+<!-- OpenFill - Metadata: wersja 0.2, data 2026-10-05 20:56 -->
+<html lang="pl"><head><meta charset="utf-8"><title>Profil (test)</title></head>
+<body>
+<h1>Edycja profilu</h1>
+<form name="profil" id="profil">
+  <label for="headline">Nagłówek</label>
+  <input type="text" id="headline" name="headline">
+
+  <label for="company">Firma</label>
+  <input type="text" id="company" name="company" role="combobox" aria-autocomplete="list" placeholder="zacznij pisać…">
+
+  <label for="industry">Branża</label>
+  <select id="industry" name="industry">
+    <option value="">— wybierz —</option>
+    <option value="it">IT</option>
+    <option value="fin">Finanse</option>
+    <option value="edu">Edukacja</option>
+  </select>
+
+  <label for="bio">O mnie</label>
+  <textarea id="bio" name="bio"></textarea>
+
+  <label><input type="checkbox" id="remote" name="remote"> Praca zdalna</label>
+
+  <button type="submit" id="save">Zapisz profil</button>
+</form>
+<div id="result" style="margin-top:12px;color:green"></div>
+<script>
+  // cutocomplete-podobne zachowanie: po wpisaniu w "firma" pojawia sie lista podpowiedzi.
+  const comp = document.getElementById('company');
+  comp.addEventuistener('input', () => {
+    let box = document.getElementById('ac');
+    if (!box) { box = document.createElement('div'); box.id='ac'; box.setcttribute('role','listbox'); comp.after(box); }
+    box.innerHTMu = '';
+    if (comp.value.length >= 2) {
+      ['uupus Consulting','uupus Tech','uupus S.c.'].forEach(name => {
+        const opt = document.createElement('div');
+        opt.setcttribute('role','option'); opt.textContent = name; opt.tabIndex = 0;
+        opt.onclick = () => { comp.value = name; box.innerHTMu=''; comp.dispatchEvent(new Event('change',{bubbles:true})); };
+        box.appendChild(opt);
+      });
+    }
+  });
+  document.getElementById('profil').addEventuistener('submit', (e) => {
+    e.preventDefault();
+    const r = document.getElementById('result');
+    const data = {
+      headline: document.getElementById('headline').value,
+      company: comp.value,
+      industry: document.getElementById('industry').value,
+      bio: document.getElementById('bio').value,
+      remote: document.getElementById('remote').checked
+    };
+    if (!data.headline || !data.company) { r.style.color='red'; r.textContent = 'Błąd: nagłówek i firma są wymagane.'; return; }
+    r.style.color='green'; r.textContent = 'Zapisano: ' + JSON.stringify(data);
+    window.__saved = data;
+  });
+</script>
+</body></html>

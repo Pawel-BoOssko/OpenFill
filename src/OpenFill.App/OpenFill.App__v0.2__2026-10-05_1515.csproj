@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- OpenFill — aplikacja Windows (okno z przegladarka WebView2 i panelem).
+       Metadata: wersja 0.2, data 2026-10-05 15:15. Budowana na Windows przez tools\install.ps1. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>OpenFill</AssemblyName>
+    <RootNamespace>OpenFill.App</RootNamespace>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <SatelliteResourceLanguages>pl;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenFill.Core\*.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Latest stable 1.0.x at build time (floating version, no guessing the number). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
+  </ItemGroup>
+</Project>
