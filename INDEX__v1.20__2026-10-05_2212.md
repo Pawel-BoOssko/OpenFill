@@ -1,11 +1,11 @@
 # OpenFill - package INDEX
 
 ## Metadata
-- Document version: 1.19
-- Date: 2026-10-05 22:11
-- Package and app version: 1.19 (version date: 2026-10-05 22:11)
+- Document version: 1.20
+- Date: 2026-10-05 22:12
+- Package and app version: 1.20 (version date: 2026-10-05 22:12)
 - Files: 77 (including this INDEX)
-- Changed in this release: 3
+- Changed in this release: 
 
 Every file has a version in its name and in the Metadata section of its content. Exceptions marked (N) have a name required by tools; (B) are binary files - the version is in the name only. Audit: `pwsh tools/release*.ps1 -Check`.
 
@@ -15,9 +15,9 @@ Every file has a version in its name and in the Metadata section of its content.
 | `Directory.Build.props` (N) | 0.2 | 2026-10-05 15:15 |  | shared build settings; app version and version date |
 | `docs/panel-preview__v0.1__2026-10-04_1911.png` (B) | 0.1 | 2026-10-04 19:11 |  | panel screenshot from a test (visual check) |
 | `INSTALL__v0.1__2026-10-05_1123.cmd` | 0.1 | 2026-10-05 11:23 |  | double-click: install / update on Windows |
-| `LICENSE__v0.1__2026-10-05_2211.txt` | 0.1 | 2026-10-05 22:11 | yes |  |
+| `LICENSE__v0.2__2026-10-05_2212.txt` | 0.2 | 2026-10-05 22:12 | yes |  |
 | `OpenFill__v0.1__2026-10-04_1911.sln` | 0.1 | 2026-10-04 19:11 |  | solution file (Visual Studio) |
-| `README__v0.7__2026-10-05_2211.md` | 0.7 | 2026-10-05 22:11 | yes | app description, installation, usage, data, settings, architecture, development |
+| `README__v0.7__2026-10-05_2211.md` | 0.7 | 2026-10-05 22:11 |  | app description, installation, usage, data, settings, architecture, development |
 | `src/OpenFill.App/DpapiSecretProtector__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | key encryption with DPAPI |
 | `src/OpenFill.App/MainForm__v0.9__2026-10-05_1855.cs` | 0.9 | 2026-10-05 18:55 |  | app window: browser + panel |
 | `src/OpenFill.App/OpenFill.App__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | project file OpenFill.App |
@@ -84,17 +84,17 @@ Every file has a version in its name and in the Metadata section of its content.
 | `tests/OpenFill.Tests/testsite/xing__v0.3__2026-10-05_2131.html` | 0.3 | 2026-10-05 21:31 |  | test page: a simple profile form |
 | `tools/compilecheck/CompileCheck__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | compile check of the Windows app outside Windows |
 | `tools/install__v0.9__2026-10-05_1905.ps1` | 0.9 | 2026-10-05 19:05 |  | installer: .NET 10, WebView2, build, key, shortcuts |
-| `tools/publish__v0.3__2026-10-05_2211.ps1` | 0.3 | 2026-10-05 22:11 | yes |  |
+| `tools/publish__v0.3__2026-10-05_2211.ps1` | 0.3 | 2026-10-05 22:11 |  |  |
 | `tools/release__v0.5__2026-10-05_1515.ps1` | 0.5 | 2026-10-05 15:15 |  | release: file versions, Metadata, INDEX, zip, audit |
 | `tools/run-dev__v0.2__2026-10-05_1515.ps1` | 0.2 | 2026-10-05 15:15 |  | run the development version (dev instance) |
-| `INDEX__v1.19__2026-10-05_2211.md` | 1.19 | 2026-10-05 22:11 | yes | index of the package files (this file) |
+| `INDEX__v1.20__2026-10-05_2212.md` | 1.20 | 2026-10-05 22:12 | yes | index of the package files (this file) |
 
 ## State for the next release
 
 ```json
 {
-    "package":  "1.19",
-    "stamp":  "2026-10-05_2211",
+    "package":  "1.20",
+    "stamp":  "2026-10-05_2212",
     "files":  {
                   ".gitignore":  {
                                      "name":  ".gitignore",
@@ -121,10 +121,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                       "hash":  "42cfe44fac81b022362d94eed0ea705e9c5bb3f44f383d4ec4d25e5d73461ae9"
                                   },
                   "LICENSE.txt":  {
-                                      "name":  "LICENSE__v0.1__2026-10-05_2211.txt",
-                                      "version":  "0.1",
-                                      "display":  "2026-10-05 22:11",
-                                      "hash":  "01b16aab6f0040c0943062ebe6daec0103491c85a290038759aaeb389f0e1ff1"
+                                      "name":  "LICENSE__v0.2__2026-10-05_2212.txt",
+                                      "version":  "0.2",
+                                      "display":  "2026-10-05 22:12",
+                                      "hash":  "8ae2758dd5bb28b3bb866b4250f4e23228916451accd21b88142264d0568f485"
                                   },
                   "OpenFill.sln":  {
                                        "name":  "OpenFill__v0.1__2026-10-04_1911.sln",
