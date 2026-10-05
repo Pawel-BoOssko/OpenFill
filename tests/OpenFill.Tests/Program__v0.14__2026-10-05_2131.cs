@@ -1,4 +1,4 @@
-﻿// OpenFill - Metadata: wersja 0.13, data 2026-10-05 20:56
+﻿// OpenFill - Metadata: wersja 0.14, data 2026-10-05 21:31
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.Core;
@@ -339,13 +339,13 @@ await T.Section("Model tools on a hard form (modal, React, autocomplete, custom 
     T.Check("act_many ok", many.Ok);
 
     // Controlled field + server autocomplete: type char by char, wait, pick the suggestion.
-    await Call("act", new { id = Id(page, "Firma"), action = "type", value = "Lup" });
+    await Call("act", new { id = Id(page, "Firma"), action = "type", value = "Acm" });
     var w = await Call("wait", new { text = "Acme Consulting", ms = 5000 });
     T.Check("autocomplete: suggestion appeared", w.Ok);
     var withSuggest = await Call("get_page", new { });
     T.Contains("autocomplete: suggestion as option", withSuggest.Output, "option [");
     var net = await Call("get_network", new { filter = "companies" });
-    T.Contains("network: autocomplete request visible", net.Output, "/api/companies?q=Lup");
+    T.Contains("network: autocomplete request visible", net.Output, "/api/companies?q=Acm");
     await Call("act", new { id = Id(withSuggest.Output, "Acme Consulting"), action = "click" });
 
     // Custom city dropdown.

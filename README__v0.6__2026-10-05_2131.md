@@ -1,12 +1,12 @@
-# OpenFill
+﻿# OpenFill
 
 **Tell a chat model what to do on the web. A small, cheap model does the clicking.**
 
 OpenFill is a Windows app that puts a real browser and an AI agent side by side. You (or another AI, such as ChatGPT) describe a job in plain language: *"sign me up for Thursday's 7:00 class on this pool's website"*, *"fill in my profile on this career site with this data"*, *"find the cheapest flight on these dates"*. OpenFill's embedded model then drives the browser until the job is done, asking you only when it truly has to.
 
 ## Metadata
-- Document version: 0.5
-- Date: 2026-10-05 20:40
+- Document version: 0.6
+- Date: 2026-10-05 21:31
 - App version: shown at the top of the app window and the panel
 - Author: OpenFill project
 
@@ -89,6 +89,7 @@ Turn on MCP in **Settings** (or `"mcpEnabled": true` in `config.json`) and resta
 | `openfill_task_status` | poll status, progress, steps, cost and warnings |
 | `openfill_reply` | answer a question from OpenFill's model |
 | `openfill_cancel_task` | cancel the running task |
+| `openfill_info` | diagnostics in one answer: version, settings, limits, cost per site, tabs, recent tasks and errors (no secrets) |
 
 Statuses: `running`, `needs_input`, `waiting_for_user`, `done`, `failed`, `blocked`, `interrupted`, `busy`. One task runs at a time. A cut-off task can be continued with `continue_task_id`.
 

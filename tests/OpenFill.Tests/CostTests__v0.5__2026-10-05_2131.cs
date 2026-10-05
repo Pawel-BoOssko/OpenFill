@@ -1,4 +1,4 @@
-﻿// OpenFill - Metadata: wersja 0.4, data 2026-10-05 19:39
+﻿// OpenFill - Metadata: wersja 0.5, data 2026-10-05 21:31
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Browser;
@@ -44,6 +44,7 @@ internal sealed class SlowAsker(int delayMs, string answer) : IUserInteraction
 internal sealed class CostRunHost : IRunHost
 {
     public AskHandler? AskInterceptor { get; set; }
+    public System.Text.Json.Nodes.JsonObject? Diagnostics() => new System.Text.Json.Nodes.JsonObject { ["marker"] = "yes" };
     public event Action<string>? Activity { add { } remove { } }
     public event Action<string?>? UserWaiting { add { } remove { } }
     public int Started;
@@ -232,6 +233,10 @@ public static class CostTests
             T.Eq("steps in the status", 12, r2["steps"]?.GetValue<int>());
             T.Check("cost in the status", Math.Abs((r2["cost_usd"]?.GetValue<double>() ?? 0) - 0.0634) < 1e-9);
             T.Eq("warning in the status", "Unusual cost", r2["warning"]?.GetValue<string>());
+            var info = m.Info();
+            T.Eq("info status", "ok", info["status"]?.GetValue<string>());
+            T.Eq("info has the host section", "yes", info["openfill"]?["marker"]?.GetValue<string>());
+            T.Check("info lists recent tasks", info["recent_tasks"] is System.Text.Json.Nodes.JsonArray ra && ra.Count >= 1);
             var step = r2["next_step"]!.GetValue<string>();
             T.Contains("calibration for the caller", step, "10-30 steps");
             T.Contains("warning repeated in the advice", step, "WARNING: Unusual cost");

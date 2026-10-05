@@ -1,11 +1,11 @@
 # OpenFill - package INDEX
 
 ## Metadata
-- Document version: 1.17
-- Date: 2026-10-05 20:58
-- Package and app version: 1.17 (version date: 2026-10-05 20:58)
+- Document version: 1.18
+- Date: 2026-10-05 21:31
+- Package and app version: 1.18 (version date: 2026-10-05 21:31)
 - Files: 76 (including this INDEX)
-- Changed in this release: 
+- Changed in this release: 11
 
 Every file has a version in its name and in the Metadata section of its content. Exceptions marked (N) have a name required by tools; (B) are binary files - the version is in the name only. Audit: `pwsh tools/release*.ps1 -Check`.
 
@@ -16,7 +16,7 @@ Every file has a version in its name and in the Metadata section of its content.
 | `docs/panel-preview__v0.1__2026-10-04_1911.png` (B) | 0.1 | 2026-10-04 19:11 |  | panel screenshot from a test (visual check) |
 | `INSTALL__v0.1__2026-10-05_1123.cmd` | 0.1 | 2026-10-05 11:23 |  | double-click: install / update on Windows |
 | `OpenFill__v0.1__2026-10-04_1911.sln` | 0.1 | 2026-10-04 19:11 |  | solution file (Visual Studio) |
-| `README__v0.5__2026-10-05_2040.md` | 0.5 | 2026-10-05 20:40 |  | app description, installation, usage, data, settings, architecture, development |
+| `README__v0.6__2026-10-05_2131.md` | 0.6 | 2026-10-05 21:31 | yes | app description, installation, usage, data, settings, architecture, development |
 | `src/OpenFill.App/DpapiSecretProtector__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | key encryption with DPAPI |
 | `src/OpenFill.App/MainForm__v0.9__2026-10-05_1855.cs` | 0.9 | 2026-10-05 18:55 |  | app window: browser + panel |
 | `src/OpenFill.App/OpenFill.App__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | project file OpenFill.App |
@@ -46,7 +46,7 @@ Every file has a version in its name and in the Metadata section of its content.
 | `src/OpenFill.Core/Browser/ConsoleMonitor__v0.3__2026-10-05_1709.cs` | 0.3 | 2026-10-05 17:09 |  | page console and JavaScript errors |
 | `src/OpenFill.Core/Browser/NetworkMonitor__v0.3__2026-10-05_1709.cs` | 0.3 | 2026-10-05 17:09 |  | network traffic framed by requestId, response bodies, panel entries |
 | `src/OpenFill.Core/Browser/PageModel__v0.3__2026-10-05_1515.cs` | 0.3 | 2026-10-05 15:15 |  | text picture of the page for the model and differences after an action |
-| `src/OpenFill.Core/BuildInfo__v0.3__2026-10-05_1200.cs` | 0.3 | 2026-10-05 12:00 |  | version, version date, build time |
+| `src/OpenFill.Core/BuildInfo__v0.4__2026-10-05_2131.cs` | 0.4 | 2026-10-05 21:31 | yes | version, version date, build time |
 | `src/OpenFill.Core/Cdp/CdpSession__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | CDP calls on a tab (evaluate, call) |
 | `src/OpenFill.Core/Cdp/ICdpConnection__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | CDP channel abstraction |
 | `src/OpenFill.Core/Cdp/SwitchableCdpConnection__v0.1__2026-10-05_1709.cs` | 0.1 | 2026-10-05 17:09 |  |  |
@@ -54,7 +54,7 @@ Every file has a version in its name and in the Metadata section of its content.
 | `src/OpenFill.Core/Config/AppConfig__v0.10__2026-10-05_2040.cs` | 0.10 | 2026-10-05 20:40 |  | settings (config.json) |
 | `src/OpenFill.Core/Config/AppPaths__v0.6__2026-10-05_1905.cs` | 0.6 | 2026-10-05 19:05 |  | instance directories (stable/dev) |
 | `src/OpenFill.Core/Config/SecretStore__v0.3__2026-10-05_1200.cs` | 0.3 | 2026-10-05 12:00 |  | OpenAI key (variable or encrypted file) |
-| `src/OpenFill.Core/Hosting/AppHost__v0.13__2026-10-05_2040.cs` | 0.13 | 2026-10-05 20:40 |  | shared core of the app: panel <-> session, question and consent cards, tasks |
+| `src/OpenFill.Core/Hosting/AppHost__v0.14__2026-10-05_2131.cs` | 0.14 | 2026-10-05 21:31 | yes | shared core of the app: panel <-> session, question and consent cards, tasks |
 | `src/OpenFill.Core/Hosting/HistoryStore__v0.1__2026-10-05_1428.cs` | 0.1 | 2026-10-05 14:28 |  | task history: saved list of tasks (panel and MCP) with results, and a reader for the steps of one task |
 | `src/OpenFill.Core/Hosting/IPanelTransport__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | panel <-> core channel (WebSocket or WebView2) |
 | `src/OpenFill.Core/Hosting/OpenFillSession__v0.5__2026-10-05_1905.cs` | 0.5 | 2026-10-05 19:05 |  | session: log, browser, notes, task start |
@@ -63,37 +63,37 @@ Every file has a version in its name and in the Metadata section of its content.
 | `src/OpenFill.Core/Logging/OutputLimiter__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | tool output limit and overflow to a file |
 | `src/OpenFill.Core/Logging/Redactor__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | removing secrets from logs and notes |
 | `src/OpenFill.Core/Mcp/CloudflareTunnel__v0.1__2026-10-05_1348.cs` | 0.1 | 2026-10-05 13:48 |  | temporary public HTTPS address for MCP (Cloudflare quick tunnel) |
-| `src/OpenFill.Core/Mcp/IRunHost__v0.6__2026-10-05_1838.cs` | 0.6 | 2026-10-05 18:38 |  | interface between the MCP layer and the app: start/stop a task, route questions to the MCP caller |
-| `src/OpenFill.Core/Mcp/McpServer__v0.7__2026-10-05_1905.cs` | 0.7 | 2026-10-05 19:05 |  | MCP server over HTTP (hand-written JSON-RPC, strict tool schemas, secret path) |
+| `src/OpenFill.Core/Mcp/IRunHost__v0.7__2026-10-05_2131.cs` | 0.7 | 2026-10-05 21:31 | yes | interface between the MCP layer and the app: start/stop a task, route questions to the MCP caller |
+| `src/OpenFill.Core/Mcp/McpServer__v0.8__2026-10-05_2131.cs` | 0.8 | 2026-10-05 21:31 | yes | MCP server over HTTP (hand-written JSON-RPC, strict tool schemas, secret path) |
 | `src/OpenFill.Core/Mcp/McpService__v0.3__2026-10-05_1838.cs` | 0.3 | 2026-10-05 18:38 |  | starts MCP: secret address, server, tunnel, self-test |
-| `src/OpenFill.Core/Mcp/McpTaskManager__v0.7__2026-10-05_1838.cs` | 0.7 | 2026-10-05 18:38 |  | MCP tasks: one task at a time, task ids, status/reply/cancel, saved to disk |
+| `src/OpenFill.Core/Mcp/McpTaskManager__v0.8__2026-10-05_2131.cs` | 0.8 | 2026-10-05 21:31 | yes | MCP tasks: one task at a time, task ids, status/reply/cancel, saved to disk |
 | `src/OpenFill.Core/Model/KeyedModelClient__v0.3__2026-10-05_1200.cs` | 0.3 | 2026-10-05 12:00 |  | model client that reads the key at call time |
 | `src/OpenFill.Core/Model/OpenAIClient__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | OpenAI Responses API client |
 | `src/OpenFill.Core/OpenFill.Core__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | project file OpenFill.Core |
-| `tests/OpenFill.Tests/CostTests__v0.4__2026-10-05_1939.cs` | 0.4 | 2026-10-05 19:39 |  |  |
+| `tests/OpenFill.Tests/CostTests__v0.5__2026-10-05_2131.cs` | 0.5 | 2026-10-05 21:31 | yes |  |
 | `tests/OpenFill.Tests/FakeModel__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  |  |
-| `tests/OpenFill.Tests/McpTests__v0.4__2026-10-05_2056.cs` | 0.4 | 2026-10-05 20:56 |  | tests of the MCP layer (task life cycle and HTTP server) |
+| `tests/OpenFill.Tests/McpTests__v0.5__2026-10-05_2131.cs` | 0.5 | 2026-10-05 21:31 | yes | tests of the MCP layer (task life cycle and HTTP server) |
 | `tests/OpenFill.Tests/OpenFill.Tests__v0.1__2026-10-04_1911.csproj` | 0.1 | 2026-10-04 19:11 |  | project file OpenFill.Tests |
-| `tests/OpenFill.Tests/Program__v0.13__2026-10-05_2056.cs` | 0.13 | 2026-10-05 20:56 |  | entry point: OpenFill.Tests |
+| `tests/OpenFill.Tests/Program__v0.14__2026-10-05_2131.cs` | 0.14 | 2026-10-05 21:31 | yes | entry point: OpenFill.Tests |
 | `tests/OpenFill.Tests/SharedTests__v0.1__2026-10-05_1905.cs` | 0.1 | 2026-10-05 19:05 |  |  |
-| `tests/OpenFill.Tests/StaticSite__v0.3__2026-10-05_2056.cs` | 0.3 | 2026-10-05 20:56 |  | server of test pages with a simple API |
+| `tests/OpenFill.Tests/StaticSite__v0.4__2026-10-05_2131.cs` | 0.4 | 2026-10-05 21:31 | yes | server of test pages with a simple API |
 | `tests/OpenFill.Tests/TabTests__v0.2__2026-10-05_1747.cs` | 0.2 | 2026-10-05 17:47 |  |  |
 | `tests/OpenFill.Tests/TestHarness__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | minimal test harness |
 | `tests/OpenFill.Tests/testsite/profile__v0.1__2026-10-04_1911.html` | 0.1 | 2026-10-04 19:11 |  | test page: a hard form (modal, React, autocomplete, custom list, file) |
-| `tests/OpenFill.Tests/testsite/xing__v0.2__2026-10-05_2056.html` | 0.2 | 2026-10-05 20:56 |  | test page: a simple profile form |
+| `tests/OpenFill.Tests/testsite/xing__v0.3__2026-10-05_2131.html` | 0.3 | 2026-10-05 21:31 | yes | test page: a simple profile form |
 | `tools/compilecheck/CompileCheck__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | compile check of the Windows app outside Windows |
 | `tools/install__v0.9__2026-10-05_1905.ps1` | 0.9 | 2026-10-05 19:05 |  | installer: .NET 10, WebView2, build, key, shortcuts |
-| `tools/publish__v0.2__2026-10-05_2058.ps1` | 0.2 | 2026-10-05 20:58 | yes |  |
+| `tools/publish__v0.2__2026-10-05_2058.ps1` | 0.2 | 2026-10-05 20:58 |  |  |
 | `tools/release__v0.5__2026-10-05_1515.ps1` | 0.5 | 2026-10-05 15:15 |  | release: file versions, Metadata, INDEX, zip, audit |
 | `tools/run-dev__v0.2__2026-10-05_1515.ps1` | 0.2 | 2026-10-05 15:15 |  | run the development version (dev instance) |
-| `INDEX__v1.17__2026-10-05_2058.md` | 1.17 | 2026-10-05 20:58 | yes | index of the package files (this file) |
+| `INDEX__v1.18__2026-10-05_2131.md` | 1.18 | 2026-10-05 21:31 | yes | index of the package files (this file) |
 
 ## State for the next release
 
 ```json
 {
-    "package":  "1.17",
-    "stamp":  "2026-10-05_2058",
+    "package":  "1.18",
+    "stamp":  "2026-10-05_2131",
     "files":  {
                   ".gitignore":  {
                                      "name":  ".gitignore",
@@ -126,10 +126,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                        "hash":  "d358a7c53835bddf6af38e2c3f1f5e92bf57e88ed3516f724919c25b02e03fe7"
                                    },
                   "README.md":  {
-                                    "name":  "README__v0.5__2026-10-05_2040.md",
-                                    "version":  "0.5",
-                                    "display":  "2026-10-05 20:40",
-                                    "hash":  "a473658d72acb7c4a9ea35c376e412b7b875db0cb681b72904be1a10c32f5f7a"
+                                    "name":  "README__v0.6__2026-10-05_2131.md",
+                                    "version":  "0.6",
+                                    "display":  "2026-10-05 21:31",
+                                    "hash":  "a8700b8692f993a4cdb10e4886d83ff0bd790a140dce8fadebddedaa9b12ad81"
                                 },
                   "src/OpenFill.App/DpapiSecretProtector.cs":  {
                                                                    "name":  "DpapiSecretProtector__v0.2__2026-10-05_1515.cs",
@@ -306,10 +306,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                                  "hash":  "2966e35ecf5b313afa14fae3abd5113b4ea3b9e3ee02fe15b0198da4d4c34394"
                                                              },
                   "src/OpenFill.Core/BuildInfo.cs":  {
-                                                         "name":  "BuildInfo__v0.3__2026-10-05_1200.cs",
-                                                         "version":  "0.3",
-                                                         "display":  "2026-10-05 12:00",
-                                                         "hash":  "30dc780e62a6016b604296af0612e3edb1a947858c2737e3b5f959f59b84ddd8"
+                                                         "name":  "BuildInfo__v0.4__2026-10-05_2131.cs",
+                                                         "version":  "0.4",
+                                                         "display":  "2026-10-05 21:31",
+                                                         "hash":  "0ba1748851bbd23642d843fa88d1bf1de70b93061a103d9b2e12378173929a1c"
                                                      },
                   "src/OpenFill.Core/Cdp/CdpSession.cs":  {
                                                               "name":  "CdpSession__v0.2__2026-10-05_1515.cs",
@@ -354,10 +354,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                                   "hash":  "9883a7583016ae7c86feca454a49fec77571d97c6a9b05d121acf68ff41c2ef8"
                                                               },
                   "src/OpenFill.Core/Hosting/AppHost.cs":  {
-                                                               "name":  "AppHost__v0.13__2026-10-05_2040.cs",
-                                                               "version":  "0.13",
-                                                               "display":  "2026-10-05 20:40",
-                                                               "hash":  "7e513d2ef6c64864c3e8dc332cbd04d39e73611915eb1911e6c95912e575c4b3"
+                                                               "name":  "AppHost__v0.14__2026-10-05_2131.cs",
+                                                               "version":  "0.14",
+                                                               "display":  "2026-10-05 21:31",
+                                                               "hash":  "fc9b01e4d8ca1e6d27eee75f9fb31b2c22cb7d2115a03f50b30bbc7bfcb8f2bc"
                                                            },
                   "src/OpenFill.Core/Hosting/HistoryStore.cs":  {
                                                                     "name":  "HistoryStore__v0.1__2026-10-05_1428.cs",
@@ -408,16 +408,16 @@ Every file has a version in its name and in the Metadata section of its content.
                                                                     "hash":  "0a1ffde439d3786f12765bf5646f9eaabe44fed42f54d841fa4b69e18dc0e774"
                                                                 },
                   "src/OpenFill.Core/Mcp/IRunHost.cs":  {
-                                                            "name":  "IRunHost__v0.6__2026-10-05_1838.cs",
-                                                            "version":  "0.6",
-                                                            "display":  "2026-10-05 18:38",
-                                                            "hash":  "f1756e1e701de05811d35b98b2fa1820fea40c3a0a5a3b42b9af7ce28ea02695"
+                                                            "name":  "IRunHost__v0.7__2026-10-05_2131.cs",
+                                                            "version":  "0.7",
+                                                            "display":  "2026-10-05 21:31",
+                                                            "hash":  "e0e5bfe0d36bc5af409cb425e933b7108735b8d1f5d1cab25fc6bcc4393a2317"
                                                         },
                   "src/OpenFill.Core/Mcp/McpServer.cs":  {
-                                                             "name":  "McpServer__v0.7__2026-10-05_1905.cs",
-                                                             "version":  "0.7",
-                                                             "display":  "2026-10-05 19:05",
-                                                             "hash":  "4052995a7aa573b8e600d176d840689435475a220d88ef885020ef8b9e21bab5"
+                                                             "name":  "McpServer__v0.8__2026-10-05_2131.cs",
+                                                             "version":  "0.8",
+                                                             "display":  "2026-10-05 21:31",
+                                                             "hash":  "073888891fe004e5826af2e796dcd97691d802eab2aeb3630d5eb3c94b6f8120"
                                                          },
                   "src/OpenFill.Core/Mcp/McpService.cs":  {
                                                               "name":  "McpService__v0.3__2026-10-05_1838.cs",
@@ -426,10 +426,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                               "hash":  "3b833dcc39bebfe98a982644f56b0225b4eba7dac78a588dc55c2766bfb5777d"
                                                           },
                   "src/OpenFill.Core/Mcp/McpTaskManager.cs":  {
-                                                                  "name":  "McpTaskManager__v0.7__2026-10-05_1838.cs",
-                                                                  "version":  "0.7",
-                                                                  "display":  "2026-10-05 18:38",
-                                                                  "hash":  "3ecd6889af8c48c0af20e7e001e563652bbc817f8590e7c87b31dcca3cae9240"
+                                                                  "name":  "McpTaskManager__v0.8__2026-10-05_2131.cs",
+                                                                  "version":  "0.8",
+                                                                  "display":  "2026-10-05 21:31",
+                                                                  "hash":  "f871053db673e6e690fd0af91cde58278af5e03f02ddb94fc9138687a1a54ef5"
                                                               },
                   "src/OpenFill.Core/Model/KeyedModelClient.cs":  {
                                                                       "name":  "KeyedModelClient__v0.3__2026-10-05_1200.cs",
@@ -450,10 +450,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                                  "hash":  "8439da43e6647455c40d11b59c4a53d3f302622721a929504e9b8bb9630944a6"
                                                              },
                   "tests/OpenFill.Tests/CostTests.cs":  {
-                                                            "name":  "CostTests__v0.4__2026-10-05_1939.cs",
-                                                            "version":  "0.4",
-                                                            "display":  "2026-10-05 19:39",
-                                                            "hash":  "ec8e7f711fba72d7a46d675704eaa13c052fef43b39e2b7030c06a380d1a3627"
+                                                            "name":  "CostTests__v0.5__2026-10-05_2131.cs",
+                                                            "version":  "0.5",
+                                                            "display":  "2026-10-05 21:31",
+                                                            "hash":  "4c47d81202c73055b8b80941b3306cfb67152c531ba5440b7757c226bd822873"
                                                         },
                   "tests/OpenFill.Tests/FakeModel.cs":  {
                                                             "name":  "FakeModel__v0.2__2026-10-05_1200.cs",
@@ -462,10 +462,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                             "hash":  "a39a8c1e78007f9fb44ec7681dbda0c1c6218b6db6bda59a75bf0ad8b17786f8"
                                                         },
                   "tests/OpenFill.Tests/McpTests.cs":  {
-                                                           "name":  "McpTests__v0.4__2026-10-05_2056.cs",
-                                                           "version":  "0.4",
-                                                           "display":  "2026-10-05 20:56",
-                                                           "hash":  "49607afea83c1105540b2fb5143380b233ec2e47ab3739d0326f01cb761070cd"
+                                                           "name":  "McpTests__v0.5__2026-10-05_2131.cs",
+                                                           "version":  "0.5",
+                                                           "display":  "2026-10-05 21:31",
+                                                           "hash":  "28117ca0615ba8f5e22422ba3ad0bbe18e4784a84385b52d1f65afc935c1f8d0"
                                                        },
                   "tests/OpenFill.Tests/OpenFill.Tests.csproj":  {
                                                                      "name":  "OpenFill.Tests__v0.1__2026-10-04_1911.csproj",
@@ -474,10 +474,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                                      "hash":  "54f204769f26d17d5eebdfdccc78e190449c771586cbb4551f5eda6ee7aa5025"
                                                                  },
                   "tests/OpenFill.Tests/Program.cs":  {
-                                                          "name":  "Program__v0.13__2026-10-05_2056.cs",
-                                                          "version":  "0.13",
-                                                          "display":  "2026-10-05 20:56",
-                                                          "hash":  "f31b244109bc239b00ed2bf3102629937ae81c353f640a5163378cba1245d207"
+                                                          "name":  "Program__v0.14__2026-10-05_2131.cs",
+                                                          "version":  "0.14",
+                                                          "display":  "2026-10-05 21:31",
+                                                          "hash":  "51e981bab7f039d05cf541d2e8e2f4bf0756eae1954f20c024ad998b173216fd"
                                                       },
                   "tests/OpenFill.Tests/SharedTests.cs":  {
                                                               "name":  "SharedTests__v0.1__2026-10-05_1905.cs",
@@ -486,10 +486,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                               "hash":  "7f3eb2ca4f1f7fbce3806ddac679fa889de411f89ce9aa217451c01b8e1e08b2"
                                                           },
                   "tests/OpenFill.Tests/StaticSite.cs":  {
-                                                             "name":  "StaticSite__v0.3__2026-10-05_2056.cs",
-                                                             "version":  "0.3",
-                                                             "display":  "2026-10-05 20:56",
-                                                             "hash":  "c0e6932b3db13e20a3d00046c3ac9c164cd23c89b89bd2ee0937be9f249cc6c1"
+                                                             "name":  "StaticSite__v0.4__2026-10-05_2131.cs",
+                                                             "version":  "0.4",
+                                                             "display":  "2026-10-05 21:31",
+                                                             "hash":  "8fd03c3d8a738699a98e9257700e1dbe52f42389a524e6602323662ae81a0da0"
                                                          },
                   "tests/OpenFill.Tests/TabTests.cs":  {
                                                            "name":  "TabTests__v0.2__2026-10-05_1747.cs",
@@ -510,10 +510,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                                                      "hash":  "b146782be887ecb6d105929650b4c0fd127386c8799e7869b6b31e923202f14e"
                                                                  },
                   "tests/OpenFill.Tests/testsite/xing.html":  {
-                                                                  "name":  "xing__v0.2__2026-10-05_2056.html",
-                                                                  "version":  "0.2",
-                                                                  "display":  "2026-10-05 20:56",
-                                                                  "hash":  "db5900d724f335bc125ce2f4084038ac808953e67150b29d49abbe8e4d3ae4c1"
+                                                                  "name":  "xing__v0.3__2026-10-05_2131.html",
+                                                                  "version":  "0.3",
+                                                                  "display":  "2026-10-05 21:31",
+                                                                  "hash":  "1a78f67f76e682e8b7abc1a3114ae7c787eb464c50096a84a11ae5c4a89225f1"
                                                               },
                   "tools/compilecheck/CompileCheck.csproj":  {
                                                                  "name":  "CompileCheck__v0.2__2026-10-05_1515.csproj",

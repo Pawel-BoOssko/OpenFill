@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.3, data 2026-10-05 12:00
+﻿// OpenFill - Metadata: wersja 0.4, data 2026-10-05 21:31
 using System.Globalization;
 using System.Reflection;
 
@@ -23,6 +23,9 @@ public static class BuildInfo
         BuildTimeLocal = DateTime.TryParse(Meta("OpenFillBuildUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var bt)
             ? bt.ToLocalTime() : DateTime.MinValue;
     }
+
+    /// <summary>One line for logs and MCP replies: "1.17 (version 2026-10-05 20:58, build 2026-10-05 21:01)".</summary>
+    public static string Describe() => $"{Version} (version {Format(VersionDateLocal)}, build {Format(BuildTimeLocal)})";
 
     public static string Format(DateTime when) => when == DateTime.MinValue ? "?" : when.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 

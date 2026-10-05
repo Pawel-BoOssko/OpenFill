@@ -1,4 +1,5 @@
-﻿// OpenFill - Metadata: wersja 0.6, data 2026-10-05 18:38
+﻿// OpenFill - Metadata: wersja 0.7, data 2026-10-05 21:31
+using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 
 namespace OpenFill.Core.Mcp;
@@ -32,6 +33,9 @@ public interface IRunHost
 
     /// <summary>Last page address of the browser tab that belonged to a task (null when unknown).</summary>
     string? LastUrlOf(string taskKey) => null;
+
+    /// <summary>Settings, limits, costs per site, tabs and recent problems for the openfill_info tool (no secrets). Null when the host has nothing to add.</summary>
+    JsonObject? Diagnostics() => null;
 
     void Stop();
 

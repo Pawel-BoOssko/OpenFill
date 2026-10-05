@@ -1,4 +1,4 @@
-﻿// OpenFill - Metadata: wersja 0.7, data 2026-10-05 18:38
+﻿// OpenFill - Metadata: wersja 0.8, data 2026-10-05 21:31
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -23,6 +23,8 @@ public sealed class McpTaskRecord
     /// <summary>Model steps and estimated cost of the task (filled in when it ends).</summary>
     public int Steps { get; set; }
     public double? CostUsd { get; set; }
+    /// <summary>OpenFill version that ran the task.</summary>
+    public string? AppVersion { get; set; }
     public List<string>? Options { get; set; }
     public List<string> Activity { get; set; } = new();
     public DateTime CreatedUtc { get; set; }
@@ -112,6 +114,7 @@ public sealed class McpTaskManager
                 TaskText = task,
                 Status = "running",
                 ContinuedFrom = prior?.Id,
+                AppVersion = BuildInfo.Describe(),
                 CreatedUtc = now,
                 UpdatedUtc = now
             };
@@ -408,6 +411,67 @@ public sealed class McpTaskManager
     private const string BlockedStep = "The site reached its hard cost limit and is blocked. Tell the user what was done so far (summary). The block can be lifted only by the user, in the OpenFill window - you cannot do it. Do not start more tasks on that site.";
 
     private static string Preview(string s) => s.Length > 200 ? s[..200] + "..." : s;
+
+    /// <summary>One answer with everything that helps to find out what is wrong: version, runtime, active and recent tasks, and what the host knows.</summary>
+    public JsonObject Info()
+    {
+        var proc = System.Diagnostics.Process.GetCurrentProcess();
+        var o = new JsonObject
+        {
+            ["status"] = "ok",
+            ["app"] = new JsonObject
+            {
+                ["name"] = "OpenFill",
+                ["version"] = BuildInfo.Version,
+                ["version_date"] = BuildInfo.Format(BuildInfo.VersionDateLocal),
+                ["build"] = BuildInfo.Format(BuildInfo.BuildTimeLocal)
+            },
+            ["now"] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            ["runtime"] = new JsonObject
+            {
+                ["os"] = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+                ["dotnet"] = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+                ["started"] = proc.StartTime.ToString("yyyy-MM-dd HH:mm:ss"),
+                ["uptime_minutes"] = (int)(DateTime.Now - proc.StartTime).TotalMinutes,
+                ["memory_mb"] = (int)(proc.WorkingSet64 / (1024 * 1024)),
+                ["processors"] = Environment.ProcessorCount
+            },
+            ["caller_answer_timeout_minutes"] = _answerTimeout.TotalMinutes
+        };
+
+        McpTaskRecord? active;
+        lock (_lock) active = _active is not null && IsOpen(_active) ? _active : null;
+        o["active_task"] = active is null ? null : Snapshot(active, null);
+
+        var recent = new JsonArray();
+        try
+        {
+            if (Directory.Exists(_dir))
+                foreach (var f in new DirectoryInfo(_dir).GetFiles("OF-*.json").OrderByDescending(x => x.LastWriteTimeUtc).Take(8))
+                {
+                    McpTaskRecord? r;
+                    try { r = JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(f.FullName)); } catch { continue; }
+                    if (r is null) continue;
+                    recent.Add(new JsonObject
+                    {
+                        ["task_id"] = r.Id,
+                        ["status"] = r.Status,
+                        ["outcome"] = r.Outcome,
+                        ["steps"] = r.Steps,
+                        ["cost_usd"] = r.CostUsd,
+                        ["started"] = r.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                        ["version"] = r.AppVersion,
+                        ["task"] = Preview(r.TaskText),
+                        ["summary"] = r.Summary is { Length: > 160 } s ? s[..160] + "..." : r.Summary
+                    });
+                }
+        }
+        catch { }
+        o["recent_tasks"] = recent;
+
+        try { if (_host.Diagnostics() is { } d) o["openfill"] = d; } catch (Exception ex) { o["openfill_error"] = ex.Message; }
+        return o;
+    }
 
     private JsonObject Snapshot(McpTaskRecord rec, string? note, bool fromDisk = false)
     {

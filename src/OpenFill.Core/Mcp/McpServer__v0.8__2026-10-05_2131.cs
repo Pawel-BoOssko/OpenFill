@@ -1,4 +1,4 @@
-﻿// OpenFill - Metadata: wersja 0.7, data 2026-10-05 19:05
+﻿// OpenFill - Metadata: wersja 0.8, data 2026-10-05 21:31
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -196,7 +196,7 @@ public sealed class McpServer : IAsyncDisposable
             ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
             ["serverInfo"] = new JsonObject { ["name"] = "openfill-mcp", ["version"] = BuildInfo.Version },
             ["instructions"] = "OpenFill drives a real web browser (with the user's own logged-in sessions) through its own built-in agent. " +
-                               "Hand it a web task with openfill_start_task, then follow the returned status until it is done."
+                               "Hand it a web task with openfill_start_task, then follow the returned status until it is done. Call openfill_info for the version, settings, costs and recent errors when something looks wrong."
         };
     }
 
@@ -257,6 +257,10 @@ public sealed class McpServer : IAsyncDisposable
                 "Give the link to the user so they can look at the page. The link is private: it contains a secret, so do not post it anywhere else.",
                 new JsonObject(),
                 Array.Empty<string>(), idempotent: false, readOnly: true),
+            ToolDef("openfill_info",
+                "Returns diagnostics of this OpenFill in one answer: version and build, runtime, the active and the most recent tasks (steps, cost, outcome), settings and limits, cost spent per site and which sites are blocked, open browser tabs, the shared folder, and recent errors and warnings from the logs. Call it when something looks wrong, when a task behaves oddly, or when the user asks which version is running. It contains no secrets.",
+                new JsonObject(),
+                Array.Empty<string>(), idempotent: true, readOnly: true),
             ToolDef("openfill_cancel_task",
                 "Cancels the running task. Use it only when the task is no longer needed.",
                 new JsonObject { ["task_id"] = taskId() },
@@ -293,6 +297,7 @@ public sealed class McpServer : IAsyncDisposable
                 "openfill_task_status" => await _tasks.StatusAsync(Str(args, "task_id"), wait, _cts.Token),
                 "openfill_reply" => await _tasks.ReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait, _cts.Token),
                 "openfill_cancel_task" => _tasks.Cancel(Str(args, "task_id")),
+                "openfill_info" => InfoResult(),
                 "openfill_screenshot" => await ScreenshotResultAsync(),
                 _ => new JsonObject { ["status"] = "error", ["message"] = "Unknown tool: " + name }
             };
@@ -308,6 +313,23 @@ public sealed class McpServer : IAsyncDisposable
             ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = result.ToJsonString() }),
             ["isError"] = isError
         };
+    }
+
+    private JsonObject InfoResult()
+    {
+        var o = _tasks.Info();
+        var mcp = new JsonObject { ["local_port"] = Port };
+        try
+        {
+            if (LinkBase is { } link && Uri.TryCreate(link, UriKind.Absolute, out var u))
+            {
+                mcp["address"] = u.Scheme == "https" ? "public" : "local only";
+                mcp["host"] = u.Host;
+            }
+        }
+        catch { }
+        o["mcp"] = mcp;
+        return o;
     }
 
     private async Task<JsonObject> ScreenshotResultAsync()

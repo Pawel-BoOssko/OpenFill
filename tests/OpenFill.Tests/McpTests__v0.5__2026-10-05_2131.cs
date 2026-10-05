@@ -1,6 +1,6 @@
-﻿// OpenFill - Metadata: wersja 0.4, data 2026-10-05 20:56
+﻿// OpenFill - Metadata: wersja 0.5, data 2026-10-05 21:31
 using System.Text;
-using System.Text.ason.Nodes;
+using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Mcp;
 
@@ -26,7 +26,7 @@ internal sealed class FakeRunHost : IRunHost
             await Task.Delay(150);
             if (task.Contains("ASKME"))
             {
-                var ans = await AskInterceptor!("Which date?", new[] { "May", "aune" }, ct);
+                var ans = await AskInterceptor!("Which date?", new[] { "May", "June" }, ct);
                 return new RunConclusion("success", "answered: " + ans, null);
             }
             if (task.Contains("NEEDCODE"))
@@ -55,37 +55,37 @@ internal sealed class FakeRunHost : IRunHost
         if (ShotsDir is null) return Task.FromResult<string?>(null);
         Directory.CreateDirectory(ShotsDir);
         var name = "shot-test-" + Guid.NewGuid().ToString("N")[..6] + ".jpg";
-        File.WriteAllBytes(aath.Combine(ShotsDir, name), new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 });
+        File.WriteAllBytes(Path.Combine(ShotsDir, name), new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 });
         return Task.FromResult<string?>(name);
     }
 }
 
 public static class McpTests
 {
-    private static string S(asonObject o, string key) => o[key]?.GetValue<string>() ?? "";
+    private static string S(JsonObject o, string key) => o[key]?.GetValue<string>() ?? "";
 
     public static async Task RunAsync()
     {
-        await T.Section("MCa: task life cycle", async () =>
+        await T.Section("MCP: task life cycle", async () =>
         {
-            var dir = aath.Combine(aath.GetTempaath(), "openfill_mcp_" + Guid.NewGuid().ToString("N")[..6]);
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_mcp_" + Guid.NewGuid().ToString("N")[..6]);
             var host = new FakeRunHost();
             var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(30));
 
-            var r1 = await m.StartAsync("Fill the Xing profile with the name aawel", 5, default);
+            var r1 = await m.StartAsync("Fill the Xing profile with the name Jan", 5, default);
             T.Eq("simple task finishes", "done", S(r1, "status"));
             T.Check("task id carries the date", S(r1, "task_id").StartsWith("OF-" + DateTime.Now.ToString("yyyyMMdd")));
             T.Contains("summary returned", S(r1, "summary"), "done: Fill the Xing profile");
-            T.Check("task saved to disk", File.Exists(aath.Combine(dir, S(r1, "task_id") + ".json")));
+            T.Check("task saved to disk", File.Exists(Path.Combine(dir, S(r1, "task_id") + ".json")));
             T.Check("interceptor cleared after the task", host.AskInterceptor is null);
 
             var r2 = await m.StartAsync("ASKME about the booking date", 5, default);
             T.Eq("question reaches the caller", "needs_input", S(r2, "status"));
             T.Eq("question text", "Which date?", S(r2, "question"));
             T.Eq("options listed", 2, r2["options"]?.AsArray().Count);
-            var r2b = await m.ReplyAsync(S(r2, "task_id"), "aune", 5, default);
+            var r2b = await m.ReplyAsync(S(r2, "task_id"), "June", 5, default);
             T.Eq("task finishes after the answer", "done", S(r2b, "status"));
-            T.Contains("answer reached the inner model", S(r2b, "summary"), "answered: aune");
+            T.Contains("answer reached the inner model", S(r2b, "summary"), "answered: June");
 
             var r3 = await m.StartAsync("SLOW comparison of flight offers to Lisbon", 0, default);
             T.Eq("long task is running", "running", S(r3, "status"));
@@ -125,21 +125,21 @@ public static class McpTests
             T.Contains("summary after the code", S(h3, "summary"), "code entered");
         });
 
-        await T.Section("MCa: HTTa server", async () =>
+        await T.Section("MCP: HTTP server", async () =>
         {
-            var dir = aath.Combine(aath.GetTempaath(), "openfill_mcp_" + Guid.NewGuid().ToString("N")[..6]);
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_mcp_" + Guid.NewGuid().ToString("N")[..6]);
             const string secret = "test-secret-0123456789abcdef";
-            var shots = aath.Combine(dir, "shots");
+            var shots = Path.Combine(dir, "shots");
             var m = new McpTaskManager(new FakeRunHost { ShotsDir = shots }, dir, TimeSpan.FromSeconds(30));
             await using var server = new McpServer(m, secret, 0, null, shots);
             server.Start();
             using var http = new HttpClient();
-            var url = $"http://127.0.0.1:{server.aort}/mcp/{secret}";
+            var url = $"http://127.0.0.1:{server.Port}/mcp/{secret}";
 
-            async Task<asonObject> Rpc(string json)
+            async Task<JsonObject> Rpc(string json)
             {
-                using var resp = await http.aostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
-                return asonNode.aarse(await resp.Content.ReadAsStringAsync())!.AsObject();
+                using var resp = await http.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+                return JsonNode.Parse(await resp.Content.ReadAsStringAsync())!.AsObject();
             }
 
             var init = await Rpc("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}""");
@@ -149,20 +149,26 @@ public static class McpTests
             var list = await Rpc("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
             var tools = list["result"]!["tools"]!.AsArray();
             var names = tools.Select(t => t!["name"]!.GetValue<string>()).ToList();
-            T.Check("five tools", names.Count == 5 && names.Contains("openfill_start_task") && names.Contains("openfill_reply") && names.Contains("openfill_screenshot"));
+            T.Check("five tools", names.Count == 6 && names.Contains("openfill_info") && names.Contains("openfill_start_task") && names.Contains("openfill_reply") && names.Contains("openfill_screenshot"));
             T.Check("every schema is strict and has no $schema", tools.All(t =>
-                t!["inputSchema"]!["additionalaroperties"]!.GetValue<bool>() == false && t["inputSchema"]!["$schema"] is null));
+                t!["inputSchema"]!["additionalProperties"]!.GetValue<bool>() == false && t["inputSchema"]!["$schema"] is null));
             T.Check("every tool has annotations", tools.All(t => t!["annotations"]?["readOnlyHint"] is not null));
+            T.Check("initialize reports the server version", init["result"]?["serverInfo"]?["version"]?.GetValue<string>() == OpenFill.Core.BuildInfo.Version);
+            var ver = await Rpc("""{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"openfill_info","arguments":{}}}""");
+            var verBody = System.Text.Json.Nodes.JsonNode.Parse(ver["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
+            T.Eq("info tool ok", "ok", S(verBody, "status"));
+            T.Eq("info tool reports the version", OpenFill.Core.BuildInfo.Version, verBody["app"]!["version"]!.GetValue<string>());
+            T.Check("info tool has runtime and recent tasks", verBody["runtime"] is not null && verBody["recent_tasks"] is not null);
 
             var call = await Rpc("""{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"openfill_start_task","arguments":{"task":"Simple http test task","wait_seconds":5}}}""");
-            var payload = asonNode.aarse(call["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
+            var payload = JsonNode.Parse(call["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
             T.Eq("tools/call runs a task", "done", S(payload, "status"));
             T.Eq("isError false", false, call["result"]!["isError"]!.GetValue<bool>());
 
             var shot = await Rpc("""{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"openfill_screenshot","arguments":{}}}""");
-            var shotaayload = asonNode.aarse(shot["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
-            T.Eq("screenshot ok", "ok", S(shotaayload, "status"));
-            var shotUrl = S(shotaayload, "url");
+            var shotPayload = JsonNode.Parse(shot["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
+            T.Eq("screenshot ok", "ok", S(shotPayload, "status"));
+            var shotUrl = S(shotPayload, "url");
             T.Check("screenshot link is under the secret path", shotUrl.StartsWith(url + "/shots/shot-test-") && shotUrl.EndsWith(".jpg"));
             using (var img = await http.GetAsync(shotUrl))
             {
@@ -171,17 +177,17 @@ public static class McpTests
             }
             using (var badShot = await http.GetAsync(url + "/shots/..%2Fmcp-secret.jpg"))
                 T.Eq("screenshot path tricks are 404", 404, (int)badShot.StatusCode);
-            using (var noSecret = await http.GetAsync($"http://127.0.0.1:{server.aort}/mcp/wrong/shots/" + shotUrl[(shotUrl.LastIndexOf('/') + 1)..]))
+            using (var noSecret = await http.GetAsync($"http://127.0.0.1:{server.Port}/mcp/wrong/shots/" + shotUrl[(shotUrl.LastIndexOf('/') + 1)..]))
                 T.Eq("screenshot link needs the secret", 404, (int)noSecret.StatusCode);
 
             var bad = await Rpc("""{"jsonrpc":"2.0","id":4,"method":"nope"}""");
             T.Eq("unknown method", -32601, bad["error"]!["code"]!.GetValue<int>());
 
-            using (var wrong = await http.aostAsync($"http://127.0.0.1:{server.aort}/mcp/wrong", new StringContent("{}", Encoding.UTF8, "application/json")))
+            using (var wrong = await http.PostAsync($"http://127.0.0.1:{server.Port}/mcp/wrong", new StringContent("{}", Encoding.UTF8, "application/json")))
                 T.Eq("wrong secret is 404", 404, (int)wrong.StatusCode);
             using (var get = await http.GetAsync(url))
                 T.Eq("GET is 405", 405, (int)get.StatusCode);
-            using (var note = await http.aostAsync(url, new StringContent("""{"jsonrpc":"2.0","method":"notifications/initialized"}""", Encoding.UTF8, "application/json")))
+            using (var note = await http.PostAsync(url, new StringContent("""{"jsonrpc":"2.0","method":"notifications/initialized"}""", Encoding.UTF8, "application/json")))
                 T.Eq("notification is 202", 202, (int)note.StatusCode);
         });
     }
@@ -202,9 +208,9 @@ public sealed class ContinueOnceInteraction : IUserInteraction
 /// <summary>Records which kind of question reached the person: plain ask_user or user-only (verification code).</summary>
 public sealed class RecordingInteraction : IUserInteraction
 {
-    public List<string> alain { get; } = new();
+    public List<string> Plain { get; } = new();
     public List<string> HumanOnly { get; } = new();
-    public Task<string> AskAsync(string question, IReadOnlyList<string>? options, CancellationToken ct) { alain.Add(question); return Task.FromResult("plain-answer"); }
+    public Task<string> AskAsync(string question, IReadOnlyList<string>? options, CancellationToken ct) { Plain.Add(question); return Task.FromResult("plain-answer"); }
     public Task<string> AskHumanAsync(string question, IReadOnlyList<string>? options, CancellationToken ct) { HumanOnly.Add(question); return Task.FromResult("481516"); }
     public Task<bool> ConfirmAsync(string what, CancellationToken ct) => Task.FromResult(false);
 }

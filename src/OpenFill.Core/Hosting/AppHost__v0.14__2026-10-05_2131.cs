@@ -1,4 +1,4 @@
-﻿// OpenFill - Metadata: wersja 0.13, data 2026-10-05 20:40
+﻿// OpenFill - Metadata: wersja 0.14, data 2026-10-05 21:31
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -134,6 +134,108 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         ["build"] = BuildInfo.Format(BuildInfo.BuildTimeLocal),
         ["instance"] = Paths.Instance
     };
+
+    /// <summary>What the openfill_info tool shows about this app: settings, costs, tabs, shared folder, recent problems. No secrets, no page content.</summary>
+    public JsonObject? Diagnostics()
+    {
+        var o = new JsonObject
+        {
+            ["instance"] = Paths.Instance,
+            ["model"] = Config.Model,
+            ["reasoning_effort"] = Config.ReasoningEffort,
+            ["openai_key_present"] = !string.IsNullOrEmpty(_secrets.GetApiKey()),
+            ["confirm_irreversible"] = Config.ConfirmIrreversible,
+            ["limits"] = new JsonObject
+            {
+                ["max_steps"] = Config.MaxSteps,
+                ["step_extensions"] = Config.MaxStepExtensions,
+                ["task_timeout_min"] = Config.TaskTimeoutMinutes,
+                ["tool_timeout_sec"] = Config.ToolTimeoutSeconds,
+                ["user_answer_wait_min"] = Config.UserAnswerTimeoutMinutes,
+                ["caller_answer_wait_min"] = Config.CallerAnswerTimeoutMinutes,
+                ["cost_notice_usd"] = Config.CostInfoUsd,
+                ["cost_question_usd"] = Config.CostWarnUsd,
+                ["domain_limit_usd"] = Config.DomainLimitUsd,
+                ["domain_lifetime_limit_usd"] = Config.DomainLifetimeLimitUsd
+            }
+        };
+
+        var sites = new JsonArray();
+        foreach (var d in Session.Costs.List(Config.DomainLifetimeLimitUsd))
+            sites.Add(new JsonObject
+            {
+                ["site"] = d.Domain,
+                ["spent_usd"] = Math.Round(d.Spent, 4),
+                ["lifetime_usd"] = Math.Round(d.Lifetime, 4),
+                ["blocked"] = d.Blocked,
+                ["locked_for_good"] = d.Locked
+            });
+        o["costs_per_site"] = sites;
+
+        var tabs = new JsonArray();
+        foreach (var t in Tabs?.Open() ?? Array.Empty<TabInfo>())
+        {
+            string? host = null;
+            try { if (t.LastUrl is { Length: > 0 } lu && Uri.TryCreate(lu, UriKind.Absolute, out var tu)) host = tu.Host; } catch { }
+            tabs.Add(new JsonObject { ["task"] = t.TaskKey, ["state"] = t.State, ["site"] = host });
+        }
+        o["tabs"] = new JsonObject { ["open"] = tabs.Count, ["limit"] = Config.MaxTabs, ["items"] = tabs };
+
+        var shared = Paths.SharedFor(Config.SharedFolder);
+        var sf = new JsonObject { ["path"] = shared, ["exists"] = Directory.Exists(shared) };
+        try { if (Directory.Exists(shared)) sf["files"] = Directory.GetFiles(shared).Length; } catch { }
+        o["shared_folder"] = sf;
+
+        var data = new JsonObject { ["folder"] = Paths.Root, ["logs"] = Paths.Runs };
+        try { data["free_disk_gb"] = Math.Round(new DriveInfo(Path.GetPathRoot(Paths.Root)!).AvailableFreeSpace / 1e9, 1); } catch { }
+        o["data"] = data;
+
+        var mcp = new JsonObject
+        {
+            ["enabled"] = Config.McpEnabled,
+            ["quick_tunnel"] = Config.McpTunnel,
+            ["fixed_port"] = Config.McpPort,
+            ["own_public_address_set"] = !string.IsNullOrWhiteSpace(Config.McpPublicBaseUrl)
+        };
+        o["mcp_settings"] = mcp;
+
+        o["recent_problems"] = RecentProblems(8);
+        return o;
+    }
+
+    private JsonArray RecentProblems(int max)
+    {
+        var arr = new JsonArray();
+        try
+        {
+            var files = new DirectoryInfo(Paths.Runs).GetFiles("run_*.ndjson")
+                .Where(f => !f.Name.EndsWith("_network.ndjson", StringComparison.Ordinal))
+                .OrderByDescending(f => f.LastWriteTimeUtc).Take(3);
+            foreach (var f in files)
+            {
+                var lines = File.ReadAllLines(f.FullName);
+                for (var i = lines.Length - 1; i >= 0 && arr.Count < max; i--)
+                {
+                    var line = lines[i];
+                    if (!line.Contains("\"status\":\"error\"") && !line.Contains("\"status\":\"warn\"")) continue;
+                    JsonNode? n;
+                    try { n = JsonNode.Parse(line); } catch { continue; }
+                    var msg = n?["message"]?.GetValue<string>() ?? "";
+                    arr.Add(new JsonObject
+                    {
+                        ["time"] = n?["tsUtc"]?.GetValue<string>(),
+                        ["run"] = n?["runId"]?.GetValue<string>(),
+                        ["level"] = n?["status"]?.GetValue<string>(),
+                        ["source"] = n?["source"]?.GetValue<string>(),
+                        ["message"] = msg.Length > 220 ? msg[..220] + "..." : msg
+                    });
+                }
+                if (arr.Count >= max) break;
+            }
+        }
+        catch { }
+        return arr;
+    }
 
     private JsonObject SettingsMessage() => new()
     {

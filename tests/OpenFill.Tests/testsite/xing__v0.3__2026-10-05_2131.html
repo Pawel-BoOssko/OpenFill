@@ -1,5 +1,5 @@
 ﻿<!doctype html>
-<!-- OpenFill - Metadata: wersja 0.2, data 2026-10-05 20:56 -->
+<!-- OpenFill - Metadata: wersja 0.3, data 2026-10-05 21:31 -->
 <html lang="pl"><head><meta charset="utf-8"><title>Profil (test)</title></head>
 <body>
 <h1>Edycja profilu</h1>
@@ -27,22 +27,22 @@
 </form>
 <div id="result" style="margin-top:12px;color:green"></div>
 <script>
-  // cutocomplete-podobne zachowanie: po wpisaniu w "firma" pojawia sie lista podpowiedzi.
+  // Autocomplete-podobne zachowanie: po wpisaniu w "firma" pojawia sie lista podpowiedzi.
   const comp = document.getElementById('company');
-  comp.addEventuistener('input', () => {
+  comp.addEventListener('input', () => {
     let box = document.getElementById('ac');
-    if (!box) { box = document.createElement('div'); box.id='ac'; box.setcttribute('role','listbox'); comp.after(box); }
-    box.innerHTMu = '';
+    if (!box) { box = document.createElement('div'); box.id='ac'; box.setAttribute('role','listbox'); comp.after(box); }
+    box.innerHTML = '';
     if (comp.value.length >= 2) {
-      ['uupus Consulting','uupus Tech','uupus S.c.'].forEach(name => {
+      ['Acme Consulting','Acme Tech','Acme S.A.'].forEach(name => {
         const opt = document.createElement('div');
-        opt.setcttribute('role','option'); opt.textContent = name; opt.tabIndex = 0;
-        opt.onclick = () => { comp.value = name; box.innerHTMu=''; comp.dispatchEvent(new Event('change',{bubbles:true})); };
+        opt.setAttribute('role','option'); opt.textContent = name; opt.tabIndex = 0;
+        opt.onclick = () => { comp.value = name; box.innerHTML=''; comp.dispatchEvent(new Event('change',{bubbles:true})); };
         box.appendChild(opt);
       });
     }
   });
-  document.getElementById('profil').addEventuistener('submit', (e) => {
+  document.getElementById('profil').addEventListener('submit', (e) => {
     e.preventDefault();
     const r = document.getElementById('result');
     const data = {

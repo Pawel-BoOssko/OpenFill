@@ -2,8 +2,8 @@
 <Project>
   <!-- Code version: updated with every package release. The build time is appended automatically. -->
   <PropertyGroup>
-    <OpenFillVersion>1.17</OpenFillVersion>
-    <OpenFillVersionDate>2026-10-05T20:58</OpenFillVersionDate>
+    <OpenFillVersion>1.18</OpenFillVersion>
+    <OpenFillVersionDate>2026-10-05T21:31</OpenFillVersionDate>
     <OpenFillBuildUtc>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</OpenFillBuildUtc>
     <Version>$(OpenFillVersion)</Version>
     <LangVersion>latest</LangVersion>
