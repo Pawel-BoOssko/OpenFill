@@ -5,8 +5,8 @@
 OpenFill is a Windows app that puts a real browser and an AI agent side by side. You (or another AI, such as ChatGPT) describe a job in plain language: *"sign me up for Thursday's 7:00 class on this pool's website"*, *"fill in my profile on this career site with this data"*, *"find the cheapest flight on these dates"*. OpenFill's embedded model then drives the browser until the job is done, asking you only when it truly has to.
 
 ## Metadata
-- Document version: 0.6
-- Date: 2026-10-05 21:31
+- Document version: 0.7
+- Date: 2026-10-05 22:11
 - App version: shown at the top of the app window and the panel
 - Author: OpenFill project
 
@@ -195,3 +195,7 @@ The model has no terminal and attaches only files whose path you gave it, or tha
 - Run OpenFill on a separate always-on machine.
 - A stable tunnel on your own domain.
 - Several tasks in parallel.
+
+## License
+
+MIT. See the LICENSE file.

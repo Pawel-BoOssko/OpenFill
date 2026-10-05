@@ -1,4 +1,4 @@
-﻿# OpenFill - Metadata: wersja 0.2, data 2026-10-05 20:58
+﻿# OpenFill - Metadata: wersja 0.3, data 2026-10-05 22:11
 # OpenFill - Metadata: version 0.1, date 2026-10-05 20:55
 # Publishes the package to GitHub: exports a clean copy, scans it for private data,
 # commits it and pushes it. Safe to run again: it updates the repository.
@@ -25,9 +25,11 @@ Write-Host "GitHub account: $login"
 
 # 2. export a clean copy (no build output, no stale screenshot)
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-robocopy $src $dest /MIR /XD bin obj .vs dist .git /XF 'panel-preview*.png' /NFL /NDL /NJH /NJS /NP | Out-Null
+robocopy $src $dest /MIR /XD bin obj .vs dist .git /XF 'panel-preview*.png' 'LICENSE__*' /NFL /NDL /NJH /NJS /NP | Out-Null
 $readme = Get-ChildItem $src -Filter 'README__*.md' | Sort-Object Name | Select-Object -Last 1
 Copy-Item $readme.FullName (Join-Path $dest 'README.md') -Force
+$lic = Get-ChildItem $src -Filter 'LICENSE__*.txt' | Sort-Object Name | Select-Object -Last 1
+if ($lic) { [IO.File]::WriteAllLines((Join-Path $dest 'LICENSE'), @(Get-Content $lic.FullName | Select-Object -Skip 2), (New-Object Text.UTF8Encoding($false))) }
 $ver = (Get-ChildItem $src -Filter 'INDEX__v*.md' | Sort-Object Name | Select-Object -Last 1).Name
 Write-Host "Exported $ver to $dest"
 

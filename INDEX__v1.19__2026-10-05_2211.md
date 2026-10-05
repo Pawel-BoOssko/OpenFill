@@ -1,11 +1,11 @@
 # OpenFill - package INDEX
 
 ## Metadata
-- Document version: 1.18
-- Date: 2026-10-05 21:31
-- Package and app version: 1.18 (version date: 2026-10-05 21:31)
-- Files: 76 (including this INDEX)
-- Changed in this release: 11
+- Document version: 1.19
+- Date: 2026-10-05 22:11
+- Package and app version: 1.19 (version date: 2026-10-05 22:11)
+- Files: 77 (including this INDEX)
+- Changed in this release: 3
 
 Every file has a version in its name and in the Metadata section of its content. Exceptions marked (N) have a name required by tools; (B) are binary files - the version is in the name only. Audit: `pwsh tools/release*.ps1 -Check`.
 
@@ -15,8 +15,9 @@ Every file has a version in its name and in the Metadata section of its content.
 | `Directory.Build.props` (N) | 0.2 | 2026-10-05 15:15 |  | shared build settings; app version and version date |
 | `docs/panel-preview__v0.1__2026-10-04_1911.png` (B) | 0.1 | 2026-10-04 19:11 |  | panel screenshot from a test (visual check) |
 | `INSTALL__v0.1__2026-10-05_1123.cmd` | 0.1 | 2026-10-05 11:23 |  | double-click: install / update on Windows |
+| `LICENSE__v0.1__2026-10-05_2211.txt` | 0.1 | 2026-10-05 22:11 | yes |  |
 | `OpenFill__v0.1__2026-10-04_1911.sln` | 0.1 | 2026-10-04 19:11 |  | solution file (Visual Studio) |
-| `README__v0.6__2026-10-05_2131.md` | 0.6 | 2026-10-05 21:31 | yes | app description, installation, usage, data, settings, architecture, development |
+| `README__v0.7__2026-10-05_2211.md` | 0.7 | 2026-10-05 22:11 | yes | app description, installation, usage, data, settings, architecture, development |
 | `src/OpenFill.App/DpapiSecretProtector__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | key encryption with DPAPI |
 | `src/OpenFill.App/MainForm__v0.9__2026-10-05_1855.cs` | 0.9 | 2026-10-05 18:55 |  | app window: browser + panel |
 | `src/OpenFill.App/OpenFill.App__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | project file OpenFill.App |
@@ -46,7 +47,7 @@ Every file has a version in its name and in the Metadata section of its content.
 | `src/OpenFill.Core/Browser/ConsoleMonitor__v0.3__2026-10-05_1709.cs` | 0.3 | 2026-10-05 17:09 |  | page console and JavaScript errors |
 | `src/OpenFill.Core/Browser/NetworkMonitor__v0.3__2026-10-05_1709.cs` | 0.3 | 2026-10-05 17:09 |  | network traffic framed by requestId, response bodies, panel entries |
 | `src/OpenFill.Core/Browser/PageModel__v0.3__2026-10-05_1515.cs` | 0.3 | 2026-10-05 15:15 |  | text picture of the page for the model and differences after an action |
-| `src/OpenFill.Core/BuildInfo__v0.4__2026-10-05_2131.cs` | 0.4 | 2026-10-05 21:31 | yes | version, version date, build time |
+| `src/OpenFill.Core/BuildInfo__v0.4__2026-10-05_2131.cs` | 0.4 | 2026-10-05 21:31 |  | version, version date, build time |
 | `src/OpenFill.Core/Cdp/CdpSession__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | CDP calls on a tab (evaluate, call) |
 | `src/OpenFill.Core/Cdp/ICdpConnection__v0.2__2026-10-05_1515.cs` | 0.2 | 2026-10-05 15:15 |  | CDP channel abstraction |
 | `src/OpenFill.Core/Cdp/SwitchableCdpConnection__v0.1__2026-10-05_1709.cs` | 0.1 | 2026-10-05 17:09 |  |  |
@@ -54,7 +55,7 @@ Every file has a version in its name and in the Metadata section of its content.
 | `src/OpenFill.Core/Config/AppConfig__v0.10__2026-10-05_2040.cs` | 0.10 | 2026-10-05 20:40 |  | settings (config.json) |
 | `src/OpenFill.Core/Config/AppPaths__v0.6__2026-10-05_1905.cs` | 0.6 | 2026-10-05 19:05 |  | instance directories (stable/dev) |
 | `src/OpenFill.Core/Config/SecretStore__v0.3__2026-10-05_1200.cs` | 0.3 | 2026-10-05 12:00 |  | OpenAI key (variable or encrypted file) |
-| `src/OpenFill.Core/Hosting/AppHost__v0.14__2026-10-05_2131.cs` | 0.14 | 2026-10-05 21:31 | yes | shared core of the app: panel <-> session, question and consent cards, tasks |
+| `src/OpenFill.Core/Hosting/AppHost__v0.14__2026-10-05_2131.cs` | 0.14 | 2026-10-05 21:31 |  | shared core of the app: panel <-> session, question and consent cards, tasks |
 | `src/OpenFill.Core/Hosting/HistoryStore__v0.1__2026-10-05_1428.cs` | 0.1 | 2026-10-05 14:28 |  | task history: saved list of tasks (panel and MCP) with results, and a reader for the steps of one task |
 | `src/OpenFill.Core/Hosting/IPanelTransport__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | panel <-> core channel (WebSocket or WebView2) |
 | `src/OpenFill.Core/Hosting/OpenFillSession__v0.5__2026-10-05_1905.cs` | 0.5 | 2026-10-05 19:05 |  | session: log, browser, notes, task start |
@@ -63,37 +64,37 @@ Every file has a version in its name and in the Metadata section of its content.
 | `src/OpenFill.Core/Logging/OutputLimiter__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | tool output limit and overflow to a file |
 | `src/OpenFill.Core/Logging/Redactor__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | removing secrets from logs and notes |
 | `src/OpenFill.Core/Mcp/CloudflareTunnel__v0.1__2026-10-05_1348.cs` | 0.1 | 2026-10-05 13:48 |  | temporary public HTTPS address for MCP (Cloudflare quick tunnel) |
-| `src/OpenFill.Core/Mcp/IRunHost__v0.7__2026-10-05_2131.cs` | 0.7 | 2026-10-05 21:31 | yes | interface between the MCP layer and the app: start/stop a task, route questions to the MCP caller |
-| `src/OpenFill.Core/Mcp/McpServer__v0.8__2026-10-05_2131.cs` | 0.8 | 2026-10-05 21:31 | yes | MCP server over HTTP (hand-written JSON-RPC, strict tool schemas, secret path) |
+| `src/OpenFill.Core/Mcp/IRunHost__v0.7__2026-10-05_2131.cs` | 0.7 | 2026-10-05 21:31 |  | interface between the MCP layer and the app: start/stop a task, route questions to the MCP caller |
+| `src/OpenFill.Core/Mcp/McpServer__v0.8__2026-10-05_2131.cs` | 0.8 | 2026-10-05 21:31 |  | MCP server over HTTP (hand-written JSON-RPC, strict tool schemas, secret path) |
 | `src/OpenFill.Core/Mcp/McpService__v0.3__2026-10-05_1838.cs` | 0.3 | 2026-10-05 18:38 |  | starts MCP: secret address, server, tunnel, self-test |
-| `src/OpenFill.Core/Mcp/McpTaskManager__v0.8__2026-10-05_2131.cs` | 0.8 | 2026-10-05 21:31 | yes | MCP tasks: one task at a time, task ids, status/reply/cancel, saved to disk |
+| `src/OpenFill.Core/Mcp/McpTaskManager__v0.8__2026-10-05_2131.cs` | 0.8 | 2026-10-05 21:31 |  | MCP tasks: one task at a time, task ids, status/reply/cancel, saved to disk |
 | `src/OpenFill.Core/Model/KeyedModelClient__v0.3__2026-10-05_1200.cs` | 0.3 | 2026-10-05 12:00 |  | model client that reads the key at call time |
 | `src/OpenFill.Core/Model/OpenAIClient__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | OpenAI Responses API client |
 | `src/OpenFill.Core/OpenFill.Core__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | project file OpenFill.Core |
-| `tests/OpenFill.Tests/CostTests__v0.5__2026-10-05_2131.cs` | 0.5 | 2026-10-05 21:31 | yes |  |
+| `tests/OpenFill.Tests/CostTests__v0.5__2026-10-05_2131.cs` | 0.5 | 2026-10-05 21:31 |  |  |
 | `tests/OpenFill.Tests/FakeModel__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  |  |
-| `tests/OpenFill.Tests/McpTests__v0.5__2026-10-05_2131.cs` | 0.5 | 2026-10-05 21:31 | yes | tests of the MCP layer (task life cycle and HTTP server) |
+| `tests/OpenFill.Tests/McpTests__v0.5__2026-10-05_2131.cs` | 0.5 | 2026-10-05 21:31 |  | tests of the MCP layer (task life cycle and HTTP server) |
 | `tests/OpenFill.Tests/OpenFill.Tests__v0.1__2026-10-04_1911.csproj` | 0.1 | 2026-10-04 19:11 |  | project file OpenFill.Tests |
-| `tests/OpenFill.Tests/Program__v0.14__2026-10-05_2131.cs` | 0.14 | 2026-10-05 21:31 | yes | entry point: OpenFill.Tests |
+| `tests/OpenFill.Tests/Program__v0.14__2026-10-05_2131.cs` | 0.14 | 2026-10-05 21:31 |  | entry point: OpenFill.Tests |
 | `tests/OpenFill.Tests/SharedTests__v0.1__2026-10-05_1905.cs` | 0.1 | 2026-10-05 19:05 |  |  |
-| `tests/OpenFill.Tests/StaticSite__v0.4__2026-10-05_2131.cs` | 0.4 | 2026-10-05 21:31 | yes | server of test pages with a simple API |
+| `tests/OpenFill.Tests/StaticSite__v0.4__2026-10-05_2131.cs` | 0.4 | 2026-10-05 21:31 |  | server of test pages with a simple API |
 | `tests/OpenFill.Tests/TabTests__v0.2__2026-10-05_1747.cs` | 0.2 | 2026-10-05 17:47 |  |  |
 | `tests/OpenFill.Tests/TestHarness__v0.2__2026-10-05_1200.cs` | 0.2 | 2026-10-05 12:00 |  | minimal test harness |
 | `tests/OpenFill.Tests/testsite/profile__v0.1__2026-10-04_1911.html` | 0.1 | 2026-10-04 19:11 |  | test page: a hard form (modal, React, autocomplete, custom list, file) |
-| `tests/OpenFill.Tests/testsite/xing__v0.3__2026-10-05_2131.html` | 0.3 | 2026-10-05 21:31 | yes | test page: a simple profile form |
+| `tests/OpenFill.Tests/testsite/xing__v0.3__2026-10-05_2131.html` | 0.3 | 2026-10-05 21:31 |  | test page: a simple profile form |
 | `tools/compilecheck/CompileCheck__v0.2__2026-10-05_1515.csproj` | 0.2 | 2026-10-05 15:15 |  | compile check of the Windows app outside Windows |
 | `tools/install__v0.9__2026-10-05_1905.ps1` | 0.9 | 2026-10-05 19:05 |  | installer: .NET 10, WebView2, build, key, shortcuts |
-| `tools/publish__v0.2__2026-10-05_2058.ps1` | 0.2 | 2026-10-05 20:58 |  |  |
+| `tools/publish__v0.3__2026-10-05_2211.ps1` | 0.3 | 2026-10-05 22:11 | yes |  |
 | `tools/release__v0.5__2026-10-05_1515.ps1` | 0.5 | 2026-10-05 15:15 |  | release: file versions, Metadata, INDEX, zip, audit |
 | `tools/run-dev__v0.2__2026-10-05_1515.ps1` | 0.2 | 2026-10-05 15:15 |  | run the development version (dev instance) |
-| `INDEX__v1.18__2026-10-05_2131.md` | 1.18 | 2026-10-05 21:31 | yes | index of the package files (this file) |
+| `INDEX__v1.19__2026-10-05_2211.md` | 1.19 | 2026-10-05 22:11 | yes | index of the package files (this file) |
 
 ## State for the next release
 
 ```json
 {
-    "package":  "1.18",
-    "stamp":  "2026-10-05_2131",
+    "package":  "1.19",
+    "stamp":  "2026-10-05_2211",
     "files":  {
                   ".gitignore":  {
                                      "name":  ".gitignore",
@@ -119,6 +120,12 @@ Every file has a version in its name and in the Metadata section of its content.
                                       "display":  "2026-10-05 11:23",
                                       "hash":  "42cfe44fac81b022362d94eed0ea705e9c5bb3f44f383d4ec4d25e5d73461ae9"
                                   },
+                  "LICENSE.txt":  {
+                                      "name":  "LICENSE__v0.1__2026-10-05_2211.txt",
+                                      "version":  "0.1",
+                                      "display":  "2026-10-05 22:11",
+                                      "hash":  "01b16aab6f0040c0943062ebe6daec0103491c85a290038759aaeb389f0e1ff1"
+                                  },
                   "OpenFill.sln":  {
                                        "name":  "OpenFill__v0.1__2026-10-04_1911.sln",
                                        "version":  "0.1",
@@ -126,10 +133,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                        "hash":  "d358a7c53835bddf6af38e2c3f1f5e92bf57e88ed3516f724919c25b02e03fe7"
                                    },
                   "README.md":  {
-                                    "name":  "README__v0.6__2026-10-05_2131.md",
-                                    "version":  "0.6",
-                                    "display":  "2026-10-05 21:31",
-                                    "hash":  "a8700b8692f993a4cdb10e4886d83ff0bd790a140dce8fadebddedaa9b12ad81"
+                                    "name":  "README__v0.7__2026-10-05_2211.md",
+                                    "version":  "0.7",
+                                    "display":  "2026-10-05 22:11",
+                                    "hash":  "1cf72a20c421a3bb7e0d79d60be601a5dceea0f2e306deffa9b814ff2be16d6f"
                                 },
                   "src/OpenFill.App/DpapiSecretProtector.cs":  {
                                                                    "name":  "DpapiSecretProtector__v0.2__2026-10-05_1515.cs",
@@ -528,10 +535,10 @@ Every file has a version in its name and in the Metadata section of its content.
                                             "hash":  "c4aae5d4b96f955ae1765026b7c71b55da74983b24a08c7556f13b588f453d62"
                                         },
                   "tools/publish.ps1":  {
-                                            "name":  "publish__v0.2__2026-10-05_2058.ps1",
-                                            "version":  "0.2",
-                                            "display":  "2026-10-05 20:58",
-                                            "hash":  "56427789ce686d5f5a04b0a4c01afb4dbb9c70c77d29a899d7e8813a2cd22870"
+                                            "name":  "publish__v0.3__2026-10-05_2211.ps1",
+                                            "version":  "0.3",
+                                            "display":  "2026-10-05 22:11",
+                                            "hash":  "7379a17060e7aae773794d8204404712c8b994079a26646bd187ec1ead184d0b"
                                         },
                   "tools/release.ps1":  {
                                             "name":  "release__v0.5__2026-10-05_1515.ps1",
