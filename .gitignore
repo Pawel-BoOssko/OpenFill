@@ -1,6 +1,37 @@
-# OpenFill - Metadata: wersja 0.1, data 2026-10-04 19:11
-bin/
-obj/
+﻿# OpenFill public source repository. Never include runtime or private user data.
+**/bin/
+**/obj/
+**/.vs/
+**/dist/
+**/TestResults/
+**/node_modules/
+**/backups/
+**/backup*/
+**/*.log
+**/*.stderr
+**/*.bak
+**/*.tmp
+**/*.dmp
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.pfx
+**/*.pem
+**/*.key
+**/*.p12
+**/*.p7b
+**/.env
+**/.env.*
+**/secrets/
+**/credentials/
+**/profiles/
+**/user-data/
+**/User Data/
+**/data/stable/
+**/data/dev/
+**/telemetry/
+**/screenshots/
+**/session*/
 *.user
-.vs/
-dist/
+*.suo
+tools/*gdrive*.ps1
