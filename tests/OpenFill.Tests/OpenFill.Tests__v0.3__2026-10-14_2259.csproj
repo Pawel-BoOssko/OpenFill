@@ -1,0 +1,18 @@
+<!-- OpenFill - Metadata: wersja 0.3, data 2026-10-14 22:59 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>OpenFill.Tests</AssemblyName>
+    <RootNamespace>OpenFill.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenFill.Core\*.csproj" />
+    <ProjectReference Include="..\..\src\OpenFill.Cli\*.csproj" />
+    <Compile Include="..\..\src\OpenFill.App\FirefoxLogins__v0.1__2026-10-14_2235.cs" Link="FirefoxLogins.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="testsite\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="testsite" />
+  </ItemGroup>
+</Project>
