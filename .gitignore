@@ -35,3 +35,8 @@
 *.user
 *.suo
 tools/*gdrive*.ps1
+# Encrypted backups and portable recovery identities are never public artifacts.
+**/*.age
+**/*.identity
+**/*.agekey
+**/OpenFill-Recovery-Keys/
