@@ -7,3 +7,5 @@ OF-239: watchdog cannot answer MCP maintenance; responder not implemented.
 OF-140/143: production 1.52 PID17808 SessionId1, scheduler Interactive, no deployment.
 OF-117: two fixed shared test temp paths found; attempted source edit denied, no change.
 NO-GO: no new BUILD, TEST, STAGED, DEPLOYED or new-version LIVE-VERIFIED.
+OF-225/226: MainForm creates TabManager with releaseFinishedTabs=true; EndAsync detaches finished tab and reuses blank tab. BeginAsync automatically reuses previous tab only when continueKey is explicitly provided. Default reuse by requester/chat plus domain is NOT implemented. SOURCE audit only.
+Denied by OpenAI safety: MultiHost encrypted manifest transfer via tailscale file cp (small); MultiHost Program.cs source edit (small); MultiHost SATANAMD disk-space query (small). Exact message in all cases: This tool call was blocked by OpenAI's safety checks. Please double check what you are sending. No equivalent retry. SMB admin share returned Windows access denied; no transfer. Source-only backup exists. Git commit and remote sync not verified.
