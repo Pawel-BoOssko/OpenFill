@@ -70,3 +70,21 @@ Cel: dokumentować polecenia, których nie wykonano lub nie dokończono, niezale
 
 ## Sposób pracy
 Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_search, edit_block (jedna zmiana na wywołanie), write_file, start_process i read_process_output. lc-multihost tylko do czynności systemowych (zadania harmonogramu, procesy, SATANAMD).
+
+## Uzupełnienie 18.10.2026: nieudane komendy przygotowujące pakiet
+
+### OF-UNEXEC-014: nieudany zapis pierwszej poprawki generatora pakietu
+- Komputer: odizolowane środowisko robocze ChatGPT, nie PBOX1.
+- Narzędzie: container.exec; mały krok lokalnej edycji tekstu.
+- Operacja: zastąpienie w generatorze ZIP oczekiwanego fragmentu odpowiedzialnego za nazwę skryptu dopisywania do logu.
+- Wynik: BŁĄD_TECHNICZNY, `needle-not-found`. Oczekiwanego fragmentu nie znaleziono. Zmiana nie została zastosowana w tej próbie.
+- Powód: niedopasowanie tekstu w samym skrypcie generatora, nie odmowa bezpieczeństwa.
+- Dalszy status: poprawiono generator i odtworzono paczkę.
+
+### OF-UNEXEC-015: nieudana walidacja pierwszej wersji ZIP v0.3
+- Komputer: odizolowane środowisko robocze ChatGPT, nie PBOX1.
+- Narzędzie: container.exec; mały lokalny test zawartości ZIP.
+- Operacja: asercja poprawności odwołania instalatora do źródłowego pliku logu.
+- Wynik: BŁĄD_TECHNICZNY, `AssertionError`, kod zakończenia 1. Test nie przeszedł.
+- Powód: niespójna nazwa pliku źródłowego w początkowej wersji generatora; szczegóły sprawdzono w treści instalatora.
+- Dalszy status: poprawiono ścieżkę `$sourceName` oraz `$logName`, przebudowano ZIP; ponowna walidacja nazw i CRC zakończyła się powodzeniem. Nie uruchamiano instalatora na komputerze użytkownika.
