@@ -36,6 +36,7 @@ public sealed class McpTaskRecord
     public List<string> Activity { get; set; } = new();
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
+    public DateTime? LastActivityUtc { get; set; }
     /// <summary>Counts changes of this record, so a waiting caller notices that something happened (not saved).</summary>
     [JsonIgnore] public int Ver { get; set; }
 }
@@ -150,7 +151,7 @@ public sealed class McpTaskManager
 
         // The same job again while it is still running: hand back the running one instead of starting a copy.
         McpTaskRecord? same = null;
-        if (idempotencyKey is null) lock (_lock) same = _open.Values.Select(l => l.Rec).FirstOrDefault(r => IsOpen(r) && Similar(task, r.TaskText));
+        if (idempotencyKey is null) lock (_lock) same = _open.Values.Select(l => l.Rec).FirstOrDefault(r => IsOpen(r) && r.Requester == who && Similar(task, r.TaskText));
         if (same is not null)
         {
             int v0; lock (_lock) v0 = same.Ver;
@@ -470,6 +471,9 @@ public sealed class McpTaskManager
             if (!IsOpen(rec)) return;
             rec.Activity.Add(message.Length > 160 ? message[..160] + "..." : message);
             while (rec.Activity.Count > 8) rec.Activity.RemoveAt(0);
+            rec.LastActivityUtc = DateTime.UtcNow;
+            rec.Ver++;
+            rec.UpdatedUtc = DateTime.UtcNow;
         }
     }
 
@@ -807,6 +811,8 @@ public sealed class McpTaskManager
                 note = "This task was cut off when OpenFill was closed or restarted. It is no longer running.";
                 if (_host.LastUrlOf(rec.Id) is { } lastUrl) o0Url = lastUrl;
             }
+            if (fromDisk && status == "interrupted" && o0Url is null)
+                o0Url = _host.LastUrlOf(rec.Id);
             var o = new JsonObject
             {
                 ["task_id"] = rec.Id,
@@ -834,6 +840,12 @@ public sealed class McpTaskManager
             if (!fromDisk && IsOpen(rec) && _host.ProgressOf(rec.Id) is { } live) { steps = live.Steps; cost = live.CostUsd; warn = live.Warning; }
             if (steps > 0) o["steps"] = steps;
             if (cost is { } cu) o["cost_usd"] = Math.Round(cu, 4);
+            if (status is "running" or "waiting_for_user" or "needs_input")
+            {
+                o["poll_wait_max_seconds"] = MaxWaitSeconds;
+                o["estimated_completion_seconds"] = null;
+            }
+            if (rec.LastActivityUtc is { } activityUtc) o["last_tool_activity_at"] = activityUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
             if (warn is not null) o["warning"] = warn;
             if (note is not null) o["note"] = note;
             var max = Math.Max(1, _host.MaxParallel);

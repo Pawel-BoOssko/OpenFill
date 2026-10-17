@@ -349,7 +349,7 @@ public static class ParallelTests
                 T.Eq("refusal kind", "domain_busy", r2.Refusal?.Kind);
                 T.Contains("refusal text: head", r2.Refusal?.Message ?? "", "REFUSED: the site alpha-one.com is in use. Your task was NOT started.");
                 T.Contains("refusal text: who", r2.Refusal?.Message ?? "", "the user, typed in the OpenFill window");
-                T.Contains("refusal text: what", r2.Refusal?.Message ?? "", "First job on alpha-one.com");
+                T.NotContains("refusal text does not reveal another task", r2.Refusal?.Message ?? "", "First job on alpha-one.com");
 
                 var r3 = host.TryStart("Start from this page: https://beta-two.com/\n\nSecond job on beta-two.com: fill the first field", null);
                 var r4 = host.TryStart("Third job: type the word alpha-one.com into the first field of the page", null);
