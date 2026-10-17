@@ -12,3 +12,4 @@ Status: SOURCE and targeted read-only TEST only. BUILD: not run. STAGED: no. DEP
 LIVE-VERIFIED: only existing OpenFill 1.52 process and telemetry (PID 17808), not the source panel.
 Release: NO-GO. Open matters: OF-223 full real-data restore, OF-239 MCP maintenance substitute, OF-212/218/219/232 regression, rollback and authorized release preflight.
 Never claim the prior refusal was caused by malformed syntax without exact original command text.
+Git check: this source directory is on main with no local commits; files are untracked. Synchronization of these new changes is NOT confirmed; the autosync/PBOX1 branch must be checked separately.
