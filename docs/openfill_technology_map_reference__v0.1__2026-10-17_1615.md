@@ -32,3 +32,12 @@ OF-029: generated, versioned technology manifest linked to current config.
 OF-168/030: compiled tests and interactive screenshot/resize/search/copy smoke.
 OF-184: documentation and UI must derive from the same current source and deployed version.
 
+
+## OF-029 source manifest validation (2026-10-17 16:38 CEST)
+The generated JSON manifest is docs/openfill_technology_manifest__v0.1__2026-10-17_1616.json.
+JSON read succeeded: 41 topics in 7 categories; topicCount matches the actual array length.
+Source SHA256 in the manifest matches the current TechnologyAtlas source:
+37B60412F9BD23ED023E56B3F5EA6C15CB89FB2C18A5CB8E4B4D9241EBC1B047.
+The older OF-029 outstanding item above refers to the state before this manifest was generated.
+Status: SOURCE + read-only TEST. No BUILD, STAGED, DEPLOYED or LIVE-VERIFIED for the new panel.
+Automatic manifest refresh and live GUI correctness remain unverified.
