@@ -11,6 +11,7 @@ internal sealed class FakeRunHost : IRunHost
 {
     private readonly Dictionary<string, CancellationTokenSource> _cts = new();
     public int Started;
+    public Action<string>? EmitActivity;
     public int Max { get; set; } = 1;
     private bool _maintenanceActive;
     public JsonObject Maintenance(int? minutes, string? reason, string? by)
@@ -34,6 +35,7 @@ internal sealed class FakeRunHost : IRunHost
     {
         if (Refuse?.Invoke(task) is not null) return null;
         Started++;
+        EmitActivity = options?.Activity;
         var cts = new CancellationTokenSource();
         lock (_cts) _cts[options?.TaskKey ?? "-"] = cts;
         var ct = cts.Token;
@@ -209,7 +211,25 @@ public static class McpTests
             T.Eq("crash: interruption persisted durably", "interrupted", S(persisted, "status"));
             original.Cancel(S(live, "task_id"));
             try { Directory.Delete(dir, true); } catch { }
-        });        await T.Section("MCP: controlled upgrade interrupts concurrent waiters and persists ETA", async () =>
+        });        await T.Section("MCP: activity wakes polling and does not invent ETA", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_poll_" + Guid.NewGuid().ToString("N")[..8]);
+            var host = new FakeRunHost();
+            var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(5));
+            var started = await m.StartAsync("SLOW polling", 0, default, requester: "Test", chat: "Poll");
+            T.Eq("poll ceiling", 30, started["poll_wait_max_seconds"]?.GetValue<int>() ?? -1);
+            T.Check("no invented ETA", started.ContainsKey("estimated_completion_seconds") && started["estimated_completion_seconds"] is null);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var pending = m.StatusAsync(S(started, "task_id"), 3, default);
+            await Task.Delay(100);
+            host.EmitActivity?.Invoke("Next action");
+            var response = await pending;
+            T.Check("poll: activity wakes before full timeout", stopwatch.ElapsedMilliseconds < 2000);
+            T.Check("progress woke waiting status", response["last_tool_activity_at"] is not null);
+            T.Eq("task still running", "running", S(response, "status"));
+            m.Cancel(S(started, "task_id"));
+        });
+        await T.Section("MCP: controlled upgrade interrupts concurrent waiters and persists ETA", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_upgrade_" + Guid.NewGuid().ToString("N")[..8]);
             var host = new FakeRunHost { Max = 4 };
