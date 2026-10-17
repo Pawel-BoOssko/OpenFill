@@ -326,7 +326,73 @@ public static class TabTests
             ui.FailClose = false;
             var b = await tm.BeginAsync("eviction-b", "second", null, default);
             T.Check("later retry can free capacity", b.TabId != a.TabId && ui.Open.Count == 1);
-        });        await T.Section("TabManager: returning to a session", async () =>
+        });        await T.Section("OF-234: three sequential batches in one chat and domain", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_batches_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5, releaseFinishedTabs: true);
+            var initial = ui.NewBlank();
+            tm.RegisterFree(initial, "Start");
+            var stable = true;
+            var continued = 0;
+            for (var batch = 1; batch <= 3; batch++)
+            {
+                for (var entry = 1; entry <= 5; entry++)
+                {
+                    var id = $"batch-{batch}-entry-{entry}";
+                    var started = await tm.BeginAsync(id, "LinkedIn batch", null, default,
+                        requester: "Model / same chat", preferredDomain: "linkedin.com");
+                    stable &= started.TabId == initial && ui.Open.Count == 1;
+                    if (started.Continued && started.Reopened) continued++;
+                    ui.Open[started.TabId] = "https://www.linkedin.com/mynetwork/";
+                    await tm.EndAsync(id);
+                }
+            }
+            T.Check("15 synthetic tasks stay on one reusable physical tab", stable);
+            T.Eq("later 14 tasks reuse saved same-chat URL", 14, continued);
+            T.Eq("one idle renderer after three batches", 1, ui.Open.Count);
+            T.Eq("previous page URL persisted", "https://www.linkedin.com/mynetwork/", tm.Find("batch-3-entry-5")?.LastUrl);
+        });
+        await T.Section("OF-234: five busy cards queue and cancellation", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_five_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var ids = new List<string>();
+            for (var n = 0; n < 5; n++)
+            {
+                var id = $"busy-{n}";
+                var t = await tm.BeginAsync(id, "busy site", null, default);
+                ids.Add(t.TabId);
+                if (n == 1) tm.SetState(id, "waiting");
+            }
+            using var cancelled = new CancellationTokenSource();
+            var sixth = tm.BeginAsync("cancelled-sixth", "sixth", null, cancelled.Token);
+            await Task.Delay(350);
+            T.Check("sixth task waits behind five busy cards", !sixth.IsCompleted && ui.Open.Count == 5);
+            cancelled.Cancel();
+            bool interrupted = false;
+            try { await sixth; } catch (OperationCanceledException) { interrupted = true; }
+            T.Check("cancelled queued task exits without taking a card", interrupted && ui.Open.Count == 5);
+            await tm.EndAsync("busy-0");
+            var later = await tm.BeginAsync("replacement", "replacement", null, default);
+            T.Check("new task starts after a finished card is available", later.TabId != ids[0] && ui.Open.Count == 5);
+            T.Check("waiting-for-user card is never evicted", ui.Open.ContainsKey(ids[1]));
+        });
+        await T.Section("OF-229: lost session without URL reports why new tab opens", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_losttab_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var a = await tm.BeginAsync("lost-a", "first", null, default);
+            await tm.EndAsync("lost-a");
+            ui.Open.Remove(a.TabId);
+            var b = await tm.BeginAsync("lost-b", "continue", "lost-a", default);
+            T.Check("missing physical tab causes a new tab", b.TabId != a.TabId && !b.Reopened);
+            T.Eq("reason identifies unrecoverable missing URL", "previous_session_unavailable_no_saved_url", tm.Find("lost-b")?.Reason);
+            T.Check("unavailable prior tab ownership cleared", tm.Find("lost-a")?.TabId is null);
+        });
+        await T.Section("TabManager: returning to a session", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_tabs_" + Guid.NewGuid().ToString("N")[..6]);
             var store = Path.Combine(dir, "tabs.json");

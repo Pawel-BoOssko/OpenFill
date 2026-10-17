@@ -172,12 +172,14 @@ public sealed class TabManager
 
             string tabId;
             bool reopened = false;
+            bool reusedPhysical = false;
             string? url = null;
 
             if (prev?.TabId is { } own && _ui.Exists(own))
             {
                 // Same session, tab still open: the new task takes the tab over.
                 tabId = own;
+                reusedPhysical = true;
                 await _ui.SelectTabAsync(tabId, ct);
                 lock (_lock) prev.TabId = null;
             }
@@ -207,7 +209,7 @@ public sealed class TabManager
                 _recs.RemoveAll(r => r.TaskKey == taskKey);
                 _recs.Add(new Rec { TaskKey = taskKey, Label = label, Short = shortLabel ?? label, Requester = requester, LastUrl = reopened ? url : null, State = "running", LastUsedUtc = DateTime.UtcNow, TabId = tabId,
                     Reason = prev is null ? (string.IsNullOrWhiteSpace(preferredDomain) ? "site_domain_unknown" : "no_matching_finished_chat_domain_tab") :
-                        reopened ? "previous_tab_closed_reopened_saved_url" : "existing_session_reused" });
+                        reopened ? "previous_tab_closed_reopened_saved_url" : reusedPhysical ? "existing_session_reused" : "previous_session_unavailable_no_saved_url" });
                 _activeTabId = tabId;
             }
             Save();
