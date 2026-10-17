@@ -284,6 +284,16 @@ public static class TabTests
             T.Check("failed tab close: browser not dropped from UI", ui.Open.ContainsKey(c.TabId));
             T.Eq("failed tab close: URL preserved", "https://third.example/work", tabs.Find("failure-close")?.LastUrl);
         });
+        await T.Section("OF-226: explicit navigation command identifies target domain", () =>
+        {
+            T.Eq("English Open URL", "linkedin.com", AppHost.InitialTaskDomain("Open https://www.linkedin.com/in/example"));
+            T.Eq("Polish open URL", "linkedin.com", AppHost.InitialTaskDomain("Otworz https://www.linkedin.com/in/example"));
+            T.Eq("Polish go to URL", "linkedin.com", AppHost.InitialTaskDomain("Przejdz do https://www.linkedin.com/mynetwork/"));
+            T.Eq("legacy panel start URL", "linkedin.com", AppHost.InitialTaskDomain("Start from this page: https://www.linkedin.com/mynetwork/"));
+            T.Check("URL merely to enter in a form does not lock the site", AppHost.InitialTaskDomain("Type https://linkedin.com into the website field") is null);
+            T.Check("URL mentioned in task body is not automatically a browser target", AppHost.InitialTaskDomain("Send a note containing https://linkedin.com/in/example") is null);
+            return Task.CompletedTask;
+        });
         await T.Section("TabManager: same chat/domain automatically reuses finished tab", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_reuse_" + Guid.NewGuid().ToString("N")[..8]);

@@ -767,6 +767,20 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         return MaintenanceInfo();
     }
 
+    public static string? InitialTaskDomain(string task)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(task,
+            @"^\s*Start from this page:\s*(https?://\S+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success)
+            match = System.Text.RegularExpressions.Regex.Match(task,
+                @"^\s*(?:Otw[o\u00F3]rz|Przejd[z\u017A]\s+do|Wejd[z\u017A]\s+na|Open|Visit|Go\s+to)(?:\s+(?:stron\u0119|strone|page))?\s+(https?://\S+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success) return null;
+        var url = match.Groups[1].Value.TrimEnd('.', ',', ';', ')', ']');
+        var domain = CostGuard.DomainOf(url);
+        return domain.Length == 0 ? null : domain;
+    }
     public StartResult TryStart(string task, RunOptions? options)
     {
         task = task.Trim();
@@ -811,8 +825,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             // or where the task it continues left off. A site only mentioned in the text (something to type, a name in a sentence)
             // does NOT lock anything: the lock is taken when the task really goes there (navigate, redirect), see IDomainGate.
             var domains = new List<string>();
-            if (System.Text.RegularExpressions.Regex.Match(task, @"^\s*Start from this page:\s*(\S+)") is { Success: true } startPage
-                && CostGuard.DomainOf(startPage.Groups[1].Value) is { Length: > 0 } startDomain)
+            if (InitialTaskDomain(task) is { Length: > 0 } startDomain)
                 domains.Add(startDomain);
             if (options?.ContinueFromKey is { } cont && Tabs?.Find(cont)?.LastUrl is { } lastUrl && CostGuard.DomainOf(lastUrl) is { Length: > 0 } cd && !domains.Contains(cd))
                 domains.Add(cd);
