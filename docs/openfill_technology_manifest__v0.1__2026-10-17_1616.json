@@ -1,0 +1,259 @@
+﻿{
+    "schemaVersion":  1,
+    "source":  "src\\OpenFill.App\\TechnologyAtlas__v0.1__2026-10-15_2314.cs",
+    "sourceSha256":  "37B60412F9BD23ED023E56B3F5EA6C15CB89FB2C18A5CB8E4B4D9241EBC1B047",
+    "generatedAtUtc":  "2026-10-17T14:16:47.8552874Z",
+    "topicCount":  41,
+    "dynamicFields":  [
+                          "BuildInfo.Version",
+                          "Environment.ProcessId"
+                      ],
+    "topics":  [
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  "C#",
+                       "technology":  "C# / managed CLR",
+                       "component":  "OpenFill.App, OpenFill.Core, OpenFill.Cli"
+                   },
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  ".NET 10",
+                       "technology":  ".NET 10 SDK and runtime",
+                       "component":  "net10.0; net10.0-windows"
+                   },
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  "JavaScript",
+                       "technology":  "JavaScript ECMAScript",
+                       "component":  "Assets/extractor.js and Assets/actions.js"
+                   },
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  "HTML / CSS",
+                       "technology":  "Embedded HTML and CSS",
+                       "component":  "Assets/panel.html"
+                   },
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  "PowerShell",
+                       "technology":  "Windows PowerShell scripts",
+                       "component":  "tools/install, stage, deploy_safely"
+                   },
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  "JSON / NDJSON",
+                       "technology":  "System.Text.Json and newline-delimited JSON",
+                       "component":  "Config, history, notes, telemetry"
+                   },
+                   {
+                       "category":  "01  Languages / runtime",
+                       "name":  "MSBuild / NuGet",
+                       "technology":  "SDK-style projects, MSBuild, NuGet",
+                       "component":  "OpenFill.App.csproj, Core.csproj, Cli.csproj"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "Windows Forms",
+                       "technology":  "System.Windows.Forms / WinForms",
+                       "component":  "MainForm; FirefoxPasswordPicker; ImportedAccountsDialog"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "WebView2",
+                       "technology":  "Microsoft Edge WebView2 runtime",
+                       "component":  "MainForm BrowserTab, WebView2CdpConnection"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "Chromium",
+                       "technology":  "Edge/Chromium browser engine",
+                       "component":  "WebView2 Runtime; CLI Chrome or Edge"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "CDP",
+                       "technology":  "Chrome DevTools Protocol",
+                       "component":  "BrowserController; CdpSession"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "CDP WebSocket",
+                       "technology":  "WebSocket transport for CDP",
+                       "component":  "WebSocketCdpConnection / OpenFill.Cli"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "Semantic page model",
+                       "technology":  "DOM extraction / semantic controls",
+                       "component":  "extractor.js, PageModel, FrameLayer"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "Real input events",
+                       "technology":  "CDP Input, JavaScript DOM actions",
+                       "component":  "actions.js; NativeInput"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "Pop-ups and SSO",
+                       "technology":  "WebView2 NewWindowRequested / CDP",
+                       "component":  "SignInPopup, PopupRegistry, MainForm"
+                   },
+                   {
+                       "category":  "02  Desktop / browser",
+                       "name":  "Network and console",
+                       "technology":  "CDP Network and Runtime domains",
+                       "component":  "NetworkMonitor, ConsoleMonitor"
+                   },
+                   {
+                       "category":  "03  AI / orchestration",
+                       "name":  "LLM integration",
+                       "technology":  "OpenAI Responses API",
+                       "component":  "OpenAIClient and AgentRunner"
+                   },
+                   {
+                       "category":  "03  AI / orchestration",
+                       "name":  "Agent loop",
+                       "technology":  "C# asynchronous task orchestration",
+                       "component":  "AgentRunner, ToolRegistry"
+                   },
+                   {
+                       "category":  "03  AI / orchestration",
+                       "name":  "Model hierarchy",
+                       "technology":  "Supervisor / worker architecture",
+                       "component":  "MCP task request + local Luna agent"
+                   },
+                   {
+                       "category":  "03  AI / orchestration",
+                       "name":  "Prompt control",
+                       "technology":  "System prompt and domain notes",
+                       "component":  "AgentRunner, SiteNotesStore"
+                   },
+                   {
+                       "category":  "03  AI / orchestration",
+                       "name":  "Token and cost limits",
+                       "technology":  "CostGuard; usage accounting",
+                       "component":  "CostGuard, RunMeter, AppConfig"
+                   },
+                   {
+                       "category":  "04  Connectivity / protocols",
+                       "name":  "MCP",
+                       "technology":  "Model Context Protocol",
+                       "component":  "McpServer, McpService, McpTaskManager"
+                   },
+                   {
+                       "category":  "04  Connectivity / protocols",
+                       "name":  "JSON-RPC 2.0",
+                       "technology":  "JSON-RPC over Streamable HTTP",
+                       "component":  "McpServer"
+                   },
+                   {
+                       "category":  "04  Connectivity / protocols",
+                       "name":  "HTTPS tunnel",
+                       "technology":  "Cloudflare Tunnel",
+                       "component":  "CloudflareTunnel; McpService"
+                   },
+                   {
+                       "category":  "04  Connectivity / protocols",
+                       "name":  "Network transport",
+                       "technology":  "HTTP, HTTPS, WebSocket",
+                       "component":  "MCP; CDP; file-transfer"
+                   },
+                   {
+                       "category":  "04  Connectivity / protocols",
+                       "name":  "File transfer",
+                       "technology":  "HTTP PUT/GET + SHA-256",
+                       "component":  "Mcp/FileTransfer"
+                   },
+                   {
+                       "category":  "04  Connectivity / protocols",
+                       "name":  "Task idempotency",
+                       "technology":  "Idempotency keys / persistent task IDs",
+                       "component":  "McpTaskManager"
+                   },
+                   {
+                       "category":  "05  Data / security",
+                       "name":  "Credential vault",
+                       "technology":  "Windows Credential Manager / WinCred API",
+                       "component":  "ImportedCredentialVault; TemporaryCredentialVault"
+                   },
+                   {
+                       "category":  "05  Data / security",
+                       "name":  "DPAPI",
+                       "technology":  "Windows Data Protection API",
+                       "component":  "SecretStore, DpapiSecretProtector"
+                   },
+                   {
+                       "category":  "05  Data / security",
+                       "name":  "Firefox NSS",
+                       "technology":  "Mozilla NSS and Firefox logins.json",
+                       "component":  "FirefoxLogins, FirefoxNssSession"
+                   },
+                   {
+                       "category":  "05  Data / security",
+                       "name":  "Domain isolation",
+                       "technology":  "Origin boundaries, site-family and domain locks",
+                       "component":  "ImportedCredentialVault, DomainLocks"
+                   },
+                   {
+                       "category":  "05  Data / security",
+                       "name":  "Persistent memory",
+                       "technology":  "Site notes JSON with atomic updates",
+                       "component":  "SiteNotesStore"
+                   },
+                   {
+                       "category":  "05  Data / security",
+                       "name":  "Redaction",
+                       "technology":  "Log and output sanitization",
+                       "component":  "Redactor, OutputLimiter"
+                   },
+                   {
+                       "category":  "06  Operations / quality",
+                       "name":  "Windows process tree",
+                       "technology":  "Windows APIs and Process metrics",
+                       "component":  "ResourceTelemetry"
+                   },
+                   {
+                       "category":  "06  Operations / quality",
+                       "name":  "Lifecycle management",
+                       "technology":  "Tabs, cancellation, maintenance gate",
+                       "component":  "TabManager, TaskRun, AppHost"
+                   },
+                   {
+                       "category":  "06  Operations / quality",
+                       "name":  "Release and rollback",
+                       "technology":  "PowerShell, interactive Windows session",
+                       "component":  "tools/deploy_safely; backups"
+                   },
+                   {
+                       "category":  "06  Operations / quality",
+                       "name":  "Unit and E2E tests",
+                       "technology":  "Local C# test harness and static test pages",
+                       "component":  "tests/OpenFill.Tests"
+                   },
+                   {
+                       "category":  "06  Operations / quality",
+                       "name":  "Status and observability",
+                       "technology":  "NDJSON events, run history, telemetry",
+                       "component":  "EventLog, HistoryStore, ResourceTelemetry"
+                   },
+                   {
+                       "category":  "07  Ecosystem",
+                       "name":  "ChatGPT / Claude",
+                       "technology":  "MCP client applications",
+                       "component":  "McpTaskManager"
+                   },
+                   {
+                       "category":  "07  Ecosystem",
+                       "name":  "Networking Radar",
+                       "technology":  "Task integration via MCP",
+                       "component":  "integration_networking_radar docs"
+                   },
+                   {
+                       "category":  "07  Ecosystem",
+                       "name":  "PBOX1 hosting",
+                       "technology":  "Local Windows desktop deployment",
+                       "component":  "OpenFill/app, data/stable, Task Scheduler"
+                   }
+               ]
+}
