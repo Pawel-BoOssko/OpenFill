@@ -1,0 +1,37 @@
+OpenFill 1.53: implementation checkpoint v0.2
+Local timestamp: 2026-10-15 ~20:42 Europe/Warsaw
+Scope: repo and isolated tests only. Production OpenFill 1.52 PID 27472 unchanged.
+
+PERFORMANCE OBJECTIVE
+Laptop responsiveness. Reduce memory and CPU overhead in idle and active use; a finding of "no confirmed leak" is not sufficient.
+
+SOURCE CHANGES, ON TOP OF EXISTING v1.53
+1. TabManager.EndAsync releaseFinishedTabs mode now preserves tracking of any still-live finished tab if WebView2 navigate-to-blank or close fails, avoiding orphaned background renderers.
+2. Fast tab test mode: dotnet run --project tests/OpenFill.Tests/OpenFill.Tests__v0.3__2026-10-14_2259.csproj -- tabs-only.
+3. Added failure-injection tests for navigation and close errors in FakeTabs.
+4. PopupRegistry tracks the opener tab owner. Its ForOwner is non-destructive so a failed close does not lose ownership.
+5. MainForm closes task-owned sign-in pop-ups whenever it releases or closes a completed tab. Browser tabs created manually are not affected.
+6. Added tests of popup ownership and proper removal.
+7. Firefox import UI now lists each successfully saved origin and login after a full or partial batch. No password values are displayed.
+8. Added quick-only credential tests for Created vs Updated results, exact-origin metadata, password omission, and a six-account/three-domain batch with test-data cleanup.
+
+VALIDATION
+- App Release build after popup cleanup: exit 0, 0 errors, 1 pre-existing MSB3277 WindowsBase warning.
+- Tab and popup regression tests after source changes: 103 passed, 0 failed, exit 0.
+- Quick credential tests including batch of 6 for 3 domains: 39 passed, 0 failed, exit 0.
+- Previous complete suite prior to latest changes: 592 passed, 0 failed.
+- New complete suite started 2026-10-15 20:41 local as below-normal priority dotnet PID 24400, output in docs/full_test_run__v1.53__2026-10-15_2041.log. Check process and log for completion. Do not launch a duplicate in parallel.
+
+PRODUCTION TELEMETRY BASELINE
+- openfill_info 2026-10-15 20:14: version 1.52, no active tasks, maintenance inactive, five finished tabs.
+- Read-only MultiHost telemetry at ~20:35: 24 idle samples in a 20-minute window, idle CPU 5.390% of whole 4-logical-processor machine, latest WS 2733.406 MB, PB 2562.379 MB.
+- Average CPU shares during idle: WebView2 PID10816 1.341%, PID11832 1.277%, PID26820 1.166%, PID23276 0.679%; OpenFill main PID27472 0.105%. Do not attribute renderers to specific sites without verified mapping.
+- Two largest WebView2 working sets: 584.086 MB and 563.363 MB.
+- Values are not proof of memory leak but prove excess overhead when no tasks run.
+
+BLOCKERS AND BOUNDARIES
+- Production upgrade to 1.53 remains blocked by previously denied staging/deployment operations. Do not circumvent using MultiHost or any other route. Nothing staged/deployed, no post-upgrade metrics.
+- Do not change production PID, existing tabs, WebView2 flags, user profiles, or other chats' tasks.
+- No interactive Windows UI smoke test completed. This needs the approved deployment/test path.
+- Remote Desktop Commander exhausted monthly quota. MultiHost is the preferred PBOX1 channel, and should never be replaced with Remote Desktop Commander.
+- Full suite after newest changes is still running as listed above. Release/deployment is not declared complete.

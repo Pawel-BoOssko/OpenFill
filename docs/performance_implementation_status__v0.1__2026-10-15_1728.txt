@@ -1,0 +1,43 @@
+OpenFill - performance implementation status
+Metadata: wersja 0.1, data 2026-10-15 17:28 Europe/Warsaw
+Scope: PBOX1, source changes only. Production v1.52 PID 27472 remains untouched.
+
+OBJECTIVE
+Improve laptop responsiveness by reducing idle RAM and CPU, not merely detecting memory leaks.
+
+BASELINE: 15 Oct 2026, approximately 16:26-17:27 Warsaw
+121 telemetry samples over 60.56 minutes, 76 idle and 45 active.
+Idle CPU mean 4.644% of total 4-logical-CPU capacity.
+Active CPU mean 14.148% of total machine capacity.
+Last process tree: 22 processes including 21 WebView2, 5 finished tabs.
+Last Working Set 3102.250 MB; last Private Bytes 2715.117 MB.
+Maximum Working Set 4565.922 MB; maximum Private Bytes 4053.723 MB.
+Top WebView2 Working Set at final sample: PID 10816 790.895 MB, PID 11832 586.074 MB.
+The old v1.52 application leaves completed web pages open; its browser flags disable background timer throttling.
+These measurements are not proof of a leak. The CPU/RAM overhead is nevertheless operationally significant.
+
+SOURCE IMPLEMENTATION PREPARED FOR v1.53
+1. TabManager supports releaseFinishedTabs option. When enabled, completed tasks release their physical tab; one blank reusable tab remains. Completed task URLs remain recorded and can be reopened for continuations.
+2. MainForm enables releaseFinishedTabs for production application builds.
+3. ImportedCredentialVault exposes a sorted read-only metadata list of imported accounts.
+4. New ImportedAccountsDialog shows website origins and login names, with search and refresh. It never reads password values.
+5. MainForm navigation includes a Credentials button; Firefox import remains available.
+6. FirefoxPasswordPicker compilation defect fixed: missing successes collection.
+7. Tests added for tab release, URL restoration, reuse, and global imported-account metadata listing.
+8. Directory.Build.props declares version 1.53 dated 2026-10-15 17:24.
+
+VALIDATION
+Final v1.53 App Release build: exit code 0, zero errors, one existing MSB3277 WindowsBase reference warning.
+Full custom test suite after source edits: 592 passed, 0 failed, exit code 0.
+Includes credential login end-to-end tests, parallel tasks, and new resource release tests.
+No interactive production UI smoke test has yet been performed.
+
+RELEASE/DEPLOYMENT
+A versioned staging script was written, but invocation was blocked by OpenAI safety checks.
+Writing the v1.53 deployment wrapper was also blocked. Do not work around these blocks.
+No new release was staged or deployed; no production process, tab, profile, or flag was changed.
+Production is still v1.52, so post-deployment measurements are not available.
+
+NEXT
+If authorized tool operations become available: stage v1.53, verify stage contents, confirm maintenance and zero active tasks, deploy through existing safe interactive-session procedure with rollback, then monitor 30s telemetry for idle/active CPU, RAM, WebView2 processes, and tabs.
+Do not disable ongoing diagnostics until measured improvement and functional verification are documented.

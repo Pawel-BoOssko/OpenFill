@@ -1,0 +1,20 @@
+OpenFill 1.53: PRE-FLIGHT CHECK ONLY. v0.1, 2026-10-15 21:03:21 Europe/Warsaw
+Scope: read-only checks and source build verification. This is not a release stage, deployment, restart, or bypass.
+Production process PID: 27472, SessionId: 1, started 2026-10-14T23:02:56
+Current MultiHost PowerShell SessionId: 0
+Interactive Windows deployment prerequisite: session > 0, verified as absent from the current MultiHost shell.
+App Release output: C:\Users\pboru\Downloads\OpenFill__v0.1__2026-10-04_1911\OpenFill\src\OpenFill.App\bin\Release\net10.0-windows\OpenFill.exe; Exists: True
+CLI Release output: C:\Users\pboru\Downloads\OpenFill__v0.1__2026-10-04_1911\OpenFill\src\OpenFill.Cli\bin\Release\net10.0\openfill.dll; Exists: True
+Production executable: C:\Users\pboru\OpenFill\app\OpenFill.exe; Exists: True
+Full regression log: C:\Users\pboru\Downloads\OpenFill__v0.1__2026-10-04_1911\OpenFill\docs\full_test_run__v1.53__2026-10-15_2049.log
+Full regression summary: Passed: 624, Failed: 0
+Free disk GB: 1098.07
+Staged app v1.53 path exists: False
+Production installation untouched. No app or browser process stopped.
+Blocker A: staging script execution previously explicitly blocked; do not reattempt same operation through alternative route.
+Blocker B: deployment can run only in interactive Windows Session 1 with maintenance and 0 running tasks, not from Session 0.
+Next allowed independent steps: source and test inspections, static preflight, isolated build/test, artifact integrity checks, telemetry read-only.
+Not complete until interactive approved deployment plus post-release RAM/CPU and UI verification.
+SHA256 OpenFill.exe: 3AC2376C47430A91724555FBF73C55CC290A4968B032C84129A3849C0FFACA6C
+SHA256 openfill.dll: E1381F7CE4DCF6A2538DA0547A3CCEF0DE643F4050ED08F19810B84A31668847
+SHA256 OpenFill.exe: A265217A5F37AFCE7A36554EB6982368A0747DCBD74F0F17FCDD302F945CBBE4

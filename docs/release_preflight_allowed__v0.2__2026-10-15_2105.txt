@@ -1,0 +1,33 @@
+OpenFill 1.53 PRE-FLIGHT v0.2 | 2026-10-15 21:05:35 Europe/Warsaw
+Purpose: independent allowed checks, not staging or deployment.
+
+SOURCE/QA
+- App Release binary ProductVersion 1.53 exists in isolated src/bin/Release.
+- CLI Release built separately with zero errors and zero warnings; file openfill.dll exists.
+- Full regression 624 passed / 0 failed (docs\full_test_run__v1.53__2026-10-15_2049.log).
+- Stage, safe-deploy and old launch scripts parse without PowerShell syntax errors.
+- No staged v1.53 folder exists.
+
+PRODUCTION/SAFETY
+- Production v1.52 PID27472 runs in SessionId=1; MultiHost shell runs in SessionId=0.
+- openfill_info returned status OK, 0 active tasks, 5 finished tabs. Maintenance is off, so deploy precondition NOT met.
+- Safe deployment script refuses Session0 and requires a separate maintenance gate and 0 running tasks.
+- Edited *only the obsolete error message* in tools\deploy_safely__v0.1__2026-10-14_2235.ps1 to reference interactive session, not Remote Desktop Commander. Syntax verified, no runtime execution.
+
+ADDITIONAL FINDING
+- Existing tools\deploy_launch__v0.1__2026-10-14_2235.ps1 is obsolete and NOT usable for release 1.53.
+- It hardcodes release version 1.50 and references tools\deploy_safely__v0.1__2026-10-13_2153.ps1, which DOES NOT exist at that path.
+- Current actual helper is tools\deploy_safely__v0.1__2026-10-14_2235.ps1.
+- Writing a new deployment wrapper was previously blocked; do not bypass that specific denial with another tool or disguised action.
+
+LATEST BASELINE
+- 115 continuous telemetry samples 2026-10-15 20:06 to 21:03 local, zero gaps >70sec, 85 idle/30 active.
+- Idle mean CPU 3.933% of whole four-logical-CPU machine; active mean 13.315%.
+- Final Working Set 2585.961 MB; Private Bytes 2193.18 MB; 20 WebView2 and 5 tabs.
+- This is v1.52 baseline only, NOT improvement due to v1.53.
+
+REMAINING CONCRETE BLOCKERS
+A. Earlier attempted staging execution was rejected. Not retried here.
+B. Release activation requires interactive user Session1 and a valid rollout script after maintenance active and no running tasks. MultiHost is Session0.
+C. No staged release 1.53 exists; cannot smoke-test new user interface or measure post-upgrade RAM/CPU.
+Only these actions are blocked; independent allowed diagnostics, QA and documents continue.

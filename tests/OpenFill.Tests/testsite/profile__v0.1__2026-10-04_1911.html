@@ -1,0 +1,176 @@
+<!doctype html>
+<!--
+  Strona testowa OpenFill: realistyczny formularz profilu (wzorowany na portalach typu Xing).
+  Metadata: wersja 0.1, data 2026-10-04 19:11
+  Celowo trudne elementy: baner cookies jako modal, pole kontrolowane jak w React (wartosc z DOM jest
+  nadpisywana stanem), autocomplete pobierany z serwera (fetch), wlasna lista rozwijana (role=listbox),
+  edytor contenteditable, przelacznik role=switch, wybor pliku, zapis przez fetch POST z walidacja.
+-->
+<html lang="pl"><head><meta charset="utf-8"><title>Edytuj profil — TestNet</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  .field { margin: 10px 0; }
+  .err { color: #b00; font-size: 12px; }
+  #cookie { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; }
+  #cookie .box { background: #fff; padding: 20px; width: 360px; }
+  #citylist { border: 1px solid #ccc; max-width: 200px; }
+  #citylist [role=option] { padding: 4px; cursor: pointer; }
+  #suggest [role=option] { padding: 4px; cursor: pointer; border-bottom: 1px solid #eee; }
+  #about { border: 1px solid #ccc; min-height: 40px; padding: 4px; }
+  .switch { display: inline-block; width: 40px; height: 20px; background: #ccc; border-radius: 10px; cursor: pointer; }
+  .switch[aria-checked=true] { background: #2a2; }
+</style></head>
+<body>
+<h1>Edytuj profil</h1>
+<form id="profile" name="Profil" novalidate>
+  <div class="field">
+    <label for="position">Stanowisko</label>
+    <input id="position" type="text" aria-describedby="position-err">
+    <div class="err" id="position-err"></div>
+  </div>
+
+  <div class="field">
+    <label for="company">Firma</label>
+    <input id="company" type="text" role="combobox" aria-autocomplete="list" aria-controls="suggest" aria-describedby="company-err" autocomplete="off">
+    <div id="suggest" role="listbox" aria-label="Podpowiedzi firm"></div>
+    <div class="err" id="company-err"></div>
+  </div>
+
+  <div class="field">
+    <span id="city-label">Miasto</span>
+    <div id="city" role="combobox" tabindex="0" aria-labelledby="city-label" aria-expanded="false" aria-controls="citylist">Wybierz miasto</div>
+    <div id="citylist" role="listbox" aria-labelledby="city-label" hidden></div>
+  </div>
+
+  <div class="field">
+    <label for="industry">Branża</label>
+    <select id="industry">
+      <option value="">— wybierz —</option>
+      <option value="it">IT i telekomunikacja</option>
+      <option value="consulting">Doradztwo</option>
+      <option value="finance">Finanse</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="since">Od kiedy</label>
+    <input id="since" type="month">
+  </div>
+
+  <div class="field">
+    <span id="about-label">O mnie</span>
+    <div id="about" contenteditable="true" role="textbox" aria-labelledby="about-label"></div>
+  </div>
+
+  <div class="field">
+    <span id="open-label">Otwarty na oferty</span>
+    <span id="open" class="switch" role="switch" tabindex="0" aria-checked="false" aria-labelledby="open-label"></span>
+  </div>
+
+  <div class="field">
+    <label for="photo">Zdjęcie profilowe</label>
+    <input id="photo" type="file" accept="image/*">
+    <span id="photo-name"></span>
+  </div>
+
+  <button type="button" id="clear">Wyczyść formularz</button>
+  <button type="submit" id="save">Zapisz zmiany</button>
+</form>
+<div id="status" role="status" aria-live="polite"></div>
+
+<div id="cookie" role="dialog" aria-modal="true" aria-label="Ustawienia prywatności">
+  <div class="box">
+    <h2>Ustawienia prywatności</h2>
+    <p>Używamy plików cookie.</p>
+    <button type="button" id="accept">Akceptuj wszystkie</button>
+    <button type="button" id="reject">Odrzuć</button>
+  </div>
+</div>
+
+<script>
+  // --- Stan jak w React: DOM jest tylko odbiciem stanu.
+  const state = { position: '', company: '', city: '', open: false };
+  const $ = id => document.getElementById(id);
+
+  $('accept').onclick = () => { $('cookie').remove(); window.__cookies = 'accepted'; };
+  $('reject').onclick = () => { $('cookie').remove(); window.__cookies = 'rejected'; };
+
+  $('position').addEventListener('input', e => state.position = e.target.value);
+
+  // Firma: kontrolowane pole. Bez zdarzenia input wartosc zostanie przywrocona ze stanu.
+  const company = $('company');
+  let timer = null;
+  company.addEventListener('input', e => {
+    state.company = e.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(suggest, 150);
+  });
+  setInterval(() => { if (company.value !== state.company) company.value = state.company; }, 50);
+
+  async function suggest() {
+    const box = $('suggest');
+    box.innerHTML = '';
+    if (state.company.length < 2) return;
+    const res = await fetch('/api/companies?q=' + encodeURIComponent(state.company));
+    const list = await res.json();
+    for (const name of list) {
+      const o = document.createElement('div');
+      o.setAttribute('role', 'option');
+      o.textContent = name;
+      // Jak w wielu bibliotekach: wybor na mousedown, nie na click.
+      o.addEventListener('mousedown', ev => { ev.preventDefault(); state.company = name; company.value = name; box.innerHTML = ''; });
+      box.appendChild(o);
+    }
+  }
+
+  // Miasto: wlasna lista rozwijana.
+  const cities = ['Kraków', 'Warszawa', 'Wrocław', 'Gdańsk'];
+  $('city').addEventListener('click', () => {
+    const list = $('citylist');
+    const open = list.hidden;
+    list.hidden = !open;
+    $('city').setAttribute('aria-expanded', String(open));
+    if (open) {
+      list.innerHTML = '';
+      for (const c of cities) {
+        const o = document.createElement('div');
+        o.setAttribute('role', 'option');
+        o.setAttribute('aria-selected', String(state.city === c));
+        o.textContent = c;
+        o.onclick = () => { state.city = c; $('city').textContent = c; list.hidden = true; $('city').setAttribute('aria-expanded', 'false'); };
+        list.appendChild(o);
+      }
+    }
+  });
+
+  $('clear').addEventListener('click', () => { if (confirm('Na pewno wyczyścić formularz?')) window.__cleared = true; });
+  $('open').addEventListener('click', () => { state.open = !state.open; $('open').setAttribute('aria-checked', String(state.open)); });
+  $('photo').addEventListener('change', e => { const f = e.target.files[0]; $('photo-name').textContent = f ? ('Wybrano: ' + f.name) : ''; window.__photo = f ? f.name : null; });
+
+  $('profile').addEventListener('submit', async e => {
+    e.preventDefault();
+    const errors = {};
+    if (!state.position.trim()) errors.position = 'Podaj stanowisko.';
+    if (!state.company.trim()) errors.company = 'Podaj firmę.';
+    for (const k of ['position', 'company']) {
+      $(k).setAttribute('aria-invalid', errors[k] ? 'true' : 'false');
+      $(k + '-err').textContent = errors[k] || '';
+    }
+    if (Object.keys(errors).length) {
+      $('status').setAttribute('role', 'alert');
+      $('status').textContent = 'Popraw błędy w formularzu.';
+      return;
+    }
+    const body = {
+      position: state.position, company: state.company, city: state.city,
+      industry: $('industry').value, since: $('since').value,
+      about: $('about').textContent, open: state.open, photo: window.__photo || null
+    };
+    const res = await fetch('/api/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const out = await res.json();
+    $('status').setAttribute('role', 'status');
+    $('status').textContent = out.ok ? 'Profil zapisany.' : ('Błąd zapisu: ' + out.error);
+    window.__saved = body;
+  });
+</script>
+</body></html>

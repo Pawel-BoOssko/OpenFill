@@ -1,0 +1,55 @@
+OPENFILL RESOURCE TELEMETRY ANALYSIS
+Version 0.4, 2026-10-15 05:19 Europe/Warsaw
+Production: OpenFill 1.52, PBOX1, PID 27472, started 2026-10-14 23:02:56 local.
+
+1. LIVE VERIFICATION
+MCP openfill_info: status=ok, version=1.52, active_tasks=0, uptime 374 minutes.
+Telemetry: C:\Users\pboru\OpenFill\data\stable\logs\telemetry\resources_20261015.ndjson
+File grew from 3,273,393 bytes at 05:17:14 to 3,288,929 bytes at 05:18:47.
+Last sample 05:18:42: 5 tabs, 0 tasks, 22 processes (21 WebView2), Working Set 2573.531 MB, Private Bytes 1755.32 MB, CPU 4.441% of 4-logical-processor machine, 10254 handles, 365 threads.
+
+2. OBSERVATION WINDOW
+634 samples from 2026-10-14 22:00:11 UTC to 2026-10-15 03:17:42 UTC (5.29 h).
+Tab counts: 3=2 samples, 4=21, 5=611. Active tasks: 1 sample; idle: 633 samples.
+Analysis restricted to 610 samples with 5 tabs, activeTasks=0, spanning 5.091 hours.
+Process count remained 22, WebView2 count remained 21 in the restricted window.
+
+3. FIVE-TAB IDLE TREND
+Metric: first / last / linear slope per hour / first-hour mean / last-hour mean
+Working Set MB: 2588.785 / 2573.555 / +10.550 / 2522.145 / 2564.512
+Private Bytes MB: 1718.562 / 1755.535 / +10.743 / 1705.126 / 1747.283
+CPU % machine: 4.088 / 3.348 / +0.103 / 3.532 / 3.945
+Handles: 10206 / 10252 / +25.751 / 10152.825 / 10251.233
+Threads: 374 / 360 / +0.007 / 362.575 / 362.583
+Managed GC MB: 30.670 / 5.839 / -3.037 per hour.
+GC Heap Size MB: 33.596 / 11.393 / -3.522 per hour.
+GC Committed MB: 42.727 / 16.363 / -4.868 per hour.
+Hourly mean Private Bytes MB: 1705.1, 1709.0, 1720.4, 1732.5, 1744.7 (full hours 0-4).
+Hourly mean CPU %: 3.532, 3.669, 3.694, 3.847, 3.958 (full hours 0-4).
+
+4. PROCESS ATTRIBUTION
+Highest mean CPU % machine, five-tab idle:
+PID 17316 renderer 0.7793%, mean Private 430.42 MB;
+PID 31520 renderer 0.7013%, mean Private 385.34 MB;
+PID 14380 renderer 0.6396%, mean Private 111.40 MB;
+PID 25084 renderer 0.5937%, mean Private 92.56 MB;
+PID 23276 GPU process 0.5524%, mean Private 156.29 MB.
+These five account for 87.3% of total mean CPU 3.743%. OpenFill host PID 27472: 0.074%, mean Private 46.68 MB.
+Private Bytes growth from first to last qualifying sample: PID 22948 renderer +38.08 MB; PID 31520 +12.75 MB; PID 17316 +12.68 MB; PID 28552 +9.23 MB; browser PID 27364 +4.98 MB.
+Specific renderers are NOT yet reliably mapped to specific tabs.
+
+5. SOURCE AND HYPOTHESIS
+src\OpenFill.App\MainForm__v0.24__2026-10-14_2259.cs lines 152-157 sets:
+--disable-features=CalculateNativeWinOcclusion
+--disable-backgrounding-occluded-windows
+--disable-renderer-backgrounding
+--disable-background-timer-throttling
+Live WebView2 browser PID 27364 carries these flags; its renderer children inherit disabled background timer throttling.
+Separate panel browser PID 15528 does not carry these flags.
+Strong hypothesis: retained tabs continue executing scripts/timers during agent idle, contributing to CPU usage.
+The upward Private Bytes drift of about 10.7 MB/hour at constant tab/process counts is REAL in this window, but it is not proof of an unbounded memory leak. Managed .NET heap shrank while total Private Bytes increased.
+
+6. ACTION AND NEXT VALIDATION
+No production restart, tab closure, process termination, GC tuning or browser flag change.
+Test background flags only in an isolated non-production WebView2 profile, using repeatable local pages and measuring idle CPU with flags on/off. Verify minimized/occluded task execution before considering production change.
+Continue fixed-tab monitoring and map renderer PIDs to specific tab origins to determine which pages cause CPU and memory drift.

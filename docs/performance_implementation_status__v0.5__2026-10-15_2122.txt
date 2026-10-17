@@ -1,0 +1,33 @@
+OpenFill source/QA checkpoint v0.5 | 2026-10-15 21:22:41 Europe/Warsaw
+Purpose: independent permitted source fix and tests. Production was NOT upgraded.
+
+NEW COMPLETED WORK
+* Discovered that SameSiteFamily grouped unrelated tenants alice.github.io and bob.github.io together (same for pages.dev and other public-hosting suffixes).
+* Extended the conservative known multi-label suffix list for common country and multi-tenant hosting domains, including s3.amazonaws.com.
+* SiteFamily now chooses the longest recognized suffix, up to three labels.
+* Added ten isolated origin-family regression assertions. Credential values never enter test logs.
+* Limitation: embedded suffix exceptions are NOT a complete Mozilla Public Suffix List. Unknown multi-tenant hosts need a comprehensive PSL-based follow-up.
+
+QA
+* Quick test 2026-10-15 21:17-21:19: 49 PASS / 0 FAIL. Log docs\quick_test_run__v1.53__2026-10-15_2117.log
+* Full test 2026-10-15 21:20-21:21: 634 PASS / 0 FAIL, stderr 0 bytes. Log docs\full_test_run__v1.53__2026-10-15_2120.log
+* App Release build 2026-10-15 21:19: 0 errors, 1 pre-existing MSB3277 WindowsBase warning. Log docs\app_build__v1.53__2026-10-15_2119.log
+* App Release executable exists: 
+True
+; CLI Release dll exists: 
+True
+* No stage script or deployment wrapper was executed.
+
+PRODUCTION BASELINE (NOT UPGRADED)
+* Running OpenFill PID 27472, SessionId 1, started 2026-10-14T23:02:56
+* Latest 120 telemetry samples (2026-10-15 20:22-21:22 local): 90 idle, 30 active; mean idle CPU 3.293% machine, mean active CPU 13.315%.
+* Last sample WS 2417.117 MB, PB 2190.617 MB, 20 WebView2 processes, 5 tabs; max WS in last hour 2880.699 MB.
+* This is version 1.52 behavior, not evidence of 1.53 performance gains.
+
+PENDING
+* Stage v1.53 release: prior execution denied; not retried via another route.
+* Interactive Session1 deployment only after authorized path, maintenance gate, zero running tasks, rollback ready.
+* UI smoke test for Firefox import, origin/login list and actual credential fill.
+* At least 30-60 min post-deployment CPU/RAM comparison and WebView2 process counts.
+* Full PSL implementation to close remaining multi-tenant site-family ambiguity (independent follow-up).
+Reference previous checkpoint: docs\release_preflight_allowed__v0.2__2026-10-15_2105.txt

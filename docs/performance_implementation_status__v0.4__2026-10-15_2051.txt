@@ -1,0 +1,36 @@
+OpenFill 1.53 - final isolated development and QA status, v0.4
+Timestamp 2026-10-15 approx 20:51 Europe/Warsaw
+Previous detailed checkpoint: docs\performance_implementation_status__v0.3__2026-10-15_2046.txt
+
+COMPLETED IN SOURCE
+* releaseFinishedTabs clears completed pages into one reusable blank tab while preserving URLs for continuations.
+* Failure recovery prevents an unsuccessful WebView2 navigate/close from orphaning a still-live tracked tab.
+* Owner-tracked sign-in pop-ups close when their finished originating tab is released.
+* Firefox saved-account picker supports a single batch of multiple checkboxes across changing search filters and 3+ domains.
+* UI Credentials displays origins/logins, not passwords. Batch import dialogs list Created/Updated/successful entries and failures.
+* ImportedCredentialVault.Save now verifies exact bytes stored by Windows Credential Manager against transient input using constant-time comparison, then zeroes the copied password bytes.
+* Existing local E2E site supports two independent login accounts and genuine form submission; additional vault tests cover 6 accounts on 3 domains with cleanup.
+
+LATEST VALIDATION
+* Directory.Build.props: OpenFillVersion 1.53, date 2026-10-15T20:48.
+* App Release build: success, 0 errors, 1 pre-existing warning MSB3277 WindowsBase.
+* Tabs and popup release failures: 103 PASS / 0 FAIL.
+* Quick credential batch and roundtrip: 39 PASS / 0 FAIL.
+* Full test run 2026-10-15 20:49-20:50: 624 PASS / 0 FAIL. All tests completed; stderr 0 bytes and no FAIL lines.
+* Full test log: docs\full_test_run__v1.53__2026-10-15_2049.log
+* Test data removed. No production side effects.
+
+PRODUCTION BASELINE, NOT YET IMPROVED
+* OpenFill 1.52 unchanged, PID 27472. openfill_info 20:46: 0 active tasks, 5 finished tabs, no maintenance.
+* Idle 24 samples near 20:35: 5.390% of whole CPU, WS 2733.406 MB, PB 2562.379 MB.
+* Later 20:49: total physical RAM 16218 MB, OS free 3842 MB, machine used 76.3%; OpenFill tree WS 2664.047 MB or 16.4% physical RAM, PB 2230.516 MB, 20 WebView2 for 5 tabs; zero active tasks.
+* Two largest WebView2 idle renderers consumed 584/563 MB WS in earlier sample. Do not attribute PIDs to tabs without verified mapping.
+
+BLOCKERS
+* Previously denied 1.53 staging/deployment and deployment wrapper must not be circumvented. No staged build or production upgrade, therefore no production RAM/CPU benefit is yet proven.
+* New Windows UI smoke test and post-deployment telemetry await a permitted interactive-session deployment.
+* Renderer-to-tab mapping and changes to WebView2 background-throttling flags were previously blocked as experiments, and must not be retried via a different route.
+* Do not use Remote Desktop Commander. MultiHost is the allowed normal channel, not a route around the above blocked actions.
+
+RELEASE ACCEPTANCE REMAINING
+Do the approved rollout procedure with rollback only if tools allow it and after validating maintenance/zero running tasks; then verify imported login UI and real login flow; measure 30-60 min of idle/active RAM/CPU and browser process counts versus 1.52. Do not declare completion before measured improvement and functional verification.

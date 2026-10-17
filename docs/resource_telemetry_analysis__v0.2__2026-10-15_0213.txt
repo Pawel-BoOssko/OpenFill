@@ -1,0 +1,106 @@
+OPENFILL RESOURCE TELEMETRY ANALYSIS
+File: C:\Users\pboru\OpenFill\data\stable\logs\telemetry\resources_20261015.ndjson
+Samples: 265
+From UTC: 2026-10-14T22:00:11.3943576Z
+To UTC: 2026-10-15T00:12:36.7160374Z
+Duration: 02:12:25
+Logical processors: 4
+CPU scale: cpuPctMachine=share of total logical CPU capacity; cpuPctCoreSum=one-core scale, 100 per fully busy logical CPU
+
+LATEST
+uptimeSeconds = 11380
+activeTasks = 0
+waitingTasks = 0
+tabs = 5
+processCount = 22
+webViewProcessCount = 21
+workingSetMb = 2540.242
+privateBytesMb = 1725.125
+handles = 10214
+threads = 364
+gcManagedMb = 6.761
+gcHeapSizeMb = 17.698
+gcCommittedMb = 24.82
+cpuPctMachine = 4.205
+cpuPctCoreSum = 16.822
+
+ALL SAMPLES
+workingSetMb: avg=2511,736, min=2208,996, max=2682,816, p95=2564,844, slope/hour=29,105
+privateBytesMb: avg=1696,919, min=1455,203, max=1823,785, p95=1727,344, slope/hour=31,334
+cpuPctMachine: avg=3,57, min=1,674, max=8,545, p95=4,544, slope/hour=0,193
+processCount: avg=21,906, min=20, max=22, p95=22, slope/hour=0,235
+webViewProcessCount: avg=20,906, min=19, max=21, p95=21, slope/hour=0,235
+handles: avg=10084,585, min=8951, max=10295, p95=10194, slope/hour=189,963
+threads: avg=361,011, min=332, max=389, p95=365, slope/hour=1,918
+gcManagedMb: avg=14,508, min=2,436, max=33,658, p95=30,803, slope/hour=-12,474
+gcHeapSizeMb: avg=22,741, min=16,785, max=40,261, p95=30,948, slope/hour=-7,918
+gcCommittedMb: avg=31,929, min=24,82, max=42,883, p95=42,02, slope/hour=-9,768
+
+ACTIVE VS IDLE
+active samples = 1
+idle samples = 264
+workingSetMb: active {avg=2682.816, max=2682.816}; idle {avg=2511.088, max=2588.809}
+privateBytesMb: active {avg=1823.785, max=1823.785}; idle {avg=1696.439, max=1780.176}
+cpuPctMachine: active {avg=7.683, max=7.683}; idle {avg=3.555, max=8.545}
+processCount: active {avg=22, max=22}; idle {avg=21.905, max=22}
+webViewProcessCount: active {avg=21, max=21}; idle {avg=20.905, max=21}
+handles: active {avg=10295, max=10295}; idle {avg=10083.788, max=10215}
+threads: active {avg=389, max=389}; idle {avg=360.905, max=379}
+
+TOP PROCESS INSTANCES BY MAX PRIVATE BYTES
+
+  Pid Name           StartUtc                     Samples MaxPrivateMb MaxWorkingSetMb MaxCpuMachinePct
+  --- ----           --------                     ------- ------------ --------------- ----------------
+17316 msedgewebview2 2026-10-14T21:07:48.5234623Z     265      454,379          544,09            1,673
+31520 msedgewebview2 2026-10-14T21:08:35.9407794Z     265      399,652         482,188            1,493
+23276 msedgewebview2 2026-10-14T21:02:59.0077132Z     265      201,496         229,086            0,935
+14380 msedgewebview2 2026-10-14T22:11:32.1638954Z     242      144,945         201,117            0,986
+28552 msedgewebview2 2026-10-14T21:07:56.9103955Z     265      133,758         165,742             1,09
+25084 msedgewebview2 2026-10-14T22:00:52.8153121Z     263      122,422         180,641            0,857
+27472 OpenFill       2026-10-14T21:02:56.4534334Z     265       68,625         140,793             1,61
+ 3280 msedgewebview2 2026-10-14T21:02:58.2745123Z     265       68,277          106,82            0,805
+27364 msedgewebview2 2026-10-14T21:02:58.3697713Z     265       67,727          154,82            1,415
+22948 msedgewebview2 2026-10-14T21:07:54.9109234Z     265       66,008         107,828            0,532
+24524 msedgewebview2 2026-10-14T21:02:58.0505841Z     265        64,25          85,984            1,143
+15528 msedgewebview2 2026-10-14T21:02:57.6729198Z     265       33,258          101,91            0,026
+
+
+DIAGNOSTIC ADDENDUM, 2026-10-15 02:14 Europe/Warsaw
+Evidence: telemetry 2026-10-15, 267 samples at last group calculation, app source MainForm__v0.24__2026-10-14_2259.cs, lines 152-157.
+Production OpenFill.exe PID 27472 responds (Responding=True). WebView2 processes include --webview-exe-version=1.52.
+Telemetry file increased from 1,361,869 to 1,377,433 bytes between observations and is still being appended.
+
+STEADY FIVE-TAB IDLE PERIOD
+243 samples, 121.4 min, activeTasks=0, tabs=5.
+Working Set: 2588.785 -> 2538.422 MB, delta -50.363 MB.
+Private Bytes: 1718.562 -> 1723.836 MB, delta +5.274 MB.
+Handles: 10206 -> 10219, delta +13.
+Threads: 374 -> 365, delta -9.
+CPU machine average: 3.605% of four logical processors (equivalent to 14.42% of one logical CPU).
+No evidence of monotonic memory, handle, or thread leakage in this fixed-tab window.
+Active-vs-idle comparison for 2026-10-15 is not statistically meaningful: one active sample only.
+
+CPU PROCESS ATTRIBUTION, LAST 60 MINUTES
+PID 17316 renderer: 0.791% machine CPU average, 427.9 MB private average.
+PID 31520 renderer: 0.711% machine CPU average, 382.3 MB private average.
+PID 14380 renderer: 0.637% machine CPU average, 110.3 MB private average.
+PID 25084 renderer: 0.601% machine CPU average, 91.8 MB private average.
+PID 23276 renderer: 0.553% machine CPU average, 155.5 MB private average.
+PID 27472 OpenFill host: 0.074% machine CPU average, 46.8 MB private average.
+The two most active renderers account for approximately 40.9% of sampled tree CPU in the last hour.
+
+STRONG, TESTABLE HYPOTHESIS
+Source MainForm__v0.24__2026-10-14_2259.cs, lines 152-157 explicitly sets:
+--disable-features=CalculateNativeWinOcclusion
+--disable-backgrounding-occluded-windows
+--disable-renderer-backgrounding
+--disable-background-timer-throttling
+The adjacent source comment states the intended requirement: pages must continue at full speed when the window is minimized or occluded.
+This configuration intentionally prevents browser background throttling, making continuing JavaScript timers and site activity a plausible cause of nonzero CPU when OpenFill has no active tasks.
+This is a source-confirmed configuration and a strong explanation candidate, NOT proof that a particular site or timer is responsible.
+Do not remove these flags in production without testing background task execution and minimized-window behavior.
+
+NEXT MEASUREMENT
+Correlate tab URLs and page activity with renderer PIDs, then perform a controlled A/B experiment with representative sites and active minimized tasks in an isolated test instance. Do not terminate or recycle production WebView2 processes.
+No production tuning applied. Production remains running.
+

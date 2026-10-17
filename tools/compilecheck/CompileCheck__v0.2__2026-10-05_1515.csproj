@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Compile check of the Windows app on Linux (without NuGet packages).
+    Metadata: wersja 0.2, data 2026-10-05 15:15.
+    Compiles the src/OpenFill.App sources against reference WinForms DLLs (Mono) and WebView2 (from the pywebview package).
+    It does not replace building on Windows - it catches typos and API errors before the package release.
+    Usage: dotnet build tools/compilecheck -p:RefDir=/path/to/dlls
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <DefineConstants>$(DefineConstants);OPENFILL_COMPILECHECK</DefineConstants>
+    <NoWarn>$(NoWarn);CS1701;CS1702;MSB3277;CA1416</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <MonoDir Condition="'$(MonoDir)'==''">/usr/lib/mono/4.5</MonoDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\OpenFill.App\*.cs" />
+    <ProjectReference Include="..\..\src\OpenFill.Core\*.csproj" />
+    <Reference Include="System.Windows.Forms"><HintPath>$(MonoDir)/System.Windows.Forms.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core"><HintPath>$(RefDir)/Microsoft.Web.WebView2.Core.dll</HintPath></Reference>
+    <Reference Include="Microsoft.Web.WebView2.WinForms"><HintPath>$(RefDir)/Microsoft.Web.WebView2.WinForms.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

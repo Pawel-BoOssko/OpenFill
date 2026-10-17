@@ -1,0 +1,65 @@
+OPENFILL RESOURCE TELEMETRY ANALYSIS
+File: C:\Users\pboru\OpenFill\data\stable\logs\telemetry\resources_20261015.ndjson
+Samples: 743
+From UTC: 2026-10-14T22:00:11.3943576Z
+To UTC: 2026-10-15T04:12:22.4855056Z
+Duration: 06:12:11
+Logical processors: 4
+CPU scale: cpuPctMachine=share of total logical CPU capacity; cpuPctCoreSum=one-core scale, 100 per fully busy logical CPU
+
+LATEST
+uptimeSeconds = 25766
+activeTasks = 0
+waitingTasks = 0
+tabs = 5
+processCount = 22
+webViewProcessCount = 21
+workingSetMb = 2592.062
+privateBytesMb = 1776.082
+handles = 10303
+threads = 364
+gcManagedMb = 8.313
+gcHeapSizeMb = 12.785
+gcCommittedMb = 16.367
+cpuPctMachine = 4.204
+cpuPctCoreSum = 16.814
+
+ALL SAMPLES
+workingSetMb: avg=2539,124, min=2208,996, max=2682,816, p95=2575,645, slope/hour=14,204
+privateBytesMb: avg=1724,869, min=1455,203, max=1839,387, p95=1764,359, slope/hour=14,883
+cpuPctMachine: avg=3,768, min=1,674, max=8,545, p95=4,764, slope/hour=0,107
+processCount: avg=21,966, min=20, max=22, p95=22, slope/hour=0,032
+webViewProcessCount: avg=20,966, min=19, max=21, p95=21, slope/hour=0,032
+handles: avg=10182,697, min=8951, max=10326, p95=10275, slope/hour=46,843
+threads: avg=361,52, min=332, max=389, p95=365, slope/hour=0,294
+gcManagedMb: avg=9,365, min=2,436, max=33,658, p95=28,267, slope/hour=-2,349
+gcHeapSizeMb: avg=17,064, min=10,936, max=40,261, p95=30,948, slope/hour=-2,874
+gcCommittedMb: avg=23,832, min=14,91, max=42,883, p95=42,02, slope/hour=-4,018
+
+ACTIVE VS IDLE
+active samples = 1
+idle samples = 742
+workingSetMb: active {avg=2682.816, max=2682.816}; idle {avg=2538.93, max=2648.145}
+privateBytesMb: active {avg=1823.785, max=1823.785}; idle {avg=1724.736, max=1839.387}
+cpuPctMachine: active {avg=7.683, max=7.683}; idle {avg=3.763, max=8.545}
+processCount: active {avg=22, max=22}; idle {avg=21.966, max=22}
+webViewProcessCount: active {avg=21, max=21}; idle {avg=20.966, max=21}
+handles: active {avg=10295, max=10295}; idle {avg=10182.546, max=10326}
+threads: active {avg=389, max=389}; idle {avg=361.482, max=381}
+
+TOP PROCESS INSTANCES BY MAX PRIVATE BYTES
+
+  Pid Name           StartUtc                     Samples MaxPrivateMb MaxWorkingSetMb MaxCpuMachinePct
+  --- ----           --------                     ------- ------------ --------------- ----------------
+17316 msedgewebview2 2026-10-14T21:07:48.5234623Z     743      456,312          544,09            1,882
+31520 msedgewebview2 2026-10-14T21:08:35.9407794Z     743      402,402         484,645            1,493
+23276 msedgewebview2 2026-10-14T21:02:59.0077132Z     743      201,496         229,086            0,935
+14380 msedgewebview2 2026-10-14T22:11:32.1638954Z     720      144,945         201,117            1,142
+28552 msedgewebview2 2026-10-14T21:07:56.9103955Z     743       142,07         173,492             1,09
+25084 msedgewebview2 2026-10-14T22:00:52.8153121Z     741      122,422         180,641            0,907
+22948 msedgewebview2 2026-10-14T21:07:54.9109234Z     743       94,793         135,695            0,974
+27364 msedgewebview2 2026-10-14T21:02:58.3697713Z     743       72,742         159,984            1,415
+27472 OpenFill       2026-10-14T21:02:56.4534334Z     743       68,625         140,793             1,61
+ 3280 msedgewebview2 2026-10-14T21:02:58.2745123Z     743       68,277          106,82            0,805
+24524 msedgewebview2 2026-10-14T21:02:58.0505841Z     743        64,25          85,984            1,143
+15528 msedgewebview2 2026-10-14T21:02:57.6729198Z     743       33,258          101,91            0,026

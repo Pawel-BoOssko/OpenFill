@@ -1,0 +1,625 @@
+﻿
+== Redactor: secret removal ==
+  OK  JWT masked
+  OK  text stays
+  OK  bearer token masked
+  OK  API key masked
+  OK  URL param masked
+  OK  password field masked
+  OK  plain field stays
+
+== Windows credential vault smoke ==
+  OK  vault saved and read back
+  OK  vault response omits value
+  OK  vault test entry deleted
+
+== Firefox profile list and NSS startup (no passwords are decrypted) ==
+  OK  Firefox profile with saved credentials found
+  OK  Firefox site metadata enumerated
+  OK  Firefox NSS database opened
+  OK  Firefox NSS primary password status readable
+
+== Imported account vault: save, read, site boundary and delete ==
+  OK  imported account stored
+  OK  import list exact origin
+  OK  different subdomain cannot read imported account
+  OK  imported account verified
+  OK  import test entry removed
+
+== OutputLimiter: overflow to file ==
+  OK  small output, no file
+  OK  large output truncated
+  OK  file saved
+
+== PageModel: render and diff ==
+  OK  render: field
+  OK  render: button
+  OK  diff: value change
+  OK  diff: unchanged omitted
+
+== BuildInfo: version and date ==
+  OK  version non-empty
+  OK  headline has the version date
+
+== SiteNotesStore: scrub and counters ==
+  OK  note saved
+  OK  secret removed from note
+  OK  failure marks stale
+
+== AppConfig: save and load ==
+  OK  model preserved
+  OK  effort preserved
+
+== Model loop: Responses API request format (reasoning, tool results, limits) ==
+  OK  result from finish
+  OK  two requests to the model
+  OK  model
+  OK  store=false
+  OK  effort
+  OK  tools: get_page, act_many, finish, report_gap
+  OK  tools have type function
+  OK  reasoning returns in input (store=false)
+  OK  tool result 1 with call_id
+  OK  tool result 2 with call_id
+  OK  type function_call_output
+  OK  gap report saved
+  OK  step limit -> partial
+  OK  batches of steps, no question asked
+  OK  search task finishes
+  OK  search_logs finds an earlier event
+  OK  search_logs says when nothing matches
+  OK  get_console with a filter that matches nothing
+  OK  plain question goes the normal way
+  OK  user_only question goes to the person only
+  OK  the user's code comes back to the model
+  OK  error 400 -> failed
+  OK  API message in summary
+
+== Integration: extraction + actions + save on the test page ==
+  OK  extraction: Firma field
+  OK  extraction: select with options
+  OK  extraction: submit button
+  OK  headline id found
+  OK  company id found
+  OK  diff shows company
+  OK  password field is listed
+  OK  password value hidden from the model (render)
+  OK  password value hidden from the model (raw)
+  OK  save button id
+  OK  form saved: company
+  OK  form saved: industry
+  OK  form saved: remote
+  OK  network: page document visible
+
+== Model tools on a hard form (modal, React, autocomplete, custom list, file) ==
+  OK  navigation: dialog visible
+  OK  navigation: page heading
+  OK  cookies button id
+  OK  realClick ok
+  OK  diff: dialog gone
+  OK  cookies accepted
+  OK  validation: field error
+  OK  validation: page message
+  OK  act_many ok
+  OK  autocomplete: suggestion appeared
+  OK  autocomplete: suggestion as option
+  OK  network: autocomplete request visible
+  OK  city list id
+  OK  city list: options visible
+  OK  switch shown as toggle
+  OK  upload_file ok
+  OK  message: profile saved
+  OK  network: save POST
+  OK  server: position
+  OK  server: company from suggestion (controlled field)
+  OK  server: city from custom list
+  OK  server: industry
+  OK  server: date
+  OK  server: contenteditable editor
+  OK  server: switch
+  OK  server: file
+  OK  confirm(): accepted, page did not hang
+  OK  get_page reports page dialog
+  OK  read_text: finds message
+  OK  screenshot: image for the model
+  OK  network log saved
+
+== Live panel: version with date, task from panel, consent card, result ==
+  OK  panel connected to app
+  OK  header: version date on top
+  OK  header: version number
+  OK  window title with date
+  OK  consent card appeared in panel
+  OK  state: working
+  OK  banner: working, visible
+  OK  task field locked while running
+  OK  panel result: success
+  OK  banner: finished and green
+  OK  task field unlocked after the end
+  OK  history: the task is listed
+  OK  history: task text and source
+  OK  live events in panel (25)
+  OK  panel shows tool call
+  OK  filter hides events from other sources
+  OK  after reload: history restored
+  OK  after reload: result still visible
+  OK  second consent card
+  OK  decline -> partial result
+  OK  site note saved after success
+
+== HistoryStore: upsert, order, interrupted, run events ==
+  OK  three tasks, one line per id
+  OK  newest first
+  OK  current stays running
+  OK  old running task becomes interrupted
+  OK  finished task keeps its summary
+  OK  limit respected
+  OK  events: broken line skipped
+  OK  events: not truncated
+  OK  events: limit truncates
+  OK  events: path tricks refused
+
+== Frames of other domains and sign-in pop-ups ==
+  OK  frame id is split
+  OK  plain id is not a frame id
+  OK  empty id is not a frame id
+  OK  frame id without inner id is refused
+  OK  Google sign-in is a pop-up
+  OK  display=popup is a pop-up
+  OK  Apple sign-in is a pop-up
+  OK  Facebook dialog is a pop-up
+  OK  an ordinary link is not a pop-up
+  OK  first pop-up closes nothing
+  OK  the same pop-up again replaces the earlier one
+  OK  another address does not replace
+  OK  about:blank pop-ups are never replaced
+  OK  over the limit the oldest is closed
+  OK  a closed pop-up is forgotten
+  OK  key ignores the query and the case
+
+== SwitchableCdpConnection: follows the active tab ==
+  OK  sending with no tab fails clearly
+  OK  key of the active tab
+  OK  call goes to the active tab
+  OK  only the active tab's events arrive
+  OK  after switching, the old tab is silent
+  OK  call goes to the new tab
+  OK  detaching an inactive tab changes nothing
+  OK  detaching the active tab leaves none
+
+== SwitchableCdpConnection: a pop-up window of the tab ==
+  OK  no pop-up at first
+  OK  selecting a missing pop-up changes nothing
+  OK  the task follows the pop-up that opened
+  OK  calls go to the pop-up
+  OK  only the pop-up's events arrive while it is in front
+  OK  the task can go back to the page
+  OK  then only the page's events arrive
+  OK  and return to the pop-up
+  OK  detaching another connection changes nothing
+  OK  when the pop-up closes the task is back on the page
+  OK  calls go to the page again
+  OK  no page, no native input
+  OK  focus and keys go to the page
+  OK  while a pop-up is in front the keys go to the pop-up
+  OK  a window that has no focus gets no keys
+
+== TabManager: one tab per task, limit, never closes a busy tab ==
+  OK  the first task takes over the blank tab
+  OK  no extra tab was opened
+  OK  tab stays open after the task
+  OK  its address is remembered
+  OK  state is finished
+  OK  a new task gets a new tab
+  OK  three tabs fit the limit of three
+  OK  limit holds: still three tabs
+  OK  the oldest finished tab (task one) was closed
+  OK  newer tabs survive
+  OK  closed task keeps its address
+  OK  the running/waiting tab was not closed
+  OK  limit still holds (a finished tab made room)
+  OK  with only busy tabs, nothing is closed
+  OK  the limit gave way by one
+  OK  strip shows the open tabs
+  OK  strip carries states
+
+== TabManager: returning to a session ==
+  OK  continuing a task with an open tab
+  OK  it reuses that very tab
+  OK  nothing opened or closed
+  OK  tab now belongs to the new task
+  OK  the earlier task no longer owns a tab
+  OK  B's tab was closed to make room
+  OK  continuing a closed session reopens it
+  OK  at the last known address
+  OK  a new tab was opened at that address
+  OK  limit still holds
+  OK  unknown session: not continued
+  OK  address restored after restart
+  OK  no tab is open after restart
+  OK  after restart a continued task reopens the address
+
+== TabManager: closing by hand and the free tab ==
+  OK  running tab cannot be closed by hand
+  OK  finished tab can be closed
+  OK  its address is kept for later
+  OK  a free tab can be closed and is forgotten
+  OK  limit is at least one
+
+== Prompt for a continued task ==
+  OK  a fresh task is unchanged
+  OK  reopened: names the address
+  OK  reopened: says forms are gone
+  OK  earlier task included
+  OK  task text at the end
+  OK  tells it to look first
+  OK  open tab: left as it was
+
+== MCP: continuing an earlier task ==
+  OK  first task: run options carry the task id
+  OK  first task continues nothing
+  OK  explicit continue: tied to the earlier task
+  OK  explicit continue: earlier task described
+  OK  explicit continue: earlier result handed on
+  OK  snapshot says what it continues
+  OK  the very same job again: found by content
+  OK  unrelated task continues nothing
+  OK  same sentence about another site: not the same job
+  OK  same sentence, same site: found by content
+  OK  SameJob: edited wording is not enough
+  OK  unknown continue id is an error
+  OK  and no run was started
+  OK  start_task offers continue_task_id
+
+== CostGuard: domains, charge, block, unblock, persistence ==
+  OK  www is dropped
+  OK  subdomain reduced to the site
+  OK  two-part suffix kept
+  OK  bare host
+  OK  port dropped
+  OK  blank page has no domain
+  OK  empty
+  OK  charge returns the running total
+  OK  charges add up
+  OK  a charge raises Changed
+  OK  not blocked yet
+  OK  blocked
+  OK  blocked domain found in a task text
+  OK  bare name in a task text
+  OK  other site is not blocked
+  OK  no addresses at all
+  OK  block survives a restart
+  OK  total survives a restart
+  OK  unblock lifts the block
+  OK  and counts from zero again
+  OK  lifetime total is kept
+  OK  unblock of a free domain does nothing
+  OK  unblock refused past the lifetime ceiling
+  OK  list marks it locked
+  OK  unblock allowed below the ceiling
+
+== Cost limits in the model loop: hard domain limit, questions, loops ==
+  OK  hard limit -> blocked
+  OK  summary says cost limit
+  OK  summary says only the user can lift it
+  OK  stopped on the second call
+  OK  domain is now blocked for good
+  OK  meter shows steps and cost
+  OK  lifetime ceiling -> blocked on the first call
+  OK  one model call only
+  OK  message names the lifetime limit
+  OK  blocked domain -> blocked at once
+  OK  no model call
+  OK  task still ends normally
+  OK  navigate refused
+  OK  person says stop -> partial
+  OK  asked on the third call (18 cents)
+  OK  one question, to the person only
+  OK  never asked through the normal door
+  OK  question names the cost
+  OK  warning is set for the status
+  OK  person says continue -> the task goes on and finishes
+  OK  asked only once up to 24 cents
+  OK  domain cost recorded
+  OK  loop -> partial
+  OK  summary says repeated
+  OK  stopped after the third warning
+  OK  model got a loop warning
+
+== Waiting for the person is not cut off by the tool time limit ==
+  OK  task finishes
+  OK  model received the answer
+  OK  no time-limit error
+
+== MCP: blocked sites, progress, calibration ==
+  OK  blocked site is refused
+  OK  no task was started
+  OK  tells the caller it cannot lift the block
+  OK  running
+  OK  steps in the status
+  OK  cost in the status
+  OK  warning in the status
+  OK  info status
+  OK  info has the host section
+  OK  info lists recent tasks
+  OK  calibration for the caller
+  OK  warning repeated in the advice
+  OK  the run ended blocked
+  OK  explains who can lift it
+  OK  summary kept
+  OK  cut-off task is interrupted
+  OK  last address given
+  OK  hint names continue_task_id
+  OK  a new task can start afterwards
+
+== Defaults: built-in prices and no key in the repository ==
+  OK  fresh config has the default model price
+  OK  dated snapshot of the default model is priced
+  OK  unknown model has no price
+  OK  a config with its own prices keeps them and still has the defaults
+  OK  empty prices in config.json: defaults still apply
+  OK  null prices in config.json: defaults still apply
+  OK  a price set in config.json overrides the default
+  OK  repository build has NO embedded key
+  OK  no variable, no file: the built-in key is used (none in the repository)
+  OK  key source names the built-in key only when there is one
+  OK  the environment variable beats the built-in key
+
+== Shared folder: list, save, read, path safety ==
+  OK  task finishes
+  OK  empty folder listed with its path
+  OK  text saved
+  OK  file was replaced by the overwrite call
+  OK  no silent overwrite
+  OK  path trick refused
+  OK  nothing written outside
+  OK  download copied into a subfolder
+  OK  file read back as data
+  OK  overwrite on request
+  OK  list shows files
+  OK  list shows the subfolder file
+  OK  read outside refused
+  OK  text or download required
+
+== MCP: temporary account data survives tool handoff ==
+  OK  temporary result finishes
+  OK  temporary service
+  OK  temporary account
+  OK  temporary value
+  OK  change flag
+  OK  vault flag
+  OK  temporary data persists
+
+== MCP: external idempotency keys ==
+  OK  first event registration finishes
+  OK  event key exposed
+  OK  repeated key returns same task
+  OK  repeat did not start another run
+  OK  key collision rejected
+  OK  collision does not start task
+  OK  unsafe key rejected
+  OK  key survives OpenFill restart
+  OK  key is scoped to caller
+
+== MCP: task life cycle ==
+  OK  no requester and no chat: refused
+  OK  requester without chat: refused
+  OK  simple task finishes
+  OK  task id carries the date
+  OK  summary returned
+  OK  task saved to disk
+  OK  question reaches the caller
+  OK  question text
+  OK  options listed
+  OK  task finishes after the answer
+  OK  answer reached the inner model
+  OK  long task is running
+  OK  second task is refused
+  OK  busy names the open task
+  OK  same content returns the open task
+  OK  only one run was started for it
+  OK  status without id finds the open task
+  OK  cancel
+  OK  new task allowed after cancel
+  OK  older task is read from disk
+  OK  unknown id
+  OK  reply without a question explains
+  OK  stop by the person has its own status
+  OK  do not restart
+  OK  no hint to continue it
+  OK  a new task on the same site stays allowed
+  OK  waiting for the user
+  OK  the question is shown
+  OK  caller is told to wait for the person in the OpenFill window
+  OK  reply is refused for a user-only question
+  OK  still waiting after the refused reply
+  OK  finishes when the user has entered it
+  OK  summary after the code
+
+== MCP: HTTP server ==
+  OK  protocol version echoed
+  OK  tools capability
+  OK  eight tools
+  OK  every schema is strict and has no $schema
+  OK  every tool has annotations
+  OK  initialize reports the server version
+  OK  info tool ok
+  OK  info tool reports the version
+  OK  info tool has runtime and recent tasks
+  OK  tools/call runs a task
+  OK  isError false
+  OK  screenshot ok
+  OK  screenshot comes back as an image the model can look at
+  OK  screenshot image is not repeated in the text
+  OK  screenshot link is under the secret path
+  OK  screenshot link downloads
+  OK  screenshot content type
+  OK  screenshot path tricks are 404
+  OK  screenshot link needs the secret
+  OK  unknown method
+  OK  wrong secret is 404
+  OK  GET is 405
+  OK  notification is 202
+
+== MCP file transfer: scoped GET / PUT ==
+  OK  path traversal rejected
+  OK  missing download rejected
+  OK  download link created
+  OK  download says GET
+  OK  file URL does not reveal MCP master secret
+  OK  GET returns identical raw bytes
+  OK  upload link created
+  OK  upload says PUT
+  OK  PUT returns Created
+  OK  PUT persisted identical raw bytes
+  OK  upload link cannot be used twice
+  OK  unissued GET token rejected
+
+== DomainLocks: one task per site, all or nothing, refusal text ==
+  OK  free site is taken
+  OK  second task is refused, holder named
+  OK  all or nothing: xing.com was not taken either
+  OK  the same task may ask again
+  OK  task holds both
+  OK  another site is free for another task
+  OK  refusal: head
+  OK  refusal: who (another chat)
+  OK  refusal: what it does
+  OK  refusal: no way around
+  OK  refusal: try again later
+  OK  refusal: duplicate note
+  OK  refusal: no instructions to stop the other task
+  OK  refusal: user typed in the window
+  OK  refusal: mid-task variant
+  OK  released after the task
+  OK  now the other task may go in
+
+== CostGuard: 7-day window, archive, blocks stay until the user lifts them ==
+  OK  charged
+  OK  both inside the window
+  OK  the old cost dropped out of the window
+  OK  and was archived
+  OK  archive file written
+  OK  window survives a restart
+  OK  a block stays after the window has passed
+  OK  the user can lift it once the window is empty
+  OK  lifted
+  OK  the user cannot lift a block while the window is over the ceiling
+  OK  window days
+
+== TabManager and HistoryStore: busy tab, several current tasks ==
+  OK  no task: active tab is free
+  OK  fake tabs share one connection
+  OK  a task works in the open tab
+  OK  no own connection without parallel support
+  OK  after the task the tab is free again
+  OK  a new task does not take over the hand-made tab
+  OK  the hand-made tab is still open
+  OK  the tab limit never closes it
+  OK  the person can close it
+  OK  and it leaves no record
+  OK  both current tasks stay running
+  OK  the other one is interrupted
+
+== MCP: several tasks at once ==
+  OK  first runs
+  OK  second runs at the same time
+  OK  third runs at the same time
+  OK  three different ids
+  OK  next step says other tasks may run
+  OK  fourth is refused: all slots taken
+  OK  busy lists the three open tasks
+  OK  busy says how many
+  OK  no id with several open tasks is an error
+  OK  the error names the tasks
+  OK  status by id
+  OK  the same job returns the open task
+  OK  screenshot ok
+  OK  screenshot of the task asked for
+  OK  cancel one task
+  OK  the host was told which one
+  OK  the others keep running
+  OK  the third keeps running too
+  OK  the freed slot can be used
+  OK  busy site: its own status
+  OK  busy site: the refusal text arrives whole
+  OK  busy site: no task record kept
+  OK  busy site: no task id handed out
+  OK  info: parallel limit
+  OK  info: list of active tasks
+  OK  tool text no longer says one task at a time
+  OK  tool text explains the site rule
+  OK  screenshot takes a task id
+
+== Domain gate inside a task: navigate and redirects ==
+  OK  navigate to a busy site is refused in the tool answer
+  OK  the model is told not to open it
+  OK  the task ends as the model decided
+  OK  a redirect onto a busy site stops the task
+  OK  summary says why
+  OK  the model was not asked again
+  OK  both sites were checked
+  OK  a free site is fine
+
+== Parallel tasks in the app: own tabs, one site at a time, limit, panel ==
+  OK  three tasks may run at once
+  OK  panel connected
+  OK  nothing finished yet: no 'last finished' line
+  OK  first task starts
+  OK  same site: refused
+  OK  refusal kind
+  OK  refusal text: head
+  OK  refusal text: who
+  OK  refusal text: what
+  OK  other sites run at the same time
+  OK  a site only named in the text (something to type) locks nothing
+  OK  the fourth is refused: limit
+  OK  limit text
+  OK  three consent cards, one per task
+  OK  panel lists the three tasks
+  OK  a started task's tab is in front: the header Stop button belongs to that task
+  OK  stop button says stop all when all tasks are shown
+  OK  task field locked: all slots taken
+  OK  banner says several tasks
+  OK  cards say which task they belong to
+  OK  events are tagged by task, with a task filter
+  OK  three separate tabs
+  OK  two sites held: the ones the tasks were told to start from
+  OK  tab in front: the panel shows only that task
+  OK  tab in front: the Stop button names the task
+  OK  tab in front: only its events are visible
+  OK  tasks are named by site, not only by number
+  OK  the list rows show the site
+  OK  show all tasks again
+  OK  still refused while the first task is open
+  [parallel] success: Filled the test field and got permission (mock).
+  [parallel] success: Filled the test field and got permission (mock).
+  [parallel] success: Filled the test field and got permission (mock).
+  [parallel] panel results: Task #1: Done
+
+Filled the test field and got permission (mock).
+
+Task #3: Done
+
+Filled the test field and got permission (mock).
+
+Task #2 (beta-two.com): Done
+
+Filled the test field and got permission (mock).
+  OK  all three finish with success
+  OK  each task got its own result
+  OK  no site held after the end
+  OK  panel: runs list empty
+  OK  panel: task field unlocked
+  OK  panel: last finished time is shown
+  OK  panel: last finished time looks like HH:mm
+  OK  each task has its own run log
+  OK  diagnostics: last finished
+  OK  the site is free again
+  OK  its card appears
+  OK  a stop by the person is reported as stopped, not as a failure
+  OK  the site is free after a stop
+
+==================== TESTS ====================
+Passed: 529, Failed: 0
+==============================================

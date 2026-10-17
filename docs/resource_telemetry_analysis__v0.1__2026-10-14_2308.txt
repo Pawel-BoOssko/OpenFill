@@ -1,0 +1,65 @@
+OPENFILL RESOURCE TELEMETRY ANALYSIS
+File: C:\Users\pboru\OpenFill\data\stable\logs\telemetry\resources_20261014.ndjson
+Samples: 13
+From UTC: 2026-10-14T21:03:00.3597619Z
+To UTC: 2026-10-14T21:09:02.2264594Z
+Duration: 00:06:01
+Logical processors: 4
+CPU scale: cpuPctMachine=share of total logical CPU capacity; cpuPctCoreSum=one-core scale, 100 per fully busy logical CPU
+
+LATEST
+uptimeSeconds = 365
+activeTasks = 1
+waitingTasks = 0
+tabs = 3
+processCount = 20
+webViewProcessCount = 19
+workingSetMb = 2402.211
+privateBytesMb = 1658.418
+handles = 9115
+threads = 347
+gcManagedMb = 51.982
+gcHeapSizeMb = 51.317
+gcCommittedMb = 61.035
+cpuPctMachine = 12.513
+cpuPctCoreSum = 50.051
+
+ALL SAMPLES
+workingSetMb: avg=1565,582, min=579,246, max=2402,211, p95=2402,211, slope/hour=n/a (<30 min)
+privateBytesMb: avg=968,255, min=261,762, max=1658,418, p95=1658,418, slope/hour=n/a (<30 min)
+cpuPctMachine: avg=8,796, min=0, max=17,793, p95=17,793, slope/hour=n/a (<30 min)
+processCount: avg=17,308, min=13, max=20, p95=20, slope/hour=n/a (<30 min)
+webViewProcessCount: avg=16,308, min=12, max=19, p95=19, slope/hour=n/a (<30 min)
+handles: avg=7845, min=4965, max=9115, p95=9115, slope/hour=n/a (<30 min)
+threads: avg=315,538, min=238, max=348, p95=348, slope/hour=n/a (<30 min)
+gcManagedMb: avg=38,152, min=19,223, max=62,536, p95=62,536, slope/hour=n/a (<30 min)
+gcHeapSizeMb: avg=53,961, min=17,653, max=67,379, p95=67,379, slope/hour=n/a (<30 min)
+gcCommittedMb: avg=60,559, min=29,301, max=77,188, p95=77,188, slope/hour=n/a (<30 min)
+
+ACTIVE VS IDLE
+active samples = 11
+idle samples = 2
+workingSetMb: active {avg=1645.138, max=2402.211}; idle {avg=1128.028, max=1676.809}
+privateBytesMb: active {avg=1027.231, max=1658.418}; idle {avg=643.887, max=1026.012}
+cpuPctMachine: active {avg=9.784, max=17.793}; idle {avg=3.367, max=6.734}
+processCount: active {avg=17.545, max=20}; idle {avg=16, max=19}
+webViewProcessCount: active {avg=16.545, max=19}; idle {avg=15, max=18}
+handles: active {avg=8062.636, max=9115}; idle {avg=6648, max=8331}
+threads: active {avg=321.545, max=348}; idle {avg=282.5, max=327}
+
+TOP PROCESS INSTANCES BY MAX PRIVATE BYTES
+
+  Pid Name           StartUtc                     Samples MaxPrivateMb MaxWorkingSetMb MaxCpuMachinePct
+  --- ----           --------                     ------- ------------ --------------- ----------------
+31520 msedgewebview2 2026-10-14T21:08:35.9407794Z       1      559,668         644,777                0
+17316 msedgewebview2 2026-10-14T21:07:48.5234623Z       3      528,391         615,949            3,283
+26956 msedgewebview2 2026-10-14T21:05:34.7645373Z       2      484,492         570,324            5,393
+23876 msedgewebview2 2026-10-14T21:03:09.7040782Z       5      378,719         470,145            3,687
+18980 msedgewebview2 2026-10-14T21:06:46.5262113Z       2      367,719         454,902            3,687
+23276 msedgewebview2 2026-10-14T21:02:59.0077132Z      13      150,746         175,852            1,353
+27472 OpenFill       2026-10-14T21:02:56.4534334Z      13       99,477          159,34            7,911
+ 1848 msedgewebview2 2026-10-14T21:05:44.9042504Z       2        95,48          124,25            0,091
+28552 msedgewebview2 2026-10-14T21:07:56.9103955Z       3       95,035          121,75            1,311
+28568 msedgewebview2 2026-10-14T21:03:15.8567216Z       5       88,973         119,793            0,039
+24940 msedgewebview2 2026-10-14T21:06:53.7878313Z       2       77,805         106,426            0,078
+24524 msedgewebview2 2026-10-14T21:02:58.0505841Z      13        63,07          84,422             1,92

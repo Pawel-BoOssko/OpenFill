@@ -1,0 +1,6 @@
+# OpenFill - Metadata: wersja 0.1, data 2026-10-04 19:11
+bin/
+obj/
+*.user
+.vs/
+dist/

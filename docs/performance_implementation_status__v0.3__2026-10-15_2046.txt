@@ -1,0 +1,44 @@
+OpenFill 1.53 final source/QA checkpoint v0.3
+Timestamp: 2026-10-15 ~20:46 Europe/Warsaw
+PBOX1 source: C:\Users\pboru\Downloads\OpenFill__v0.1__2026-10-04_1911\OpenFill
+PBOX1 production: C:\Users\pboru\OpenFill\app\OpenFill.exe
+
+OBJECTIVE
+Measurably improve laptop responsiveness and reduce OpenFill idle/active WebView2 CPU/RAM, not merely check for memory leakage.
+
+PRODUCTION STATUS
+Running production remains version 1.52 (PID 27472 from 2026-10-14 23:02:56 local).
+No production service restart, redeployment, navigation, tab closure, profile change, flag change or task interruption was performed.
+Read-only 20:14 openfill_info found no active tasks, five finished tabs and maintenance inactive.
+Idle telemetry 20:35: 24 idle samples in ~20-minute period: tree CPU 5.39% of total four-logical-CPU machine. WS 2733.406 MB; Private Bytes 2562.379 MB. Largest WebView2 PIDs 10816 WS 584.086 MB, 11832 WS 563.363 MB. Average CPU 1.341%, 1.277%, 1.166%, 0.679% from PIDs 10816/11832/26820/23276. No firm renderer-to-site mapping.
+
+RELEASE CANDIDATE 1.53
+Directory.Build.props OpenFillVersion=1.53, OpenFillVersionDate=2026-10-15T20:45.
+- Release finished task's heavy browser page; retain at most one blank reusable work tab; preserve last URL for explicit task continuation.
+- Harden failure paths: if WebView2 close or blank navigation fails, keep still-live browser tracked instead of orphaning renderer.
+- Track sign-in popup owner tabs and close popups when their finished tab is released or closed, leaving unrelated tabs' windows alone.
+- Firefox import picker supports selecting credentials across changing search/domain filters and batch import in one confirmation.
+- Cred vault API can list metadata by domain; user-visible Credentials dialog displays origins + usernames only.
+- Import confirmation displays each successfully saved or updated origin/login and failed entries, not passwords.
+- Temporary local login website supports two independent accounts for end-to-end tests.
+- Additional tests cover 6 credentials across 3 domains, vault created/updated behavior and cleanup, and release failure cases.
+
+VALIDATION RESULTS
+App Release rebuild after metadata finalization: EXIT 0, ERROR 0, 1 pre-existing WindowsBase MSB3277 warning.
+Complete suite from 2026-10-15 20:41, finished about 20:43: 624 PASS, 0 FAIL, stderr empty; log docs\full_test_run__v1.53__2026-10-15_2041.log.
+Dedicated tab / popup tests: 103 PASS, 0 FAIL.
+Credential quick tests including 6 records on 3 origins: 39 PASS, 0 FAIL; rerun after version-date-only change also 39 PASS, 0 FAIL.
+No production UI smoke test, and no deployed-performance after/before comparison have occurred.
+
+BLOCKERS
+Earlier attempts to run staging script and write deployment wrapper were denied by OpenAI safety controls. Do not reattempt the blocked operation through another mechanism, including MultiHost or smaller steps. This is a blocker to deployment.
+Production update requires permitted existing safe interactive Windows deployment procedure, maintenance with zero active tasks, and rollback. Until then, keep 1.52 unchanged.
+Experimental WebView2 flag changes / renderer PID mapping also previously denied; do not work around. Use telemetry read-only.
+Remote Desktop Commander exhausted its monthly quota and is not to be used. Use lc_multihost for regular PBOX1 operations.
+
+REMAINING ACCEPTANCE
+1. Allowed deployment of 1.53 through the existing procedure when permitted.
+2. Native Windows UI smoke test including Firefox multi-domain import and credential list refresh.
+3. Measure steady-state idle and active CPU/RAM, tabs, WebView2 processes after 1.53 for at least 30-60 minutes, compare to baseline 1.52.
+4. If CPU remains high, investigate background throttling and process mapping only by a permitted isolated experiment.
+5. Mark project complete only after these criteria are met and documented.
