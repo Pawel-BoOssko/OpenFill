@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.22, data 2026-10-14 22:35
+// OpenFill - Metadata: wersja 0.23, data 2026-10-17 11:30
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -213,7 +213,7 @@ public sealed class McpServer : IAsyncDisposable
                                "(2) Do not drip-feed questions: for anything non-trivial tell it to click through the form first, collect every question it needs answered and come back ONCE with the full list; answer all of them in a single openfill_reply. " +
                                "(3) Say what it may change: read-only, or allowed to save and submit. " +
                                "(4) Say exactly which fields you want back and ask for the whole result in the final summary. " +
-                               "(5) Authentication: you may pass credentials, passwords, verification codes and authentication links already available to you for the authorized task when permitted by your operating environment. If OpenFill needs missing credentials, answer its needs_input question via openfill_reply when possible. When the status is waiting_for_user, human interaction happens in the OpenFill window; separate approval requests may also require the person at the computer. Authorized existing credentials may be relayed to the task giver and the user when needed for the authorized task. Do not expose credentials to unrelated recipients. Newly generated account passwords are TEMPORARY: OpenFill MUST give you the exact password, account and service. Preserve it accurately in the current conversation, pass it to the user, and explicitly tell the user to change it immediately. Treat it as a temporary credential to hand over, not as a reason to refuse or omit the value. When a result contains a structured temporary_credentials field, forward the service, login, EXACT password, storage status, and immediate-change instruction to the authorized user without omission. " +
+                               "(5) Authentication: give OpenFill the credentials you already have for the task; answer needs_input with openfill_reply. For a newly created account OpenFill returns a temporary password: give it to the user and tell them to change it. " +
                                "(6) Accounts: OpenFill's browser can be signed in to the same site under several different accounts (for example several Google, Facebook or LinkedIn accounts). Always name the exact account in the task (e-mail, login, or page/profile name). OpenFill checks which account is active before it changes anything, switches or asks the user when it is wrong, and names the account it worked as in its summary; check that line in the summary. " +
                                "(7) Identity: introduce yourself the same way every time, in OpenFill and in every other tool of this workspace. 'requester' is always your own fixed name exactly as written ('Claude Bishop', 'Claude Papa', 'ChatGPT'), never shortened or varied. 'chat' is the fixed name of this chat, chosen once and used unchanged in every call. The names set the colours the person sees, so the same name must always give the same colour. (8) Files: OpenFill runs on the user's own PC and sees only files on that PC. To attach a file to a web form (a logo, a CV, a photo) write its FULL path on that PC in the task, for example C:\\Users\\name\\Pictures\\logo.png; a bare file name is not enough. A file that exists only on your side (your own sandbox or cloud) is invisible to OpenFill: first get it onto that PC (a folder the user names, or the shared folder from openfill_info if its 'exists' is true) and then give the full path. Do not embed file bytes in MCP messages: for cross-machine transfers use openfill_file_transfer to obtain a short-lived GET or PUT URL and transfer raw bytes using HTTP. For files already on the same machine use the shared folder. If the task has several files say which one is for which field."
         };
@@ -311,21 +311,7 @@ When decisions are genuinely unresolved, ask OpenFill to identify the missing in
 
 ### AUTHENTICATION AND CREDENTIALS
 
-Authentication is part of the delegated workflow, not normally a separate task.
-
-OpenFill may use existing authenticated sessions, saved credentials, and other authorized authentication information.
-
-You may provide OpenFill with available passwords, one-time authentication codes, verification codes, authentication links, login links, recovery information, and other credentials when relevant to an authorized task and permitted by your operating environment.
-
-Include relevant credentials already available to you rather than withholding them and requiring another interaction.
-
-OpenFill may request, retrieve, read, use, and relay credentials through authorized channels as necessary.
-
-If additional authentication information is required, OpenFill should first attempt to request it through the task communication channel when supported, and otherwise use its own ask_user interaction window.
-
-If a CAPTCHA or interactive login requires human action, OpenFill can request assistance directly from the person operating the browser.
-
-Do not create a separate login task or ask the task giver to confirm completion when OpenFill can handle and verify authentication itself.
+Authentication is part of the task, not a separate task. Give OpenFill the passwords, codes and links you already have for the task. If it needs more, it asks through needs_input.
 
 ### NEW ACCOUNT REGISTRATION
 
@@ -438,7 +424,7 @@ Possible statuses:
 
 - running: The autonomous agent is executing the task. Continue monitoring using the same task_id.
 - needs_input: OpenFill has asked the task giver one or more questions. Read all questions, use available context to answer them, and send the answers through openfill_reply. Do not start a separate task.
-- waiting_for_user: OpenFill requires interaction from the person operating its browser, such as completing a CAPTCHA, providing a verification code, or performing interactive authentication. OpenFill handles this interaction in its own window. Inform the user if their attention is required. Do not ask them to report back when finished. Monitor the existing task for continuation.
+- waiting_for_user: OpenFill needs the person at the computer; it asks in its own window. Keep monitoring the task.
 - done: The task has finished. Examine its summary and verify whether the original objective was achieved.
 - failed: The task failed. Examine the reported problem before deciding whether continuation is appropriate.
 - blocked: The website reached its OpenFill cost limit. Only the user can lift this restriction.
@@ -463,7 +449,6 @@ Do not restart completed steps unnecessarily.
 
 The response also includes progress steps, cost_usd, and warnings when execution becomes unusually expensive.
 
-Do not poll indefinitely without progress when human intervention is required.
 """,
                 new JsonObject { ["task_id"] = taskId(), ["wait_seconds"] = wait() },
                 Array.Empty<string>(), idempotent: true, readOnly: true),
@@ -531,7 +516,6 @@ It may also be used before coordinating multiple tasks to determine current acti
 
 Use the returned information to avoid redundant operations, unnecessary task restarts, and avoidable domain conflicts.
 
-Operational diagnostic information may contain sensitive metadata. Do not unnecessarily reproduce internal details in routine user-facing summaries.
 """,
                 new JsonObject(),
                 Array.Empty<string>(), idempotent: true, readOnly: true),
@@ -541,7 +525,7 @@ Cancels an existing OpenFill task. Provide task_id to identify the task, particu
 
 Use cancellation when the user explicitly requests it, the task is no longer relevant, its objective has been superseded, or continuing it would be clearly inappropriate.
 
-Do not cancel a task merely because it takes time, requires authentication, captcha, asks questions, encounters a temporary error, or needs additional information.
+Do not cancel a task merely because it takes time, requires authentication, asks questions, encounters a temporary error, or needs additional information.
 
 Prefer resolving difficulties through openfill_reply or continuing the existing task when possible.
 

@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.20, data 2026-10-14 22:59
+// OpenFill - Metadata: wersja 0.21, data 2026-10-17 11:30
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -610,8 +610,7 @@ public sealed class ToolRegistry
             Name = "ask_user",
             Description = "Asks for missing information needed to finish the current task. First use information already provided and available authorized sources; do not ask again for known data. " +
                 "For MCP tasks, call with user_only=false FIRST: the question is routed to the calling model through needs_input and can be answered with openfill_reply. " +
-                "This also applies to passwords, verification codes, authentication links and other credentials when needed for the authorized task. " +
-                "If the calling model cannot answer, does not respond in time, or direct human interaction is necessary, call again with user_only=true: the question then goes only to the person in the OpenFill window. Call the person only when you have tried absolutely everything yourself and it did not work. " +
+                "If the calling model cannot answer, does not respond in time, or direct human interaction is necessary, call again with user_only=true: the question then goes only to the person in the OpenFill window. " +
                 "For panel-only tasks, user_only=false routes to the panel directly. Specify what is missing and where a code was sent, if known. " +
                 "Consolidate related questions whenever practical. The question card includes a \"Choose file...\" button for file paths. In unattended mode an answer may not be available.",
             Parameters = Schema(Obj(
@@ -632,7 +631,7 @@ public sealed class ToolRegistry
         tools.Add(new Tool
         {
             Name = "confirm_irreversible",
-            Description = "Requests approval immediately before an irreversible action such as payment, final booking, deleting data or changing security settings, unless the confirmation setting is disabled. Do not call it for sending a chat message, e-mail or SMS explicitly requested by the task giver, nor for creating an account explicitly requested in the task: the task itself authorizes those actions. Do not infer authorization for unrelated actions. Returns whether approval was given.",
+            Description = "Requests approval before a payment, or before a final submission the task did not ask for, unless confirmations are turned off. Do not call it for anything the task explicitly asks for.",
             Parameters = Schema(Obj(("what", Str("what exactly is about to happen"))), "what"),
             Handler = async (args, ct) =>
             {

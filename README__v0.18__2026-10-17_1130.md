@@ -5,8 +5,8 @@
 OpenFill is a Windows app that puts a real browser and an AI agent side by side. You (or another AI, such as ChatGPT) describe a job in plain language: *"sign me up for Thursday's 7:00 class on this pool's website"*, *"fill in my profile on this career site with this data"*, *"find the cheapest flight on these dates"*. OpenFill's embedded model then drives the browser until the job is done, asking you only when it truly has to.
 
 ## Metadata
-- Document version: 0.17
-- Date: 2026-10-12 21:26
+- Document version: 0.18
+- Date: 2026-10-17 11:30
 - App version: shown at the top of the app window and the panel
 - Author: OpenFill project
 
@@ -23,7 +23,7 @@ Big chat models are good at deciding *what* to do, and expensive and slow at cli
 - **Sees structure, not pixels.** The model gets a logical picture of the page (forms, fields, buttons, dialogs, messages, network calls), not screenshots. That is faster, cheaper and more reliable. Screenshots are available when the structure is not enough.
 - **Picks the right way to act.** Fills a whole form in one call, types character by character for autocomplete, or uses real mouse and keyboard events when a page ignores ordinary ones.
 - **Use it from a chat.** A built-in MCP server lets ChatGPT (or any MCP client) start tasks, poll their status, answer questions and cancel.
-- **Task-oriented autonomy.** Give OpenFill one complete objective with all known data, expected result, success criteria and relevant fallback choices. Authentication can use existing sessions, available authorized credentials and the calling model; unanswered questions can be routed to the person in the OpenFill window. Payments and other irreversible steps follow the configured approval setting, with explicit-request exceptions for sending messages and creating accounts.
+- **Task-oriented autonomy.** Give OpenFill one complete objective with all known data, expected result, success criteria and relevant fallback choices. Authentication can use existing sessions, available authorized credentials and the calling model; unanswered questions can be routed to the person in the OpenFill window. Approval is asked only before a payment or a final submission the task did not ask for (and only when the approval setting is on).
 - **Hard cost limits.** Per-task notices, a question to you at a set cost, a hard cumulative limit per website and a lifetime ceiling. Only you can lift a block.
 - **Loop and runaway protection.** Repeated identical actions are detected, warned about and stopped.
 - **Survives restarts.** Tasks are saved; a task cut off by a restart is reported as `interrupted` and can be continued.
@@ -109,7 +109,7 @@ For a **stable address**, run your own tunnel (for example Tailscale Funnel or a
 | Lifetime limit | $1.00 per site, ever | unblocking resets the count but never this ceiling |
 | Loop detection | 5 identical actions in the last 10 | warning, then a stop after three warnings |
 | Step limit | 60 steps, extended up to 5 times while progressing | prevents endless tasks |
-| Irreversible steps | approval on | payments, bookings, deletion and security changes request approval when the setting is enabled; sending a requested message and creating a requested account are explicitly authorized by the task |
+| Irreversible steps | approval on | approval only before a payment or a final submission the task did not ask for, when the setting is on; everything the task asks for is authorized |
 | Authentication questions | calling model first for MCP tasks | OpenFill may ask the caller for available authorized codes, passwords or authentication links; if unavailable, it asks the person in its window |
 
 A blocked site can only be unblocked by you in the panel.
@@ -190,7 +190,6 @@ The model has no terminal and attaches only files whose path you gave it, or tha
 ## Limitations
 
 - Content in cross-origin iframes (for example some payment gateways) is not yet visible in `get_page`; the model falls back to `screenshot` and real clicks.
-- Interactive CAPTCHA checks and other steps that cannot be completed with available authorized information require the person at the computer. Verification codes may instead be provided by the calling model when legitimately available and supported by its environment.
 - Parallel tasks never share a site: while one task works on a site, other tasks are refused for that site (by design).
 - The panel shows when the last task finished; the "+" button (or Ctrl+T) in the window opens a new tab by hand, which no task will use.
 - Windows only for now.
