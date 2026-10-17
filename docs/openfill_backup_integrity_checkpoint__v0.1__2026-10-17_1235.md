@@ -12,3 +12,4 @@ Google Drive API confirmed both filenames and byte counts; no content digest was
 Raw remote download failed: HTTP 413, 1090191400 bytes exceeds 268435456-byte connector limit. Do not claim remote SHA256 verification.
 SATANAMD full decrypt, hash-verified restore of actual data to an isolated empty directory is still pending. Recovery private key must remain on SATANAMD.
 Production OpenFill 1.52 was not stopped or modified.
+Update 2026-10-17 13:22 CEST: Google Drive mounted as H:\Mój dysk\OpenFill\Encrypted-Backups. SHA256 calculated by reading mounted Drive files: archive 2011F85B28B0B836045E404F28DE6A6D14F1523284215E37505E2754BD306F8D; manifest 78D6170A5A48886CC64405D53232688D466676724060FF1333F372D01759DBD6. Both MATCH PBOX local SHA256. DRIVE CONTENT VERIFIED THROUGH MOUNT; full decrypt/restore on SATANAMD NOT VERIFIED.
