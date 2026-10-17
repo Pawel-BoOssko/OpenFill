@@ -4,3 +4,13 @@ obj/
 *.user
 .vs/
 dist/
+# Runtime state and local recovery material
+/data/
+/release-staging/
+/releases/
+**/EBWebView/
+*.age
+*.pem
+*.p12
+*.pfx
+*.key
