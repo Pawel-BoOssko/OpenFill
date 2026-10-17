@@ -30,3 +30,8 @@ Sources: McpServer__v0.23__2026-10-17_1130.cs; McpTaskManager__v0.17__2026-10-14
 - TEST: new source tests not executed; baseline 703 PASS/5 FAIL remains historical.
 - STAGED: none. DEPLOYED: none. LIVE-VERIFIED: only existing 1.52, not this source.
 - Radar backend schema parity, retry-after-network-loss, one real intended registration and Calendar verification remain open.
+
+## Evidence refresh, 2026-10-17 18:32 CEST (OF-163/185)
+The earlier TEST paragraph is historical. After the activity/state separation and refusal-text restoration, the full OpenFill.Tests suite passed three consecutive times: 714 PASS / 0 FAIL each. The first run compiled Release test dependencies. These results do NOT verify the installed 1.52 application's integration with Networking Radar.
+Current source contract: polling may return after an activity signal, but start waits for a task-state change or timeout. poll_wait_max_seconds is not an ETA. Invitation success counts require independently verified external outcomes, not steps or activity messages.
+The organizer's confirmation remains mandatory before Radar marks a registration successful or treats the calendar entry as a confirmed registration. Live backend schema parity and one deliberate end-to-end Radar registration remain unverified.
