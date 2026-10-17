@@ -60,7 +60,7 @@ public sealed class DomainLocks
         lock (_lock) return _byDomain.Where(kv => kv.Value.TaskKey == taskKey).Select(kv => kv.Key).ToList();
     }
 
-    /// <summary>Refusal text for another caller. Never disclose the other task prompt.</summary>
+    /// <summary>The refusal text for the caller (a model) or the panel. It says who, what and since when, and that there is no way around it.</summary>
     public static string RefusalText(LockHolder h, bool midTask = false, DateTime? nowUtc = null)
     {
         var now = nowUtc ?? DateTime.UtcNow;
@@ -71,10 +71,15 @@ public sealed class DomainLocks
         var who = h.Source == "mcp" ? $"another chat, task {h.TaskKey}" : $"the user, typed in the OpenFill window (task {h.TaskKey})";
         var since = h.SinceUtc.ToLocalTime().ToString("HH:mm");
         return head + "\n" +
-               $"In use by {who}, since {since} ({mins} min ago), task details hidden from other callers.\n" +
+               $"In use by {who}, since {since} ({mins} min ago), doing: \"{Short(h.What, 160)}\".\n" +
                "That task may be in the middle of a job that takes several tasks (for example a sign-up), so while it runs nobody else may work on this site. There is no way around this.\n" +
                "You can try again later.\n" +
                $"Note: you may be duplicating the work of {who}.";
     }
 
+    private static string Short(string s, int n)
+    {
+        s = System.Text.RegularExpressions.Regex.Replace(s ?? "", @"\s+", " ").Trim();
+        return s.Length <= n ? s : s[..(n - 3)] + "...";
+    }
 }

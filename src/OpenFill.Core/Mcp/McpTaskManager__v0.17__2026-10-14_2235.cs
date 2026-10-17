@@ -38,7 +38,7 @@ public sealed class McpTaskRecord
     public DateTime UpdatedUtc { get; set; }
     public DateTime? LastActivityUtc { get; set; }
     /// <summary>Counts changes of this record, so a waiting caller notices that something happened (not saved).</summary>
-    [JsonIgnore] public int Ver { get; set; }
+    [JsonIgnore] public int Ver { get; set; } [JsonIgnore] public int ActivityVer { get; set; }
 }
 
 /// <summary>
@@ -270,8 +270,7 @@ public sealed class McpTaskManager
         if (rec is null) return NotFound(id);
         if (!fromDisk)
         {
-            int v; lock (_lock) v = rec.Ver;
-            await WaitAsync(rec, v, waitSeconds, ct);
+            int v, av; lock (_lock) { v = rec.Ver; av = rec.ActivityVer; } await WaitAsync(rec, v, waitSeconds, ct, av);
         }
         return Snapshot(rec, null, fromDisk);
     }
@@ -471,9 +470,7 @@ public sealed class McpTaskManager
             if (!IsOpen(rec)) return;
             rec.Activity.Add(message.Length > 160 ? message[..160] + "..." : message);
             while (rec.Activity.Count > 8) rec.Activity.RemoveAt(0);
-            rec.LastActivityUtc = DateTime.UtcNow;
-            rec.Ver++;
-            rec.UpdatedUtc = DateTime.UtcNow;
+            rec.LastActivityUtc = DateTime.UtcNow; rec.ActivityVer++;
         }
     }
 
@@ -504,13 +501,13 @@ public sealed class McpTaskManager
 
     // ------------------------------------------------------------------ helpers
 
-    private async Task WaitAsync(McpTaskRecord rec, int startVersion, int seconds, CancellationToken ct)
+    private async Task WaitAsync(McpTaskRecord rec, int startVersion, int seconds, CancellationToken ct, int? activityVersion = null)
     {
         var end = DateTime.UtcNow.AddSeconds(Math.Clamp(seconds, 0, MaxWaitSeconds));
         while (DateTime.UtcNow < end)
         {
             // waiting_for_user is a long wait on the person: keep waiting until something changes, do not return at once.
-            lock (_lock) { if ((rec.Status != "running" && rec.Status != "waiting_for_user") || rec.Ver != startVersion) return; }
+            lock (_lock) { if ((rec.Status != "running" && rec.Status != "waiting_for_user") || rec.Ver != startVersion || (activityVersion.HasValue && rec.ActivityVer != activityVersion.Value)) return; }
             try { await Task.Delay(250, ct); }
             catch (OperationCanceledException) { return; }
         }

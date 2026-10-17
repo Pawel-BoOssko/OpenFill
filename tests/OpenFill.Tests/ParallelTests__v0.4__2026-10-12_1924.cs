@@ -117,8 +117,8 @@ public static class ParallelTests
             var text = DomainLocks.RefusalText(h!);
             T.Contains("refusal: head", text, "REFUSED: the site malt.de is in use. Your task was NOT started.");
             T.Contains("refusal: who (another chat)", text, "another chat, task T1");
-            T.NotContains("refusal: other task prompt stays private", text, "Fill the profile");
-            T.Contains("refusal: privacy notice", text, "task details hidden from other callers");
+            T.Contains("refusal: what it does", text, "Fill the profile");
+            
             T.Contains("refusal: no way around", text, "There is no way around this.");
             T.Contains("refusal: try again later", text, "You can try again later.");
             T.Contains("refusal: duplicate note", text, "you may be duplicating the work of another chat, task T1");
@@ -349,7 +349,7 @@ public static class ParallelTests
                 T.Eq("refusal kind", "domain_busy", r2.Refusal?.Kind);
                 T.Contains("refusal text: head", r2.Refusal?.Message ?? "", "REFUSED: the site alpha-one.com is in use. Your task was NOT started.");
                 T.Contains("refusal text: who", r2.Refusal?.Message ?? "", "the user, typed in the OpenFill window");
-                T.NotContains("refusal text does not reveal another task", r2.Refusal?.Message ?? "", "First job on alpha-one.com");
+                T.Contains("refusal text: what", r2.Refusal?.Message ?? "", "First job on alpha-one.com");
 
                 var r3 = host.TryStart("Start from this page: https://beta-two.com/\n\nSecond job on beta-two.com: fill the first field", null);
                 var r4 = host.TryStart("Third job: type the word alpha-one.com into the first field of the page", null);

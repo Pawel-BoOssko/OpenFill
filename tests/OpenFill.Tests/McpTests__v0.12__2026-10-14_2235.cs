@@ -211,7 +211,17 @@ public static class McpTests
             T.Eq("crash: interruption persisted durably", "interrupted", S(persisted, "status"));
             original.Cancel(S(live, "task_id"));
             try { Directory.Delete(dir, true); } catch { }
-        });        await T.Section("MCP: activity wakes polling and does not invent ETA", async () =>
+        });        await T.Section("MCP: start waits for actual state change despite early activity", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_startwait_" + Guid.NewGuid().ToString("N")[..8]);
+            var host = new FakeRunHost();
+            var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(3));
+            var started = await m.StartAsync("START_WAIT_TEST", 3, default, requester: "Test", chat: "startwait");
+            T.Eq("start returns final state, not activity running", "done", S(started, "status"));
+            T.Eq("start was executed once", 1, host.Started);
+            try { Directory.Delete(dir, true); } catch { }
+        });
+        await T.Section("MCP: activity wakes polling and does not invent ETA", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_poll_" + Guid.NewGuid().ToString("N")[..8]);
             var host = new FakeRunHost();
