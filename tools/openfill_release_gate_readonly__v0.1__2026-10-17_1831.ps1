@@ -1,0 +1,15 @@
+﻿$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+$source = Join-Path $root 'src\OpenFill.Core\Mcp\McpTaskManager__v0.17__2026-10-14_2235.cs'
+$production = Get-Process -Name 'OpenFill' -ErrorAction SilentlyContinue
+$task = Get-ScheduledTask -TaskName 'OpenFill' -ErrorAction Stop
+$sourceOk = Test-Path -LiteralPath $source
+$interactive = $task.Principal.LogonType -eq 'Interactive'
+$alive = @($production).Count -gt 0
+Write-Output ("SOURCE_PRESENT=" + $sourceOk)
+Write-Output ("SCHEDULER_INTERACTIVE=" + $interactive)
+Write-Output ("PRODUCTION_ALIVE=" + $alive)
+Write-Output 'RESTORE_FULL_REAL_DATA=NOT_VERIFIED'
+Write-Output 'MAINTENANCE_MCP_SUBSTITUTE=NOT_VERIFIED'
+Write-Output 'RELEASE_STAGING_AND_ROLLBACK=NOT_VERIFIED'
+Write-Output 'RELEASE_DECISION=NO-GO'
