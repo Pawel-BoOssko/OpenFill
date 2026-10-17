@@ -690,7 +690,7 @@ await T.Section("Model tools on a hard form (modal, React, autocomplete, custom 
     siteNotes.Merge("127.0.0.1", "profile_test_hint: local profile form");
     var evidenceEvents = new List<OpenFill.Core.Mcp.VerifiedAction>();
     var registry = new ToolRegistry(browser, log, config, new OutputLimiter(paths.Overflow, config.ToolOutputLimitChars),
-        siteNotes, new HeadlessInteraction(), new GapRecorder(paths.GapsFile, log), verified: evidenceEvents.Add);
+        siteNotes, new HeadlessInteraction(), new GapRecorder(paths.GapsFile, log), verified: item => { evidenceEvents.Add(item); return evidenceEvents.Count; });
     var tools = registry.Build().ToDictionary(t => t.Name);
 
     async Task<ToolResult> Call(string name, object args)

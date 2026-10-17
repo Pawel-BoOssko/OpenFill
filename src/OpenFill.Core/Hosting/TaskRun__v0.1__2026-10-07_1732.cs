@@ -37,7 +37,7 @@ public sealed class TaskRun
     public void Detach() => Browser.Detach();
 
     /// <summary>Runs the task: the model loop until it finishes, is stopped or hits a limit.</summary>
-    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Action<VerifiedAction>? verified = null)
+    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Func<VerifiedAction, int>? verified = null)
     {
         var runId = Begin();
         Log.Write("session", "start", "New task", new { runId, preview = OutputLimiter.Head(task, 200) });

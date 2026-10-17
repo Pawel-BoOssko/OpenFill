@@ -201,6 +201,8 @@ public sealed class McpTaskManager
                 IdempotencyKey = idempotencyKey,
                 Status = "running",
                 ContinuedFrom = prior?.Id,
+                VerifiedActions = prior?.Requester == who ? prior.VerifiedActions?.ToList() : null,
+                VerifiedBatchTotal = prior?.Requester == who ? prior.VerifiedBatchTotal : null,
                 AppVersion = BuildInfo.Describe(),
                 Requester = who,
                 CreatedUtc = now,
@@ -211,7 +213,7 @@ public sealed class McpTaskManager
         }
         var recNew = live.Rec;
 
-        var options = new RunOptions(recNew.Id, prior?.Id, prior is null ? null : DescribeEarlier(prior),
+        var options = new RunOptions(recNew.Id, prior?.Id, prior is null ? null : DescribeEarlier(prior, who),
             Ask: (q, o, c) => OnAskAsync(live, q, o, c),
             Activity: m => OnActivity(live, m),
             UserWaiting: q => OnUserWaiting(live, q),
@@ -465,7 +467,7 @@ public sealed class McpTaskManager
         }
     }
 
-    private void OnVerifiedAction(Live live, VerifiedAction action)
+    private int OnVerifiedAction(Live live, VerifiedAction action)
     {
         var rec = live.Rec;
         lock (_lock)
@@ -474,7 +476,7 @@ public sealed class McpTaskManager
             if (rec.VerifiedBatchTotal.HasValue && rec.VerifiedBatchTotal != action.Total)
                 throw new InvalidOperationException("Batch size mismatch.");
             rec.VerifiedActions ??= new List<VerifiedAction>();
-            if (rec.VerifiedActions.Any(p => string.Equals(p.Recipient, action.Recipient, StringComparison.OrdinalIgnoreCase))) return;
+            if (rec.VerifiedActions.Any(p => string.Equals(p.Recipient, action.Recipient, StringComparison.OrdinalIgnoreCase))) return rec.VerifiedActions.Count;
             if (rec.VerifiedActions.Count >= action.Total) throw new InvalidOperationException("Batch already complete.");
             rec.VerifiedBatchTotal = action.Total;
             rec.VerifiedActions.Add(action);
@@ -486,6 +488,7 @@ public sealed class McpTaskManager
                 throw;
             }
             rec.ActivityVer++; // Wake status only; StartAsync must still wait for a state transition.
+            return rec.VerifiedActions.Count;
         }
     }
     private void OnActivity(Live live, string message)
@@ -696,14 +699,16 @@ public sealed class McpTaskManager
     }
 
     /// <summary>Short account of an earlier task for the inner model: what it was and how it ended.</summary>
-    internal static string DescribeEarlier(McpTaskRecord prior)
+    internal static string DescribeEarlier(McpTaskRecord prior, string? caller = null)
     {
         var s = $"Earlier task: \"{OutputLimiter.Head(prior.TaskText.ReplaceLineEndings(" "), 300)}\".";
         if (!string.IsNullOrWhiteSpace(prior.Summary))
             s += $" It ended {(prior.Outcome ?? prior.Status)}; its result: {OutputLimiter.Head(prior.Summary.ReplaceLineEndings(" "), 700)}";
         else
             s += $" It was left {prior.Status}.";
-        return s + " (If the new task is clearly about something else, ignore this and start fresh.)";
+        if (caller == prior.Requester && prior.VerifiedActions is { Count: > 0 } proven)
+            s += $" Service-page confirmations carried forward: {proven.Count}/{prior.VerifiedBatchTotal} " +
+                 string.Join(", ", proven.Select(x => x.Recipient)) + ". Check these before any repeat.";        return s + " (If the new task is clearly about something else, ignore this and start fresh.)";
     }
 
     /// <summary>The most recent finished task (of the last 30 on disk) whose text is about the same thing as the new one.</summary>

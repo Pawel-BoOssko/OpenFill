@@ -12,7 +12,7 @@ internal sealed class FakeRunHost : IRunHost
     private readonly Dictionary<string, CancellationTokenSource> _cts = new();
     public int Started;
     public Action<string>? EmitActivity;
-    public Action<VerifiedAction>? EmitVerified;
+    public Func<VerifiedAction, int>? EmitVerified;
     public Func<string, JsonObject?>? TabStatus;
     public JsonObject? TabDetailsOf(string taskKey) => TabStatus?.Invoke(taskKey);
     public int Max { get; set; } = 1;
@@ -268,6 +268,35 @@ public static class McpTests
             T.Eq("confirmed progress survives restart", 1, persisted["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
             T.Eq("restored task is interrupted", "interrupted", S(persisted, "status"));
             m.Cancel(id);
+            var continuedHost = new FakeRunHost();
+            var continued = new McpTaskManager(continuedHost, dir, TimeSpan.FromSeconds(5));
+            var next = await continued.StartAsync("SLOW finish remaining invitations", 0, default,
+                continueTaskId: id, requester: "Test", chat: "Progress");
+            var nextId = S(next, "task_id");
+            T.Eq("confirmed recipients inherited by continuation", 1, next["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
+            var repeated = continuedHost.EmitVerified!(new VerifiedAction("User A", 5, "Invitation sent", "https://example.test/a", DateTime.UtcNow));
+            T.Eq("same recipient on continuation stays counted once", 1, repeated);
+            var second = continuedHost.EmitVerified!(new VerifiedAction("User B", 5, "Invitation sent", "https://example.test/b", DateTime.UtcNow));
+            T.Eq("new recipient after continuation makes two", 2, second);
+            var nextStatus = await continued.StatusAsync(nextId, 0, default);
+            T.Eq("continued task reports two of five", 2, nextStatus["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
+            continued.Cancel(nextId);
+        });
+        await T.Section("MCP: batch progress never wakes StartAsync before state transition", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_progress_wait_" + Guid.NewGuid().ToString("N")[..8]);
+            var host = new FakeRunHost();
+            var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(3));
+            var pending = m.StartAsync("SLOW batch with interim confirmation", 2, default, requester: "Test", chat: "ProgressWait");
+            await Task.Delay(150);
+            T.Check("proof callback is available", host.EmitVerified is not null);
+            host.EmitVerified?.Invoke(new VerifiedAction("User A", 5, "Service confirmed", "https://example.test/a", DateTime.UtcNow));
+            await Task.Delay(250);
+            T.Check("StartAsync does not return running on progress-only activity", !pending.IsCompleted);
+            var started = await pending;
+            T.Eq("task is still running when start timeout expires", "running", S(started, "status"));
+            T.Eq("interim confirmation still included", 1, started["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
+            m.Cancel(S(started, "task_id"));
         });        await T.Section("MCP: controlled upgrade interrupts concurrent waiters and persists ETA", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_upgrade_" + Guid.NewGuid().ToString("N")[..8]);

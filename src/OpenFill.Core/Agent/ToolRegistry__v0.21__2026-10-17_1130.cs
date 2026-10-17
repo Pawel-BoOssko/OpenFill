@@ -24,7 +24,7 @@ public sealed class ToolRegistry
     private readonly IUserInteraction _ui;
     private readonly GapRecorder _gaps;
 
-    private readonly Action<VerifiedAction>? _verified;
+    private readonly Func<VerifiedAction, int>? _verified;
     private readonly HashSet<string> _verifiedRecipients = new(StringComparer.OrdinalIgnoreCase);
     private int? _verifiedTotal;
     private PageModel? _lastPage;
@@ -65,7 +65,7 @@ public sealed class ToolRegistry
         catch { return ""; }
     }
     public ToolRegistry(BrowserController browser, EventLog log, AppConfig config, OutputLimiter limiter,
-        SiteNotesStore notes, IUserInteraction ui, GapRecorder gaps, CostGuard? costs = null, SharedFiles? files = null, IDomainGate? gate = null, Action<VerifiedAction>? verified = null)
+        SiteNotesStore notes, IUserInteraction ui, GapRecorder gaps, CostGuard? costs = null, SharedFiles? files = null, IDomainGate? gate = null, Func<VerifiedAction, int>? verified = null)
     {
         _browser = browser; _log = log; _config = config; _limiter = limiter; _notes = notes; _ui = ui; _gaps = gaps; _costs = costs; _files = files; _gate = gate; _verified = verified;
     }
@@ -703,10 +703,10 @@ public sealed class ToolRegistry
                 if (observed?["value"]?.GetValue<bool>() != true)
                     return ToolResult.Error("Recipient and confirmation text were not both observed on the current service page. Progress was not increased.");
                 var proof = new VerifiedAction(recipient, total, evidence, uri.GetLeftPart(UriPartial.Path), DateTime.UtcNow);
-                _verified?.Invoke(proof);
+                var actualCount = _verified?.Invoke(proof);
                 _verifiedTotal = total;
                 _verifiedRecipients.Add(recipient);
-                return ToolResult.Text($"Service-page confirmation recorded: {_verifiedRecipients.Count}/{total}. No ETA inferred.");
+                return ToolResult.Text($"Service-page evidence checked. Confirmed progress: {actualCount ?? _verifiedRecipients.Count}/{total}. No ETA inferred; earlier confirmations are not double-counted.");
             }
         });
         tools.Add(new Tool
