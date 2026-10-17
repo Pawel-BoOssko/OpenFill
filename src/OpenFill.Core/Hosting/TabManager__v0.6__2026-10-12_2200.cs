@@ -2,11 +2,12 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenFill.Core.Cdp;
+using OpenFill.Core.Agent;
 
 namespace OpenFill.Core.Hosting;
 
 /// <summary>A tab as the strip shows it. State: running | waiting | finished | free | user (opened by hand).</summary>
-public sealed record TabInfo(string TaskKey, string Label, string? TabId, string? LastUrl, string State, DateTime LastUsedUtc, string? Requester = null);
+public sealed record TabInfo(string TaskKey, string Label, string? TabId, string? LastUrl, string State, DateTime LastUsedUtc, string? Requester = null, string? Reason = null);
 
 /// <summary>Result of preparing a tab for a task.</summary>
 /// <param name="TabId">The tab the task works in (already selected).</param>
@@ -48,6 +49,7 @@ public sealed class TabManager
         public string Label { get; set; } = "";
         public string Short { get; set; } = "";
         public string? Requester { get; set; }
+        public string? Reason { get; set; }
         public string? LastUrl { get; set; }
         public string State { get; set; } = "finished";
         public DateTime LastUsedUtc { get; set; }
@@ -107,7 +109,7 @@ public sealed class TabManager
         }
     }
 
-    private static TabInfo ToInfo(Rec r) => new(r.TaskKey, r.Label, r.TabId, r.LastUrl, r.State, r.LastUsedUtc, r.Requester);
+    private static TabInfo ToInfo(Rec r) => new(r.TaskKey, r.Label, r.TabId, r.LastUrl, r.State, r.LastUsedUtc, r.Requester, r.Reason);
 
     // ------------------------------------------------------------------ the window's blank starting tab
 
@@ -135,13 +137,38 @@ public sealed class TabManager
 
     // ------------------------------------------------------------------ task life cycle
 
-    public async Task<TabStart> BeginAsync(string taskKey, string label, string? continueKey, CancellationToken ct, string? shortLabel = null, string? requester = null)
+    // An explicit continuation wins. Otherwise reuse only a finished tab of the same
+    // requester/chat and a confidently identified domain, never another chat's tab.
+    private Rec? FindPrevious(string? continueKey, string? requester, string? preferredDomain)
     {
-        await _gate.WaitAsync(ct);
+        if (continueKey is not null) return _recs.FirstOrDefault(r => r.TaskKey == continueKey);
+        if (string.IsNullOrWhiteSpace(requester) || string.IsNullOrWhiteSpace(preferredDomain)) return null;
+        return _recs.Where(r => r.State == "finished" && r.Requester == requester &&
+            !string.IsNullOrWhiteSpace(r.LastUrl) && CostGuard.DomainOf(r.LastUrl) == preferredDomain)
+            .OrderByDescending(r => r.LastUsedUtc).FirstOrDefault();
+    }
+    public async Task<TabStart> BeginAsync(string taskKey, string label, string? continueKey, CancellationToken ct, string? shortLabel = null, string? requester = null, string? preferredDomain = null)
+    {
+        while (true)
+        {
+            await _gate.WaitAsync(ct);
+            bool room;
+            lock (_lock)
+            {
+                var previous = continueKey is null ? null : _recs.FirstOrDefault(r => r.TaskKey == continueKey);
+                room = (previous?.TabId is { } tab && _ui.Exists(tab))
+                    || _recs.Any(r => r.State == "free" && r.TabId is not null && _ui.Exists(r.TabId))
+                    || _recs.Count(r => r.TabId is not null && r.State != "user") < Limit
+                    || _recs.Any(r => r.TabId is not null && (r.State is "finished" or "free"));
+            }
+            if (room) break;
+            _gate.Release();
+            await Task.Delay(200, ct);
+        }
         try
         {
             Rec? prev;
-            lock (_lock) prev = continueKey is null ? null : _recs.FirstOrDefault(r => r.TaskKey == continueKey);
+            lock (_lock) prev = FindPrevious(continueKey, requester, preferredDomain);
 
             string tabId;
             bool reopened = false;
@@ -178,7 +205,9 @@ public sealed class TabManager
             {
                 if (prev is not null) prev.TabId = null;
                 _recs.RemoveAll(r => r.TaskKey == taskKey);
-                _recs.Add(new Rec { TaskKey = taskKey, Label = label, Short = shortLabel ?? label, Requester = requester, LastUrl = reopened ? url : null, State = "running", LastUsedUtc = DateTime.UtcNow, TabId = tabId });
+                _recs.Add(new Rec { TaskKey = taskKey, Label = label, Short = shortLabel ?? label, Requester = requester, LastUrl = reopened ? url : null, State = "running", LastUsedUtc = DateTime.UtcNow, TabId = tabId,
+                    Reason = prev is null ? (string.IsNullOrWhiteSpace(preferredDomain) ? "site_domain_unknown" : "no_matching_finished_chat_domain_tab") :
+                        reopened ? "previous_tab_closed_reopened_saved_url" : "existing_session_reused" });
                 _activeTabId = tabId;
             }
             Save();
@@ -383,7 +412,13 @@ public sealed class TabManager
                 victim.TabId = null;
                 if (victim.State == "free") _recs.Remove(victim);
             }
-            try { await _ui.CloseTabAsync(id); } catch { }
+            bool closed = false;
+            try { await _ui.CloseTabAsync(id); closed = !_ui.Exists(id); } catch { }
+            if (!closed)
+            {
+                lock (_lock) victim.TabId = id; // Do not orphan the still-open renderer.
+                throw new IOException("Cannot free a browser tab without losing its session. New tab was not opened.");
+            }
         }
     }
 

@@ -179,6 +179,24 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     };
 
     /// <summary>What the openfill_info tool shows about this app: settings, costs, tabs, shared folder, recent problems. No secrets, no page content.</summary>
+    public JsonObject? TabDetailsOf(string taskKey)
+    {
+        var tab = Tabs?.Find(taskKey);
+        if (tab is null) return null;
+        string? safeUrl = null;
+        if (Uri.TryCreate(tab.LastUrl, UriKind.Absolute, out var uri))
+            safeUrl = uri.GetLeftPart(UriPartial.Path);
+        return new JsonObject
+        {
+            ["tab_id"] = tab.TabId,
+            ["domain"] = CostGuard.DomainOf(tab.LastUrl ?? ""),
+            ["state"] = tab.State,
+            ["open"] = tab.TabId is not null,
+            ["reuse_ready"] = tab.State == "finished" && tab.TabId is not null,
+            ["reason"] = tab.Reason,
+            ["last_url"] = safeUrl
+        };
+    }
     public JsonObject? Diagnostics()
     {
         var o = new JsonObject
@@ -841,7 +859,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             if (tabs is not null)
             {
                 var shortLabel = ShortLabel(task, options?.Title);
-                start = await tabs.BeginAsync(st.Key, FullLabel(st.Site, shortLabel), options?.ContinueFromKey, ct, shortLabel, st.Who);
+                start = await tabs.BeginAsync(st.Key, FullLabel(st.Site, shortLabel), options?.ContinueFromKey, ct, shortLabel, st.Who, st.Site);
                 tabBegun = true;
                 if (tabs.ConnectionOf(start.TabId) is { } conn) cdp = new CdpSession(conn);
             }
@@ -870,7 +888,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             }
             else
                 await run.Browser.InitAsync(ct);
-            result = await run.FillAsync(prompt, ct);
+            result = await run.FillAsync(prompt, ct, options?.Verified);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

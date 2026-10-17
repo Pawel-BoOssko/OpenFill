@@ -16,8 +16,10 @@ public delegate Task<string> AskHandler(string question, IReadOnlyList<string>? 
 /// <param name="UserWaiting">The question (non-null) while the inner model waits for the person at the computer (only they can answer), null when that is over.</param>
 /// <param name="Requester">Name the calling chat gave for itself (for example Bishop, GPT, Papa); shown with a colour on tabs, cards, events and history.</param>
 /// <param name="Title">Short name of the task given by the caller; shown on the browser tab and on the cards in the window.</param>
+public sealed record VerifiedAction(string Recipient, int Total, string Evidence, string Url, DateTime ConfirmedUtc);
+
 public sealed record RunOptions(string? TaskKey = null, string? ContinueFromKey = null, string? PriorContext = null,
-    AskHandler? Ask = null, Action<string>? Activity = null, Action<string?>? UserWaiting = null, string? Title = null, string? Requester = null);
+    AskHandler? Ask = null, Action<string>? Activity = null, Action<string?>? UserWaiting = null, string? Title = null, string? Requester = null, Action<VerifiedAction>? Verified = null);
 
 /// <summary>Why a task was not started. Kind: limit (too many tasks at once), domain_busy (another task works on the site), no_key, empty, other.</summary>
 public sealed record RunRefusal(string Kind, string Message);
@@ -65,6 +67,9 @@ public interface IRunHost
 
     /// <summary>Settings, limits, costs per site, tabs and recent problems for the openfill_info tool (no secrets). Null when the host has nothing to add.</summary>
     JsonObject? Diagnostics() => null;
+
+    /// <summary>Details of this task's own browser tab, without exposing another chat's context.</summary>
+    JsonObject? TabDetailsOf(string taskKey) => null;
 
     /// <summary>Stops one task (or every task when the key is null).</summary>
     void Stop(string? taskKey);

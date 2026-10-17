@@ -3,6 +3,7 @@ using OpenFill.Core.Agent;
 using OpenFill.Core.Browser;
 using OpenFill.Core.Logging;
 using OpenFill.Core.Model;
+using OpenFill.Core.Mcp;
 
 namespace OpenFill.Core.Hosting;
 
@@ -36,7 +37,7 @@ public sealed class TaskRun
     public void Detach() => Browser.Detach();
 
     /// <summary>Runs the task: the model loop until it finishes, is stopped or hits a limit.</summary>
-    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default)
+    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Action<VerifiedAction>? verified = null)
     {
         var runId = Begin();
         Log.Write("session", "start", "New task", new { runId, preview = OutputLimiter.Head(task, 200) });
@@ -49,7 +50,7 @@ public sealed class TaskRun
             var gaps = new GapRecorder(paths.GapsFile, Log);
             var limiter = new OutputLimiter(paths.Overflow, config.ToolOutputLimitChars);
             var registry = new ToolRegistry(Browser, Log, config, limiter, notes, _ui, gaps, _s.Costs,
-                new SharedFiles(paths.SharedFor(config.SharedFolder), paths.Downloads), _gate);
+                new SharedFiles(paths.SharedFor(config.SharedFolder), paths.Downloads), _gate, verified);
             runner = new AgentRunner(_model, registry, config, Log, _s.Costs, Meter, _gate);
             var conclusion = await runner.RunAsync(task, ct);
 

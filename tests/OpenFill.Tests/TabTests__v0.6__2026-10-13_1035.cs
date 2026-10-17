@@ -208,14 +208,19 @@ public static class TabTests
             T.Check("the running/waiting tab was not closed", ui.Open.ContainsKey(s4.TabId) && !ui.Log.Contains("close " + s4.TabId));
             T.Eq("limit still holds (a finished tab made room)", 3, ui.Open.Count);
 
-            // everything open is busy: the limit gives way instead of closing a busy tab
+            // All three tabs are busy; a fourth task waits without exceeding the limit.
             tm.SetState("T2", "running");
+            tm.SetState("T3", "running");
             tm.SetState("T5", "running");
             ui.Log.Clear();
-            var s6 = await tm.BeginAsync("T6", "task six", null, default);
-            T.Check("with only busy tabs, nothing is closed", !ui.Log.Any(l => l.StartsWith("close")));
-            T.Eq("the limit gave way by one", 4, ui.Open.Count);
-
+            var queued = tm.BeginAsync("T6", "task six", null, default);
+            await Task.Delay(300);
+            T.Check("sixth task is queued while all tabs are busy", !queued.IsCompleted);
+            T.Eq("no sixth physical tab", 3, ui.Open.Count);
+            T.Check("busy tabs stay open", !ui.Log.Any(l => l.StartsWith("close")));
+            await tm.EndAsync("T5");
+            var s6 = await queued.WaitAsync(TimeSpan.FromSeconds(3));
+            T.Eq("queued task starts once a tab is released", 3, ui.Open.Count);
             // the strip got the open tabs
             T.Eq("strip shows the open tabs", ui.Open.Count, ui.LastStrip.Count);
             T.Check("strip carries states", ui.LastStrip.Any(t => t.State == "waiting") && ui.LastStrip.Any(t => t.State == "running"));
@@ -279,7 +284,49 @@ public static class TabTests
             T.Check("failed tab close: browser not dropped from UI", ui.Open.ContainsKey(c.TabId));
             T.Eq("failed tab close: URL preserved", "https://third.example/work", tabs.Find("failure-close")?.LastUrl);
         });
-        await T.Section("TabManager: returning to a session", async () =>
+        await T.Section("TabManager: same chat/domain automatically reuses finished tab", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_reuse_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var first = await tm.BeginAsync("first", "visit LinkedIn", null, default,
+                requester: "ChatGPT / Chat A", preferredDomain: "linkedin.com");
+            ui.Open[first.TabId] = "https://www.linkedin.com/in/example";
+            await tm.EndAsync("first");
+            var second = await tm.BeginAsync("second", "follow-up", null, default,
+                requester: "ChatGPT / Chat A", preferredDomain: "linkedin.com");
+            T.Eq("same chat automatically takes its finished tab", first.TabId, second.TabId);
+            T.Check("automatic reuse is treated as continuation", second.Continued);
+            T.Eq("reason identifies reused session", "existing_session_reused", tm.Find("second")?.Reason);
+            await tm.EndAsync("second");
+            var otherChat = await tm.BeginAsync("other", "separate chat", null, default,
+                requester: "ChatGPT / Chat B", preferredDomain: "linkedin.com");
+            T.Check("different chat never takes the original tab", otherChat.TabId != second.TabId);
+            T.Eq("reason explains new chat tab", "no_matching_finished_chat_domain_tab", tm.Find("other")?.Reason);
+            await tm.EndAsync("other");
+            var otherDomain = await tm.BeginAsync("other-domain", "another domain", null, default,
+                requester: "ChatGPT / Chat A", preferredDomain: "example.org");
+            T.Check("same chat does not reuse unrelated domain", otherDomain.TabId != second.TabId);
+            await tm.EndAsync("other-domain");
+        });        await T.Section("TabManager: failed eviction preserves live tab and strict limit", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_eviction_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 1);
+            var a = await tm.BeginAsync("eviction-a", "first", null, default);
+            ui.Open[a.TabId] = "https://example.org/session";
+            await tm.EndAsync("eviction-a");
+            ui.FailClose = true;
+            bool rejected = false;
+            try { await tm.BeginAsync("eviction-b", "second", null, default); }
+            catch (IOException) { rejected = true; }
+            T.Check("eviction failure refuses extra tab", rejected && ui.Open.Count == 1);
+            T.Eq("failed eviction still tracks live browser", a.TabId, tm.Find("eviction-a")?.TabId);
+            T.Eq("saved session URL survives failed eviction", "https://example.org/session", tm.Find("eviction-a")?.LastUrl);
+            ui.FailClose = false;
+            var b = await tm.BeginAsync("eviction-b", "second", null, default);
+            T.Check("later retry can free capacity", b.TabId != a.TabId && ui.Open.Count == 1);
+        });        await T.Section("TabManager: returning to a session", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_tabs_" + Guid.NewGuid().ToString("N")[..6]);
             var store = Path.Combine(dir, "tabs.json");

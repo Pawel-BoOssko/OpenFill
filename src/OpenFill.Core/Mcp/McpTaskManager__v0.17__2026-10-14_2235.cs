@@ -30,6 +30,8 @@ public sealed class McpTaskRecord
     /// <summary>Model steps and estimated cost of the task (filled in when it ends).</summary>
     public int Steps { get; set; }
     public double? CostUsd { get; set; }
+    public List<VerifiedAction>? VerifiedActions { get; set; }
+    public int? VerifiedBatchTotal { get; set; }
     /// <summary>OpenFill version that ran the task.</summary>
     public string? AppVersion { get; set; }
     public List<string>? Options { get; set; }
@@ -214,7 +216,8 @@ public sealed class McpTaskManager
             Activity: m => OnActivity(live, m),
             UserWaiting: q => OnUserWaiting(live, q),
             Title: string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
-            Requester: who);
+            Requester: who,
+            Verified: item => OnVerifiedAction(live, item));
 
         StartResult started;
         try { started = _host.TryStart(task, options); }
@@ -462,6 +465,29 @@ public sealed class McpTaskManager
         }
     }
 
+    private void OnVerifiedAction(Live live, VerifiedAction action)
+    {
+        var rec = live.Rec;
+        lock (_lock)
+        {
+            if (!IsOpen(rec)) throw new InvalidOperationException("This task is no longer running.");
+            if (rec.VerifiedBatchTotal.HasValue && rec.VerifiedBatchTotal != action.Total)
+                throw new InvalidOperationException("Batch size mismatch.");
+            rec.VerifiedActions ??= new List<VerifiedAction>();
+            if (rec.VerifiedActions.Any(p => string.Equals(p.Recipient, action.Recipient, StringComparison.OrdinalIgnoreCase))) return;
+            if (rec.VerifiedActions.Count >= action.Total) throw new InvalidOperationException("Batch already complete.");
+            rec.VerifiedBatchTotal = action.Total;
+            rec.VerifiedActions.Add(action);
+            try { SaveStrict(rec); }
+            catch
+            {
+                rec.VerifiedActions.RemoveAt(rec.VerifiedActions.Count - 1);
+                if (rec.VerifiedActions.Count == 0) rec.VerifiedBatchTotal = null;
+                throw;
+            }
+            rec.ActivityVer++; // Wake status only; StartAsync must still wait for a state transition.
+        }
+    }
     private void OnActivity(Live live, string message)
     {
         var rec = live.Rec;
@@ -822,6 +848,7 @@ public sealed class McpTaskManager
             if (rec.ContinuedFrom is not null) o["continued_from"] = rec.ContinuedFrom;
             if (o0Url is not null) o["last_url"] = o0Url;
             if (rec.Outcome is not null) o["outcome"] = rec.Outcome;
+            if (_host.TabDetailsOf(rec.Id) is { } tabDetails) o["browser_tab"] = tabDetails.DeepClone();
             if (rec.Summary is not null) o["summary"] = rec.Summary;
             if (rec.TemporaryCredentials is { Count: > 0 })
                 o["temporary_credentials"] = new JsonArray(rec.TemporaryCredentials.Select(c => (JsonNode)new JsonObject
@@ -835,7 +862,20 @@ public sealed class McpTaskManager
                 o["recent_activity"] = new JsonArray(rec.Activity.Select(x => (JsonNode)x).ToArray());
             int steps = rec.Steps; double? cost = rec.CostUsd; string? warn = null;
             if (!fromDisk && IsOpen(rec) && _host.ProgressOf(rec.Id) is { } live) { steps = live.Steps; cost = live.CostUsd; warn = live.Warning; }
-            if (steps > 0) o["steps"] = steps;
+            if (rec.VerifiedBatchTotal is { } total)
+            {
+                var items = rec.VerifiedActions ?? new List<VerifiedAction>();
+                o["confirmed_progress"] = new JsonObject
+                {
+                    ["confirmed"] = items.Count,
+                    ["total"] = total,
+                    ["remaining"] = total - items.Count,
+                    ["last_confirmed_at"] = items.Count == 0 ? null : items[^1].ConfirmedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
+                    ["recipients"] = new JsonArray(items.Select(x => (JsonNode)x.Recipient).ToArray()),
+                    ["source"] = "service_page_text_verified",
+                    ["estimated_completion_seconds"] = null
+                };
+            }            if (steps > 0) o["steps"] = steps;
             if (cost is { } cu) o["cost_usd"] = Math.Round(cu, 4);
             if (status is "running" or "waiting_for_user" or "needs_input")
             {

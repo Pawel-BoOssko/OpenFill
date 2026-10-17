@@ -12,6 +12,9 @@ internal sealed class FakeRunHost : IRunHost
     private readonly Dictionary<string, CancellationTokenSource> _cts = new();
     public int Started;
     public Action<string>? EmitActivity;
+    public Action<VerifiedAction>? EmitVerified;
+    public Func<string, JsonObject?>? TabStatus;
+    public JsonObject? TabDetailsOf(string taskKey) => TabStatus?.Invoke(taskKey);
     public int Max { get; set; } = 1;
     private bool _maintenanceActive;
     public JsonObject Maintenance(int? minutes, string? reason, string? by)
@@ -36,6 +39,7 @@ internal sealed class FakeRunHost : IRunHost
         if (Refuse?.Invoke(task) is not null) return null;
         Started++;
         EmitActivity = options?.Activity;
+        EmitVerified = options?.Verified;
         var cts = new CancellationTokenSource();
         lock (_cts) _cts[options?.TaskKey ?? "-"] = cts;
         var ct = cts.Token;
@@ -239,7 +243,32 @@ public static class McpTests
             T.Eq("task still running", "running", S(response, "status"));
             m.Cancel(S(started, "task_id"));
         });
-        await T.Section("MCP: controlled upgrade interrupts concurrent waiters and persists ETA", async () =>
+        await T.Section("MCP: per-recipient verified batch progress survives restart", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_progress_" + Guid.NewGuid().ToString("N")[..8]);
+            var host = new FakeRunHost { TabStatus = key => new JsonObject { ["tab_id"] = "tab-test", ["open"] = true, ["reason"] = "existing_session_reused" } };
+            var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(5));
+            var started = await m.StartAsync("SLOW send invitations", 0, default, requester: "Test", chat: "Progress");
+            var id = S(started, "task_id");
+            T.Check("steps are not confirmed invitations", started["confirmed_progress"] is null);
+            T.Eq("MCP response exposes own tab id", "tab-test", started["browser_tab"]?["tab_id"]?.GetValue<string>());
+            T.Eq("MCP response exposes tab reuse reason", "existing_session_reused", started["browser_tab"]?["reason"]?.GetValue<string>());
+            host.EmitVerified!(new VerifiedAction("User A", 5, "Invitation sent", "https://example.test/a", DateTime.UtcNow));
+            var status = await m.StatusAsync(id, 0, default);
+            var progress = status["confirmed_progress"];
+            T.Eq("one verified recipient", 1, progress?["confirmed"]?.GetValue<int>() ?? -1);
+            T.Eq("planned five", 5, progress?["total"]?.GetValue<int>() ?? -1);
+            T.Eq("four remaining", 4, progress?["remaining"]?.GetValue<int>() ?? -1);
+            T.Check("progress has no invented ETA", progress?["estimated_completion_seconds"] is null);
+            host.EmitVerified!(new VerifiedAction("user a", 5, "Invitation sent", "https://example.test/a", DateTime.UtcNow));
+            status = await m.StatusAsync(id, 0, default);
+            T.Eq("same recipient does not increment twice", 1, status["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
+            var restored = new McpTaskManager(new FakeRunHost(), dir, TimeSpan.FromSeconds(5));
+            var persisted = await restored.StatusAsync(id, 0, default);
+            T.Eq("confirmed progress survives restart", 1, persisted["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
+            T.Eq("restored task is interrupted", "interrupted", S(persisted, "status"));
+            m.Cancel(id);
+        });        await T.Section("MCP: controlled upgrade interrupts concurrent waiters and persists ETA", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_upgrade_" + Guid.NewGuid().ToString("N")[..8]);
             var host = new FakeRunHost { Max = 4 };

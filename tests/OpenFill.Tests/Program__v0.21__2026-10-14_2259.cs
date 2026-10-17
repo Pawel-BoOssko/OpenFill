@@ -688,8 +688,9 @@ await T.Section("Model tools on a hard form (modal, React, autocomplete, custom 
     var config = new AppConfig();
     var siteNotes = new SiteNotesStore(paths.Notes, log);
     siteNotes.Merge("127.0.0.1", "profile_test_hint: local profile form");
+    var evidenceEvents = new List<OpenFill.Core.Mcp.VerifiedAction>();
     var registry = new ToolRegistry(browser, log, config, new OutputLimiter(paths.Overflow, config.ToolOutputLimitChars),
-        siteNotes, new HeadlessInteraction(), new GapRecorder(paths.GapsFile, log));
+        siteNotes, new HeadlessInteraction(), new GapRecorder(paths.GapsFile, log), verified: evidenceEvents.Add);
     var tools = registry.Build().ToDictionary(t => t.Name);
 
     async Task<ToolResult> Call(string name, object args)
@@ -799,7 +800,15 @@ await T.Section("Model tools on a hard form (modal, React, autocomplete, custom 
 
     var txt = await Call("read_text", new { query = "zapisany" });
     T.Contains("read_text: finds message", txt.Output, "Profil zapisany");
-    var shot = await Call("screenshot", new { });
+    var noProof = await Call("report_verified_action", new { recipient = "User A", batch_total = 5, confirmation_text = "Invitation sent" });
+    T.Check("verified progress rejects absent page confirmation", !noProof.Ok && evidenceEvents.Count == 0);
+    await browser.RunJsAsync("document.body.insertAdjacentHTML('beforeend','<div>User A: Invitation sent</div>')");
+    var confirmed = await Call("report_verified_action", new { recipient = "User A", batch_total = 5, confirmation_text = "Invitation sent" });
+    T.Check("verified progress accepts observed service-page proof", confirmed.Ok && evidenceEvents.Count == 1);
+    var duplicate = await Call("report_verified_action", new { recipient = "User A", batch_total = 5, confirmation_text = "Invitation sent" });
+    T.Check("verified progress deduplicates recipient", duplicate.Ok && evidenceEvents.Count == 1);
+    var invalidTotal = await Call("report_verified_action", new { recipient = "User B", batch_total = 6, confirmation_text = "Invitation sent" });
+    T.Check("verified progress rejects changed total", !invalidTotal.Ok && evidenceEvents.Count == 1);    var shot = await Call("screenshot", new { });
     T.Check("screenshot: image for the model", shot.ImageJpegBase64 is { Length: > 1000 });
 
     // Logs: no secrets, network file exists.

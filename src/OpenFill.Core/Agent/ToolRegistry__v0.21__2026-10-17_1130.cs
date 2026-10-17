@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using OpenFill.Core.Browser;
 using OpenFill.Core.Config;
 using OpenFill.Core.Logging;
+using OpenFill.Core.Mcp;
 
 namespace OpenFill.Core.Agent;
 
@@ -23,6 +24,9 @@ public sealed class ToolRegistry
     private readonly IUserInteraction _ui;
     private readonly GapRecorder _gaps;
 
+    private readonly Action<VerifiedAction>? _verified;
+    private readonly HashSet<string> _verifiedRecipients = new(StringComparer.OrdinalIgnoreCase);
+    private int? _verifiedTotal;
     private PageModel? _lastPage;
 
     public RunConclusion? Conclusion { get; private set; }
@@ -61,9 +65,9 @@ public sealed class ToolRegistry
         catch { return ""; }
     }
     public ToolRegistry(BrowserController browser, EventLog log, AppConfig config, OutputLimiter limiter,
-        SiteNotesStore notes, IUserInteraction ui, GapRecorder gaps, CostGuard? costs = null, SharedFiles? files = null, IDomainGate? gate = null)
+        SiteNotesStore notes, IUserInteraction ui, GapRecorder gaps, CostGuard? costs = null, SharedFiles? files = null, IDomainGate? gate = null, Action<VerifiedAction>? verified = null)
     {
-        _browser = browser; _log = log; _config = config; _limiter = limiter; _notes = notes; _ui = ui; _gaps = gaps; _costs = costs; _files = files; _gate = gate;
+        _browser = browser; _log = log; _config = config; _limiter = limiter; _notes = notes; _ui = ui; _gaps = gaps; _costs = costs; _files = files; _gate = gate; _verified = verified;
     }
 
     private readonly IDomainGate? _gate;
@@ -668,6 +672,43 @@ public sealed class ToolRegistry
             }
         });
 
+        tools.Add(new Tool
+        {
+            Name = "report_verified_action",
+            Description = "Reports ONE confirmed recipient in a batch, only AFTER the service itself visibly confirms the completed action. Provide recipient visible on the current page, batch_total and exact confirmation_text visible on that same page. A click, model step, or unverified claim does not count. Repeated recipients never increase progress.",
+            Parameters = Schema(Obj(
+                ("recipient", Str("Unique recipient name or account identifier visible on this page")),
+                ("batch_total", Obj(("type", "integer"))),
+                ("confirmation_text", Str("Exact service confirmation text currently visible on the page"))),
+                "recipient", "batch_total", "confirmation_text"),
+            Handler = async (args, ct) =>
+            {
+                var recipient = (args["recipient"]?.GetValue<string>() ?? "").Trim();
+                var evidence = (args["confirmation_text"]?.GetValue<string>() ?? "").Trim();
+                var total = args["batch_total"]?.GetValue<int>() ?? 0;
+                if (recipient.Length is < 2 or > 120 || evidence.Length is < 4 or > 240 || total is < 1 or > 1000)
+                    return ToolResult.Error("Specify a real recipient, exact confirmation text (4-240 characters), and batch_total 1-1000.");
+                if (_verifiedTotal.HasValue && _verifiedTotal != total)
+                    return ToolResult.Error("Batch total cannot change during this task.");
+                if (_verifiedRecipients.Contains(recipient))
+                    return ToolResult.Text("Already counted this recipient. Confirmed count is unchanged.");
+                if (_verifiedRecipients.Count >= total)
+                    return ToolResult.Error("All expected recipients are already accounted for.");
+                var url = await _browser.CurrentUrlAsync(ct);
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+                    return ToolResult.Error("No service page is available to verify this action.");
+                var js = "(()=>{const t=document.body?.innerText||'';return t.includes(" +
+                    JsonSerializer.Serialize(recipient) + ")&&t.includes(" + JsonSerializer.Serialize(evidence) + ");})()";
+                var observed = await _browser.RunJsAsync(js, ct);
+                if (observed?["value"]?.GetValue<bool>() != true)
+                    return ToolResult.Error("Recipient and confirmation text were not both observed on the current service page. Progress was not increased.");
+                var proof = new VerifiedAction(recipient, total, evidence, uri.GetLeftPart(UriPartial.Path), DateTime.UtcNow);
+                _verified?.Invoke(proof);
+                _verifiedTotal = total;
+                _verifiedRecipients.Add(recipient);
+                return ToolResult.Text($"Service-page confirmation recorded: {_verifiedRecipients.Count}/{total}. No ETA inferred.");
+            }
+        });
         tools.Add(new Tool
         {
             Name = "finish",
