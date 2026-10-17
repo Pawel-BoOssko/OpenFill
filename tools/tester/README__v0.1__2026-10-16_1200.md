@@ -28,7 +28,7 @@ and `public bool McpEnabled { get; set; } = false;` in `AppConfig__v*.cs`. If ei
    git clone https://github.com/Pawel-BoOssko/OpenFill.git C:\Users\<user>\OpenFill-tester-build
    powershell -ExecutionPolicy Bypass -File C:\Users\<user>\OpenFill-tester-build\tools\pack-tester__v0.1__2026-10-16_0925.ps1 -ApiKey <key> -ValidUntil "17 października 2026" -Name <tester>
    ```
-   Build from the branch with the current code (at the time: `sync/...`, not `main`), so the tester gets the newest version.
+   Build from the branch with the newest code (on 2026-10-17: `autosync/PBOX1`; check `git ls-remote` for the newest commit, not `main`), so the tester gets the newest version.
    Result: `dist\OpenFill-tester__v<ver>__<stamp>__<tester>.zip` (about 46 MB). The throwaway copy with the key is deleted; the script checks that the repository is unchanged.
 4. **Do a dry run first** with a fake key (`sk-` + 20 or more letters) when the script or the code changed, then delete that zip.
 5. **Hand it over:** copy the zip to the owner's desktop (`[Environment]::GetFolderPath('Desktop')`, on PBOX1 that is OneDrive),

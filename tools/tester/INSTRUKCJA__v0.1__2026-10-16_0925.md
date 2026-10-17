@@ -82,8 +82,7 @@ Jak to działa: czat przekazuje zadanie do OpenFill, a mały model w OpenFill sa
 klika w oknie na Twoim komputerze. Postęp widać na żywo w panelu po prawej.
 Jeśli strona wymaga logowania, zaloguj się raz w przeglądarce w oknie OpenFill
 (to osobny profil, niezależny od Twojego Chrome/Edge) – OpenFill to zapamięta.
-Płatności i ostateczne wysłanie formularzy zawsze wymagają Twojej zgody w oknie OpenFill.
-Kody i hasła, o które prosi OpenFill, wpisujesz w jego oknie – nie trafiają do czatu.
+Przed płatnością OpenFill zapyta o zgodę w swoim oknie.
 
 
 4. Gdy coś nie działa
