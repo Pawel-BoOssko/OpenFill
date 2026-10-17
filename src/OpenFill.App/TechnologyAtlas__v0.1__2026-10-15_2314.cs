@@ -54,7 +54,7 @@ internal static class TechnologyAtlas
         new("07  Ecosystem", "PBOX1 hosting", "Local Windows desktop deployment", "OpenFill/app, data/stable, Task Scheduler", "The user-facing browser runs on a Windows laptop in the interactive user session.", "I deployed the agent near the user's authenticated browser context rather than to a remote headless server.")
     };
 
-    internal static string OneLine => "C#   .NET 10   WinForms   Edge WebView2   Chromium / CDP   OpenAI Responses   MCP + JSON-RPC   WinCred / DPAPI   Windows PBOX1";
+    internal static string OneLine => $"OpenFill {BuildInfo.Version}   LIVE PID {Environment.ProcessId}   C#   .NET 10   WinForms   Edge WebView2   Chromium / CDP   OpenAI Responses   MCP + JSON-RPC   WinCred / DPAPI   Windows PBOX1";
 
     internal static Control CreateBanner(Action open, Action requestClose)
     {
