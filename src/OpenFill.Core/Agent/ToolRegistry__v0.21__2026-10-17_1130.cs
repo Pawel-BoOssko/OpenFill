@@ -697,9 +697,8 @@ public sealed class ToolRegistry
                 var url = await _browser.CurrentUrlAsync(ct);
                 if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
                     return ToolResult.Error("No service page is available to verify this action.");
-                var js = "(()=>{const t=document.body?.innerText||'';return t.includes(" +
-                    JsonSerializer.Serialize(recipient) + ")&&t.includes(" + JsonSerializer.Serialize(evidence) + ");})()";
-                var observed = await _browser.RunJsAsync(js, ct);
+                var js = "(()=>{const t=document.body?.innerText||'';return t.split(/\\r?\\n/).some(line=>line.length<=240&&line.includes(" +
+                    JsonSerializer.Serialize(recipient) + ")&&line.includes(" + JsonSerializer.Serialize(evidence) + "));})()";                var observed = await _browser.RunJsAsync(js, ct);
                 if (observed?["value"]?.GetValue<bool>() != true)
                     return ToolResult.Error("Recipient and confirmation text were not both observed on the current service page. Progress was not increased.");
                 var proof = new VerifiedAction(recipient, total, evidence, uri.GetLeftPart(UriPartial.Path), DateTime.UtcNow);

@@ -387,10 +387,32 @@ public static class TabTests
             var a = await tm.BeginAsync("lost-a", "first", null, default);
             await tm.EndAsync("lost-a");
             ui.Open.Remove(a.TabId);
+            T.Check("stale tracked tab is not reported open", !tm.IsTabPresent("lost-a"));
             var b = await tm.BeginAsync("lost-b", "continue", "lost-a", default);
             T.Check("missing physical tab causes a new tab", b.TabId != a.TabId && !b.Reopened);
             T.Eq("reason identifies unrecoverable missing URL", "previous_session_unavailable_no_saved_url", tm.Find("lost-b")?.Reason);
             T.Check("unavailable prior tab ownership cleared", tm.Find("lost-a")?.TabId is null);
+        });
+        await T.Section("OF-234: aged persisted session resumes by domain after restart", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_aged_" + Guid.NewGuid().ToString("N")[..8]);
+            var store = Path.Combine(dir, "tabs.json");
+            var firstUi = new FakeTabs();
+            var first = new TabManager(firstUi, store, 5);
+            var visit = await first.BeginAsync("before-night", "LinkedIn", null, default,
+                requester: "Model / same chat", preferredDomain: "linkedin.com");
+            firstUi.Open[visit.TabId] = "https://www.linkedin.com/mynetwork/";
+            await first.EndAsync("before-night");
+            var persisted = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(store))!.AsArray();
+            persisted[0]!["LastUsedUtc"] = DateTime.UtcNow.AddHours(-7);
+            File.WriteAllText(store, persisted.ToJsonString());
+            var nextUi = new FakeTabs();
+            var after = new TabManager(nextUi, store, 5);
+            var resumed = await after.BeginAsync("after-night", "Next batch", null, default,
+                requester: "Model / same chat", preferredDomain: "linkedin.com");
+            T.Check("7-hour-old stored session is eligible to resume", resumed.Continued && resumed.Reopened);
+            T.Eq("aged session restores last address", "https://www.linkedin.com/mynetwork/", nextUi.Open[resumed.TabId]);
+            T.Eq("reopen reason survives source state", "previous_tab_closed_reopened_saved_url", after.Find("after-night")?.Reason);
         });
         await T.Section("TabManager: returning to a session", async () =>
         {

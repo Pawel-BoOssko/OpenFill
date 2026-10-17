@@ -808,7 +808,13 @@ await T.Section("Model tools on a hard form (modal, React, autocomplete, custom 
     var duplicate = await Call("report_verified_action", new { recipient = "User A", batch_total = 5, confirmation_text = "Invitation sent" });
     T.Check("verified progress deduplicates recipient", duplicate.Ok && evidenceEvents.Count == 1);
     var invalidTotal = await Call("report_verified_action", new { recipient = "User B", batch_total = 6, confirmation_text = "Invitation sent" });
-    T.Check("verified progress rejects changed total", !invalidTotal.Ok && evidenceEvents.Count == 1);    var shot = await Call("screenshot", new { });
+    T.Check("verified progress rejects changed total", !invalidTotal.Ok && evidenceEvents.Count == 1);    await browser.RunJsAsync("document.body.insertAdjacentHTML('beforeend','<div>User B</div><div>Invitation sent</div>')");
+    var unrelated = await Call("report_verified_action", new { recipient = "User B", batch_total = 5, confirmation_text = "Invitation sent" });
+    T.Check("different page lines are not a per-recipient confirmation", !unrelated.Ok && evidenceEvents.Count == 1);
+    await browser.RunJsAsync("document.body.insertAdjacentHTML('beforeend','<div>User B: Invitation sent</div>')");
+    var locallyVerified = await Call("report_verified_action", new { recipient = "User B", batch_total = 5, confirmation_text = "Invitation sent" });
+    T.Check("local recipient confirmation can be counted", locallyVerified.Ok && evidenceEvents.Count == 2);
+    var shot = await Call("screenshot", new { });
     T.Check("screenshot: image for the model", shot.ImageJpegBase64 is { Length: > 1000 });
 
     // Logs: no secrets, network file exists.

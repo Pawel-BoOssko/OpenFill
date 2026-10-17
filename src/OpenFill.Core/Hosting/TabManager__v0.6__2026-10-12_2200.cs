@@ -93,6 +93,14 @@ public sealed class TabManager
         lock (_lock) return _recs.Where(r => r.TaskKey == taskKey).Select(ToInfo).FirstOrDefault();
     }
 
+    public bool IsTabPresent(string taskKey)
+    {
+        lock (_lock)
+        {
+            var tabId = _recs.FirstOrDefault(r => r.TaskKey == taskKey)?.TabId;
+            return tabId is not null && _ui.Exists(tabId);
+        }
+    }
     /// <summary>True when tabs have their own CDP connections (several tasks may run at once).</summary>
     public bool SupportsParallel => _ui.SupportsParallel;
 

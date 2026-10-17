@@ -184,6 +184,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         var tab = Tabs?.Find(taskKey);
         if (tab is null) return null;
         string? safeUrl = null;
+        var physicalOpen = Tabs?.IsTabPresent(taskKey) == true;
         if (Uri.TryCreate(tab.LastUrl, UriKind.Absolute, out var uri))
             safeUrl = uri.GetLeftPart(UriPartial.Path);
         return new JsonObject
@@ -191,8 +192,10 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             ["tab_id"] = tab.TabId,
             ["domain"] = CostGuard.DomainOf(tab.LastUrl ?? ""),
             ["state"] = tab.State,
-            ["open"] = tab.TabId is not null,
-            ["reuse_ready"] = tab.State == "finished" && tab.TabId is not null,
+            ["open"] = physicalOpen,
+            ["requester"] = tab.Requester,
+            ["can_reopen_saved_url"] = !physicalOpen && safeUrl is not null,
+            ["reuse_ready"] = tab.State == "finished" && (physicalOpen || safeUrl is not null),
             ["reason"] = tab.Reason,
             ["last_url"] = safeUrl
         };
