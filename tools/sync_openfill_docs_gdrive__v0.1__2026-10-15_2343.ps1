@@ -1,14 +1,25 @@
-param([switch]$DryRun)
+# OpenFill - Metadata: wersja 0.2, data 2026-10-18 15:05
+# Canonical direction: local docs -> Google Drive. Divergent Drive versions are archived and verified.
+param([switch]$DryRun, [string]$TestSource='', [string]$TestDestination='')
 $ErrorActionPreference='Stop'
 $root='C:\Users\pboru\Downloads\OpenFill__v0.1__2026-10-04_1911\OpenFill'
-$source=Join-Path $root 'docs'
-$drive=Get-PSDrive -Name H -PSProvider FileSystem -ErrorAction Stop
-if ($drive.Description -notmatch 'posko666@gmail\.com') { throw 'Unexpected Google Drive account; sync aborted.' }
-$driveHome=Get-ChildItem -LiteralPath 'H:\' -Directory | Where-Object { $_.Name -notlike '.*' -and $_.Name -notlike '$*' } | Select-Object -First 1
-if ($null -eq $driveHome) { throw 'Google Drive My Drive folder missing.' }
-$destination=Join-Path $driveHome.FullName 'OpenFill\docs'
+if ($TestSource -or $TestDestination) {
+  if (-not ($TestSource -and $TestDestination)) { throw 'Both isolated test paths are required.' }
+  $source=$TestSource
+  $destination=$TestDestination
+} else {
+  $source=Join-Path $root 'docs'
+  $drive=Get-PSDrive -Name H -PSProvider FileSystem -ErrorAction Stop
+  if ($drive.Description -notmatch 'posko666@gmail\.com') { throw 'Unexpected Google Drive account; sync aborted.' }
+  $driveHome=Get-ChildItem -LiteralPath 'H:\' -Directory | Where-Object { $_.Name -notlike '.*' -and $_.Name -notlike '$*' } | Select-Object -First 1
+  if ($null -eq $driveHome) { throw 'Google Drive My Drive folder missing.' }
+  $destination=Join-Path $driveHome.FullName 'OpenFill\docs'
+}
+if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw 'Local docs source missing; sync aborted.' }
 if (-not (Test-Path -LiteralPath $destination -PathType Container)) { throw 'OpenFill/docs destination missing; sync aborted.' }
 $copied=0
+$updated=0
+$archived=0
 $unchanged=0
 $skipped=0
 $files=Get-ChildItem -LiteralPath $source -File | Where-Object { $_.Extension -in '.md','.txt' }
