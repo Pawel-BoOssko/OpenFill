@@ -1,6 +1,6 @@
 # OpenFill i Networking Radar, kontrakt MCP v0.4
 
-Data: 2026-10-18, 21:35 CEST. Podstawa: kontrakty v0.2 i v0.3, kod `McpTaskManager__v0.19__2026-10-18_2115.cs`, testy `McpTests__v0.15__2026-10-18_2120.cs`. Produkcyjne `openfill_info` ostatnio potwierdziło OpenFill **1.55** z 18 października o 14:22. Te nowe zmiany są tylko SOURCE/BUILD/TEST.
+Data: 2026-10-18, 20:53 CEST. Podstawa: kontrakty v0.2 i v0.3, kod `McpTaskManager__v0.19__2026-10-18_2049.cs`, testy `McpTests__v0.15__2026-10-18_2050.cs`. Produkcyjne `openfill_info` ostatnio potwierdziło OpenFill **1.55** z 18 października o 14:22. Te nowe zmiany są tylko SOURCE/BUILD/TEST.
 
 ## Kontrakt dla konsumentów
 
@@ -16,7 +16,7 @@ Data: 2026-10-18, 21:35 CEST. Podstawa: kontrakty v0.2 i v0.3, kod `McpTaskManag
 ## Dowody i braki
 
 - SOURCE/BUILD: McpTaskManager v0.19 i McpTests v0.15; build rozwiązania Release bez błędów, jedno znane ostrzeżenie MSB3277.
-- SOURCE/TEST: na przełomie 20:45–21:30, v0.14: **3 × 821 PASS/0 FAIL**; v0.15: pierwsza pełna regresja **829 PASS/0 FAIL**, kolejna w toku w chwili zapisu. Dodano łącznie 16 asercji OF-219: brak ponownego działania przy odmowie zapisu pliku i braku możliwości odczytu pliku historii.
+- SOURCE/TEST: v0.14: **3 × 821 PASS/0 FAIL**; po poprawce v0.19 i testach v0.15: **3 × 829 PASS/0 FAIL**. Dodano łącznie 16 asercji OF-219, w tym brak duplikatu przy niemożności zapisu lub odczytu wcześniejszego zadania.
 - LIVE: odczytano `openfill_info` z OpenFill 1.55 (limit 3 równoległych zadań, maintenance=false). Nie przeprowadzano rzeczywistego E2E Radar->organizer->Calendar, nie wysyłano zgłoszeń.
 - Otwarta pozostaje walidacja rzeczywistych rejestracji (OF-156/178), ponowne wywołania portalu, prawidłowa tożsamość, formularz, dowód organizatora i kalendarz, OF-230 wielogodzinna sesja karty, OF-239 zastępca MCP w czasie upgrade.
 

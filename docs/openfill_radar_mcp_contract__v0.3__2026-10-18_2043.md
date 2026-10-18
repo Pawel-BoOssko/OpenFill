@@ -1,6 +1,6 @@
 # OpenFill / Networking Radar, kontrakt MCP v0.3
 
-Data: 2026-10-18, 21:00 CEST. Poprzedni kontrakt: `openfill_radar_mcp_contract__v0.2__2026-10-18.md`. Wydanie produkcyjne sprawdzone przez `openfill_info`: **OpenFill 1.55**, data wersji 2026-10-18 14:22, build 14:25. Zmiany testów bieżącego cyklu pozostają SOURCE/TEST, nie są osobną instalacją.
+Data: 2026-10-18, 20:43 CEST. Poprzedni kontrakt: `openfill_radar_mcp_contract__v0.2__2026-10-18.md`. Wydanie produkcyjne sprawdzone przez `openfill_info`: **OpenFill 1.55**, data wersji 2026-10-18 14:22, build 14:25. Zmiany testów bieżącego cyklu pozostają SOURCE/TEST, nie są osobną instalacją.
 
 ## Kontrakt
 

@@ -1,4 +1,4 @@
-# OpenFill, checkpoint v1.1, 2026-10-18 21:05 CEST
+# OpenFill, checkpoint v1.1, 2026-10-18 20:45 CEST
 
 ## Zasady wykonania potwierdzone
 - Użytkownik zabronił jakichkolwiek automatyzacji ChatGPT i ręcznych pushy. Odczyt konfiguracji zadań ChatGPT wykazał **32 paused / 0 enabled** (pozostałe zakończone), w tym godzinne kontynuacje OpenFill, LC, Radar, Open Browser. Żadnego zadania nie aktywowano, utworzono ani nie uruchomiono. Nie wykonano `git push`, `git commit` ani ręcznego wyzwolenia Autosync.
@@ -12,7 +12,7 @@
 - Weryfikacja dotyczy SOURCE/TEST; żywa produkcja 1.55 nie została ponownie zainstalowana.
 
 ## OF-163/185: kontrakt Radar aktualny do OpenFill 1.55
-- Nowy `docs/openfill_radar_mcp_contract__v0.3__2026-10-18_2100.md` odróżnia VERSION (produkcyjne `openfill_info`: 1.55), SOURCE/TEST (McpTaskManager 0.18 i McpTests 0.14), długie odpytywanie 30 s (nie ETA), klucze idempotencji zależne od requester/chat i ostrożne `continue_task_id`.
+- Nowy `docs/openfill_radar_mcp_contract__v0.3__2026-10-18_2043.md` odróżnia VERSION (produkcyjne `openfill_info`: 1.55), SOURCE/TEST (McpTaskManager 0.18 i McpTests 0.14), długie odpytywanie 30 s (nie ETA), klucze idempotencji zależne od requester/chat i ostrożne `continue_task_id`.
 - W kontrakcie zaznaczono, że wyniki FakeRunHost i potwierdzenia tekstowe nie zastępują rzeczywistego dowodu organizatora, a test z Google Calendar i rzeczywistym Radar E2E nadal nie został wykonany.
 - Status OF-219, OF-163, OF-185 zaktualizowany w kanonicznym backlogu v1.7.
 
