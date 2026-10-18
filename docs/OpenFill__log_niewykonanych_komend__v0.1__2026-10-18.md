@@ -184,3 +184,23 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Dalszy status: bez ponowienia tej zmiany innym narzędziem; przejście do A9/A10.
 
 
+
+### OF-UNEXEC-026: odmowa dostępu do zmiany zadania Harmonogramu
+
+- Kiedy: 2026-10-18, około 14:40 CEST.
+- Komputer: PBOX1.
+- Narzędzie: `mcp__lc_multihost__execute_command`, pojedyncza operacja systemowa w Harmonogramie zadań Windows.
+- Cel i polecenie: utworzenie `New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\Users\pboru\Downloads\OpenFill__v0.1__2026-10-04_1911\OpenFill\tools\run_openfill_docs_sync__v0.1__2026-10-18_1440.ps1"'`, następnie `Set-ScheduledTask -TaskName 'OpenFill_Docs_GDrive_Sync' -Action $act -ErrorAction Stop`.
+- Wielkość: jedna mała zmiana jednej akcji istniejącego zadania, bez dotykania `data\stable`.
+- Wynik: NIEUDANE Z POWODU UPRAWNIEŃ. Proces zdalnej powłoki zwrócił `exit_code=1`, a system PowerShell: `Odmowa dostępu.` (Access denied). Zewnętrzny interfejs zgłosił też `INVALID_ARGUMENT` po niepowodzeniu wewnętrznej komendy.
+- Zakres: Harmonogram nie zmienił polecenia ani wyzwalacza, co sprawdzono odczytem `Get-ScheduledTask`; nadal działa stary skrypt co 15 minut w widocznym PowerShell. Brak informacji o odmowie zabezpieczeń OpenAI; potwierdzona odmowa uprawnień Windows.
+- Dalszy status: NIE PONAWIAĆ tej samej zmiany innym narzędziem ani przez alternatywne polecenie. Przygotować jeden krok uruchamiany ręcznie przez właściciela w podwyższonym PowerShell. Niezależne od tego launcher i jego logi mogą być weryfikowane odczytem/testem bez modyfikowania zadania.
+
+### OF-UNEXEC-027: nowy raport diagnostyczny niewidoczny jeszcze na GitHub
+
+- Kiedy: 2026-10-18, po zapisaniu raportu OF-240.
+- Narzędzie: `mcp__GitHub__fetch_file` (wyłącznie odczyt, mały krok).
+- Próba: `repository_full_name=Pawel-BoOssko/OpenFill`, `path=docs/OpenFill__powershell_popup_diagnostic__v0.1__2026-10-18.md`, `ref=autosync/PBOX1`.
+- Wynik: NIEUDANY ODCZYT: `NOT_FOUND / GitHub API 404 Not Found` w chwili zapytania.
+- Zakres: raport istnieje lokalnie na PBOX1, ale nie potwierdzono obecności na zdalnej gałęzi. Jednocześnie potwierdzono publikację planu `docs/OpenFill__next_action_plan__v1.0__2026-10-18.md`.
+- Przyczyna: brak potwierdzonej synchronizacji tego konkretnego pliku w tej chwili; brak dowodu blokady bezpieczeństwa. Nie podejmowano ręcznego push.

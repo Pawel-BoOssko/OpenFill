@@ -18,6 +18,7 @@ Status 18.10.2026, punkt zlecony poza numeracją OF: AgentRunner v0.27, indywidu
 
 ### A1. Szybka wygrana (najpierw)
 - **[OF-232]** [WYMAGANE] Wyjaśnić pochodzenie waiting time zwracanego przez OpenFill. Oddzielić techniczny timeout/long-poll openfill_task_status (do 30 sekund) od szacowanego czasu ukończenia zadania; nigdy nie prezentować stałych 30 s jako wiarygodnego ETA pięciu zaproszeń.
+- **[OF-240]** [PRZYCZYNA POTWIERDZONA, NAPRAWA PRZYGOTOWANA, WYMAGA ADMINISTRATORA WINDOWS] [autor: Paweł, 18.10.2026] Migające okno PowerShell co 15 min: `OpenFill_Docs_GDrive_Sync` w interaktywnej sesji bez `-WindowStyle Hidden`, ostrzeżenia `File version collision, not overwritten`. Test `-DryRun`: 90 dokumentów, 9 kolizji, 80 identycznych. Launcher z dziennym logiem działa; aktualizacja zadania Windows niedozwolona dla konta zdalnego (`Odmowa dostępu`, OF-UNEXEC-026). Raport i ręczny skrypt administracyjny w docs/tools.
 
 ### A2. Nowe wydanie: mniejsze P0 [autor: Paweł, 17.10]
 Prawdziwe P0 to tylko: backup i jego odtworzenie, bezpieczna aktualizacja z trybem przerwy, rollback, krótki test po instalacji. Pełna regresja (OF-167–181) i pozostałe dawne pozycje P0 są w części B i **nie blokują wydania**. Cel: wydawać częściej niż dotąd.

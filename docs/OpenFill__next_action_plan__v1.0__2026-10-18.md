@@ -35,5 +35,7 @@ Najpierw 1 i 2 (migające PowerShell). Równolegle read-only punkt 3 i gotowoś�
 
 ## Status wykonania
 
-- 1: W TRAKCIE
-- 2-12: DO WYKONANIA / według dostępnych dowodów z checkpoint v0.7.
+- 1: WYKONANE, źródło zidentyfikowane i odtworzone (9 kolizji, harmonogram co 15 min), raport OpenFill__powershell_popup_diagnostic__v0.1__2026-10-18.md.
+- 2: CZĘŚCIOWO, launcher i lokalny log przygotowane, test DryRun zaliczony; aktualizacja zadania Windows NIE WYKONANA z powodu odmowy uprawnień (OF-UNEXEC-026), przygotowano jeden krok administracyjny dla właściciela.
+- 3: ROZPOCZĘTO, audyt źródła PrepareShutdown i Complete bez zmian kodu; rozbieżność interrupted/stopped_by_user wymaga osobnego testu.
+- 4-12: DO WYKONANIA / według dostępnych dowodów z checkpoint v0.7.
