@@ -166,8 +166,8 @@ public sealed class TabManager
                 var previous = continueKey is null ? null : _recs.FirstOrDefault(r => r.TaskKey == continueKey);
                 room = (previous?.TabId is { } tab && _ui.Exists(tab))
                     || _recs.Any(r => r.State == "free" && r.TabId is not null && _ui.Exists(r.TabId))
-                    || _recs.Count(r => r.TabId is not null && r.State != "user") < Limit
-                    || _recs.Any(r => r.TabId is not null && (r.State is "finished" or "free"));
+                    || _recs.Count(r => r.TabId is { } id && _ui.Exists(id)) < Limit
+                    || _recs.Any(r => r.TabId is { } id && _ui.Exists(id) && (r.State is "finished" or "free"));
             }
             if (room) break;
             _gate.Release();
@@ -385,6 +385,7 @@ public sealed class TabManager
         if (r.State is "running" or "waiting") return false;
         string? url = null;
         try { url = await _ui.UrlAsync(tabId); } catch { }
+        await _ui.CloseTabAsync(tabId);
         lock (_lock)
         {
             if (!string.IsNullOrWhiteSpace(url) && url != "about:blank") r.LastUrl = url;
@@ -392,7 +393,6 @@ public sealed class TabManager
             if (r.State is "free" or "user") _recs.Remove(r);
             if (_activeTabId == tabId) _activeTabId = null;
         }
-        await _ui.CloseTabAsync(tabId);
         Save();
         Refresh();
         return true;
@@ -408,12 +408,12 @@ public sealed class TabManager
             Rec? victim;
             lock (_lock)
             {
-                var open = _recs.Count(r => r.TabId is not null && r.State != "user"); // tabs the person opened by hand do not count against the limit and are never closed here
+                var open = _recs.Count(r => r.TabId is { } id && _ui.Exists(id)); // all physical tabs count; user tabs are protected from eviction
                 if (open < Limit) return;
-                victim = _recs.Where(r => r.TabId is not null && r.State is "finished" or "free")
+                victim = _recs.Where(r => r.TabId is { } id && _ui.Exists(id) && (r.State is "finished" or "free"))
                               .OrderBy(r => r.State == "free" ? 0 : 1).ThenBy(r => r.LastUsedUtc).FirstOrDefault();
             }
-            if (victim?.TabId is not { } id) return; // everything open is busy: allow going over the limit
+            if (victim?.TabId is not { } id) throw new IOException("All browser tabs are in use; no safe tab can be evicted.");
             string? url = null;
             try { url = await _ui.UrlAsync(id); } catch { }
             lock (_lock)

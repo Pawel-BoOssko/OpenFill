@@ -170,6 +170,78 @@ public static class TabTests
             T.Eq("pop-ups: other tab still owns its window", 1, popups.ForOwner("task-tab-b").Count);
             return Task.CompletedTask;
         });
+        await T.Section("OF-231: failed manual tab closure preserves its record", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_userclose_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var userTab = ui.NewBlank();
+            tm.RegisterUser(userTab, "manual tab");
+            ui.FailClose = true;
+            var refused = false;
+            try { await tm.UserCloseAsync(userTab); } catch (InvalidOperationException) { refused = true; }
+            T.Check("failure is reported without silently losing the tab", refused);
+            T.Eq("failed closure still owns original user tab", userTab, tm.Find("user:" + userTab)?.TabId);
+            T.Check("failed closure still has a physical tab", tm.IsTabPresent("user:" + userTab));
+            ui.FailClose = false;
+            T.Check("user can retry closing the same tab", await tm.UserCloseAsync(userTab));
+            T.Check("successful close removes user tab and metadata", !ui.Exists(userTab) && tm.Find("user:" + userTab) is null);
+        });
+
+        await T.Section("OF-231: five user tabs occupy the five-card limit", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_userlimit_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var manual = new List<string>();
+            for (var i = 0; i < 5; i++)
+            {
+                var id = ui.NewBlank();
+                manual.Add(id);
+                tm.RegisterUser(id, "User tab " + i);
+            }
+            using var stop = new CancellationTokenSource();
+            var queued = tm.BeginAsync("user-limit", "agent task", null, stop.Token);
+            await Task.Delay(250);
+            T.Check("agent waits if five protected user tabs exist", !queued.IsCompleted);
+            T.Eq("no sixth tab opened behind user tabs", 5, ui.Open.Count);
+            stop.Cancel();
+            var cancelled = false;
+            try { await queued; } catch (OperationCanceledException) { cancelled = true; }
+            T.Check("cancelled queued task leaves all user tabs untouched", cancelled && manual.All(ui.Open.ContainsKey));
+            var removed = await tm.UserCloseAsync(manual[0]);
+            T.Check("user can explicitly close their own tab", removed);
+            var next = await tm.BeginAsync("user-after-close", "agent task", null, default);
+            T.Check("agent starts only when one physical slot is freed", ui.Open.Count == 5 && !manual.Contains(next.TabId));
+            T.Check("remaining user tabs survive", manual.Skip(1).All(ui.Open.ContainsKey));
+        });
+
+        await T.Section("OF-231: stale completed tab is not an eviction slot", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_stalelimit_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var old = await tm.BeginAsync("finished-and-closed", "old task", null, default);
+            await tm.EndAsync("finished-and-closed");
+            ui.Open.Remove(old.TabId); // The browser closed it externally; metadata is stale.
+            var manual = new List<string>();
+            for (var i = 0; i < 5; i++)
+            {
+                var id = ui.NewBlank();
+                manual.Add(id);
+                tm.RegisterUser(id, "protected " + i);
+            }
+            using var stop = new CancellationTokenSource();
+            var queued = tm.BeginAsync("after-stale", "new task", null, stop.Token);
+            await Task.Delay(250);
+            T.Check("stale finished metadata does not bypass physical limit", !queued.IsCompleted);
+            T.Eq("stale entry does not open a sixth tab", 5, ui.Open.Count);
+            stop.Cancel();
+            var cancelled = false;
+            try { await queued; } catch (OperationCanceledException) { cancelled = true; }
+            T.Check("queue cancellation works with stale metadata", cancelled && manual.All(ui.Open.ContainsKey));
+        });
+
         await T.Section("TabManager: one tab per task, limit, never closes a busy tab", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_tabs_" + Guid.NewGuid().ToString("N")[..6]);
