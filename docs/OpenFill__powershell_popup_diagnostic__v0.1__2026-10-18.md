@@ -30,5 +30,6 @@ Następnie sprawdzić następne automatyczne uruchomienie i log `%LOCALAPPDATA%\
 
 - PRZYCZYNA: potwierdzona, reprodukowana.
 - LOGOWANIE: przygotowane i testowane w DryRun.
-- ZMIANA ZADANIA: NIEWDROŻONA (brak uprawnień zdalnej sesji). Widoczne okno może się nadal pojawiać co 15 min do czasu wykonania kroku administratora.
+- LOGIKA SYNCHRONIZACJI: NAPRAWIONA w istniejącym skrypcie wywoływanym przez Harmonogram. Przy konflikcie starsza kopia Drive jest najpierw archiwizowana do `_previous_versions/<nazwa pliku>/`, sprawdzana SHA-256, a bieżący dokument aktualizowany i ponownie weryfikowany. Test syntetyczny: 11 PASS / 0 FAIL. Run Harmonogramu 18.10 o 15:01:01: 9 archiwów starszych wersji, 9 aktualizacji, LastTaskResult=0; kolejny przebieg ręczny bez zmian: 92 identyczne / 0 pominięć / 0 aktualizacji. Hash backlog v1.7 Drive=local.
+- ZMIANA SPOSOBU WYŚWIETLANIA OKNA: NIEWDROŻONA (brak uprawnień zdalnej sesji). Harmonogram nadal uruchamia widoczną konsolę co 15 minut, mimo że nie ma już powtarzających się błędów kolizji. Jednorazowy krok administratora w istniejącym skrypcie pozostaje aktualny.
 - Nie zmieniano `C:\Users\pboru\OpenFill\data\stable` ani produkcyjnego procesu OpenFill.

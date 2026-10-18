@@ -29,8 +29,25 @@ foreach ($file in $files) {
   if ($content -match ('(?i)(?:sk-(?:proj-)?[a-z0-9_-]{20,}|gh[pousr]_[a-z0-9]{20,}|AIza[a-z0-9_-]{25,}|----' + '-BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|(?:password|api[_-]?key|secret|bearer|token)\s*[:=]\s*[\x22\x27]?[a-z0-9_+\-/=]{18,})')) { $skipped++; continue }
   $target=Join-Path $destination $file.Name
   if (Test-Path -LiteralPath $target) {
-    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { $unchanged++ }
-    else { Write-Warning ("File version collision, not overwritten: "+$file.Name); $skipped++ }
+    $sourceHash=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    $previousHash=(Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+    if ($previousHash -eq $sourceHash) { $unchanged++; continue }
+    if ($DryRun) { Write-Output ("WOULD_UPDATE "+$file.Name+" (preserve old SHA256="+$previousHash.Substring(0,12)+")"); continue }
+    # Archive the previous Drive document before changing the canonical Drive path.
+    $historyDir=Join-Path (Join-Path $destination '_previous_versions') $file.Name
+    [IO.Directory]::CreateDirectory($historyDir) | Out-Null
+    $historyFile=Join-Path $historyDir ($file.BaseName+'__prior_'+$previousHash.Substring(0,12)+$file.Extension)
+    if (-not (Test-Path -LiteralPath $historyFile)) {
+      Copy-Item -LiteralPath $target -Destination $historyFile -ErrorAction Stop
+      $archived++
+    }
+    if ((Get-FileHash -LiteralPath $historyFile -Algorithm SHA256).Hash -ne $previousHash) { throw ("Previous version archive failed verification: "+$file.Name) }
+    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $previousHash) { throw ("Drive document changed during sync: "+$file.Name) }
+    if ((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $sourceHash) { throw ("Local source changed during sync: "+$file.Name) }
+    Copy-Item -LiteralPath $file.FullName -Destination $target -Force -ErrorAction Stop
+    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne $sourceHash) { throw ("Updated document hash mismatch: "+$file.Name) }
+    Write-Output ("UPDATED "+$file.Name+" (old version archived)")
+    $updated++
     continue
   }
   if ($DryRun) { Write-Output ("WOULD_COPY "+$file.Name); continue }
@@ -38,4 +55,4 @@ foreach ($file in $files) {
   if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { throw ("Hash verification failed: "+$file.Name) }
   $copied++
 }
-Write-Output ("SYNC copied="+$copied+" unchanged="+$unchanged+" skipped="+$skipped+" scanned="+$files.Count+" dryRun="+$DryRun.IsPresent)
+Write-Output ("SYNC copied="+$copied+" updated="+$updated+" archived="+$archived+" unchanged="+$unchanged+" skipped="+$skipped+" scanned="+$files.Count+" dryRun="+$DryRun.IsPresent)

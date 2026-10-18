@@ -36,6 +36,6 @@ Najpierw 1 i 2 (migające PowerShell). Równolegle read-only punkt 3 i gotowoś�
 ## Status wykonania
 
 - 1: WYKONANE, źródło zidentyfikowane i odtworzone (9 kolizji, harmonogram co 15 min), raport OpenFill__powershell_popup_diagnostic__v0.1__2026-10-18.md.
-- 2: CZĘŚCIOWO, launcher i lokalny log przygotowane, test DryRun zaliczony; aktualizacja zadania Windows NIE WYKONANA z powodu odmowy uprawnień (OF-UNEXEC-026), przygotowano jeden krok administracyjny dla właściciela.
+- 2: NAPRAWIONA PRZYCZYNA KOLIZJI, obowiązujący synchronizator zapisuje poprzednią wersję do Drive/_previous_versions, aktualizuje bieżącą i porównuje SHA-256. Test izolowany 11 PASS/0 FAIL, pierwszy automatyczny run o 15:01 utworzył 9 kopii historii/9 uaktualnień, ponowny run 92 identical/0 skipped. Osobno: kosmetyczny problem widocznego okna PowerShell nadal wymaga jednorazowej zmiany zadania przez administratora Windows (OF-UNEXEC-026); nie blokuje już prawidłowego synchronizowania dokumentów.
 - 3: ROZPOCZĘTO, audyt źródła PrepareShutdown i Complete bez zmian kodu; rozbieżność interrupted/stopped_by_user wymaga osobnego testu.
 - 4-12: DO WYKONANIA / według dostępnych dowodów z checkpoint v0.7.

@@ -204,3 +204,18 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Wynik: NIEUDANY ODCZYT: `NOT_FOUND / GitHub API 404 Not Found` w chwili zapytania.
 - Zakres: raport istnieje lokalnie na PBOX1, ale nie potwierdzono obecności na zdalnej gałęzi. Jednocześnie potwierdzono publikację planu `docs/OpenFill__next_action_plan__v1.0__2026-10-18.md`.
 - Przyczyna: brak potwierdzonej synchronizacji tego konkretnego pliku w tej chwili; brak dowodu blokady bezpieczeństwa. Nie podejmowano ręcznego push.
+
+### OF-UNEXEC-028: błędna składnia polecenia inwentaryzacji metadanych
+- Kiedy: 2026-10-18 około 14:56 CEST. Narzędzie: mcp__lc_multihost__execute_command, PBOX1.
+- Operacja: pojedynczy read-only PowerShell: porównanie czasu modyfikacji, rozmiaru i SHA-256 czterech plików w local docs i H:\OpenFill\docs.
+- Rezultat: BŁĄD SKŁADNI PowerShell: `An empty pipe element is not allowed`. Pierwsze polecenie nie dało wyniku, nie zmieniło plików. Skorygowana samodzielna komenda później wykazała starsze kopie w Drive. Nie była to odmowa bezpieczeństwa.
+
+### OF-UNEXEC-029: błędna składnia kodu przygotowującego test synchronizatora
+- Kiedy: 2026-10-18 około 15:00 CEST. Narzędzie: functions.exec, przed mcp__Remote_Desktop_Commander__write_file.
+- Operacja: przygotowanie nowego `tools/test_sync_openfill_docs_gdrive__v0.1__2026-10-18.ps1`, mały pojedynczy nowy plik.
+- Rezultat: `SyntaxError: Unexpected identifier 'n'` w JavaScript przed wywołaniem Desktop Commandera. W tej próbie nie zapisano pliku. Po korekcie składni nowy test powstał, zakończył się 11 PASS/0 FAIL. Brak odmowy bezpieczeństwa.
+
+### OF-UNEXEC-030: niedozwolona zmienna HOME w pomocniczym odczycie statusu
+- Kiedy: 2026-10-18 około 15:02 CEST. Narzędzie: mcp__lc_multihost__execute_command, PBOX1.
+- Operacja: pojedyncza diagnostyka read-only stanu harmonogramu i folderu archiwum na dysku H:, omyłkowo użyto zmiennej `$home`.
+- Rezultat: `Cannot overwrite variable HOME because it is read-only or constant.` Nie zmieniło dokumentów. Zmienna poprawiona na `$dh` w odrębnym dozwolonym odczycie: 9 plików archiwalnych, zadanie Harmonogramu exit 0, lokalny i Drive backlog miały identyczny hash. Brak odmowy bezpieczeństwa.
