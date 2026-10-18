@@ -47,6 +47,10 @@ internal sealed class FakeRunHost : IRunHost
         {
             options?.Activity?.Invoke("act of3 type");
             await Task.Delay(150);
+            if (task.Contains("PARTIAL_REGISTRATION_TEST"))
+                return new RunConclusion("partial", "Organizer confirmed participant A; participant B not confirmed. Check external effects before retrying.", null);
+            if (task.Contains("REFUSED_REGISTRATION_TEST"))
+                return new RunConclusion("failed", "Organizer rejected the registration. No confirmation received.", null);
             if (task.Contains("TEMP_CREDENTIAL_TEST"))
                 return new RunConclusion("success", "Temporary account credential created", null,
                     new[] { new TemporaryCredential("example.invalid", "local-demo", "mock-value-123", true) });
