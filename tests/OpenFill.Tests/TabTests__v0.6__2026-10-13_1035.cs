@@ -34,6 +34,8 @@ internal sealed class FakeTabs : IBrowserTabs
     public List<string> Log { get; } = new();
     public bool FailNavigate { get; set; }
     public bool FailClose { get; set; }
+    public TaskCompletionSource<bool>? CloseStarted { get; set; }
+    public TaskCompletionSource<bool>? AllowClose { get; set; }
     public string? Selected { get; private set; }
     public IReadOnlyList<TabInfo> LastStrip { get; private set; } = Array.Empty<TabInfo>();
     private int _n;
@@ -50,7 +52,14 @@ internal sealed class FakeTabs : IBrowserTabs
     }
     public Task SelectTabAsync(string tabId, CancellationToken ct) { Selected = tabId; Log.Add("select " + tabId); return Task.CompletedTask; }
     public Task NavigateAsync(string tabId, string url, CancellationToken ct) { if (FailNavigate) throw new InvalidOperationException("Navigation failed"); Open[tabId] = url; Log.Add("navigate " + tabId + " " + url); return Task.CompletedTask; }
-    public Task CloseTabAsync(string tabId) { if (FailClose) throw new InvalidOperationException("Close failed"); Open.Remove(tabId); Log.Add("close " + tabId); return Task.CompletedTask; }
+    public async Task CloseTabAsync(string tabId)
+    {
+        CloseStarted?.TrySetResult(true);
+        if (AllowClose is not null) await AllowClose.Task;
+        if (FailClose) throw new InvalidOperationException("Close failed");
+        Open.Remove(tabId);
+        Log.Add("close " + tabId);
+    }
     public Task<string?> UrlAsync(string tabId) => Task.FromResult(Open.TryGetValue(tabId, out var u) ? u : null);
     public bool Exists(string tabId) => Open.ContainsKey(tabId);
     public void Strip(IReadOnlyList<TabInfo> tabs, string? activeTabId) => LastStrip = tabs;
@@ -169,6 +178,27 @@ public static class TabTests
             T.Eq("pop-ups: FormClosed removes owner's pop-up", 0, popups.ForOwner("task-tab-a").Count);
             T.Eq("pop-ups: other tab still owns its window", 1, popups.ForOwner("task-tab-b").Count);
             return Task.CompletedTask;
+        });
+        await T.Section("OF-231: manual close and new task cannot race", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_close_race_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5);
+            var initial = ui.NewBlank();
+            tm.RegisterFree(initial, "ready");
+            ui.CloseStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ui.AllowClose = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var closing = tm.UserCloseAsync(initial);
+            await ui.CloseStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var nextTask = tm.BeginAsync("race-next", "new task", null, default);
+            await Task.Delay(200);
+            T.Check("new task waits while user tab is still being closed", !nextTask.IsCompleted);
+            T.Check("closing physical tab stays visible until close completes", ui.Exists(initial));
+            ui.AllowClose.TrySetResult(true);
+            T.Check("user closure completes", await closing);
+            var started = await nextTask.WaitAsync(TimeSpan.FromSeconds(3));
+            T.Check("new task receives a live physical tab after closure", ui.Exists(started.TabId) && started.TabId != initial);
+            T.Eq("one physical tab after serialized close and begin", 1, ui.Open.Count);
         });
         await T.Section("OF-231: failed manual tab closure preserves its record", async () =>
         {

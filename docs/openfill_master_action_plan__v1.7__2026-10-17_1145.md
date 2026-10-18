@@ -14,6 +14,8 @@ Identyfikatory OF-### są stałe. Nowe pozycje: OF-236–OF-239. v1.7: przegląd
 
 ## A. Ustalone do zrobienia
 
+Status 18.10.2026, punkt zlecony poza numeracją OF: AgentRunner v0.27, indywidualny prompt_cache_key dla instancji, build .sln 0 błędów, przebiegi testów 799/0, 799/0, 776/2 znane niestabilne oraz powtórzenie 799/0; warunek A zaliczony. Dalszy etap: wydanie 1.55.
+
 ### A1. Szybka wygrana (najpierw)
 - **[OF-232]** [WYMAGANE] Wyjaśnić pochodzenie waiting time zwracanego przez OpenFill. Oddzielić techniczny timeout/long-poll openfill_task_status (do 30 sekund) od szacowanego czasu ukończenia zadania; nigdy nie prezentować stałych 30 s jako wiarygodnego ETA pięciu zaproszeń.
 

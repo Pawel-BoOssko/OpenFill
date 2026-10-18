@@ -133,6 +133,31 @@ public static class McpTests
             T.Eq("temporary data persists", "mock-value-123", retrieved["temporary_credentials"]?[0]?["password"]?.GetValue<string>());
             try { Directory.Delete(dir, true); } catch { }
         });
+        await T.Section("OF-161: partial and rejected registrations are not success", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_reg_outcomes_" + Guid.NewGuid().ToString("N")[..8]);
+            var host = new FakeRunHost { Max = 3 };
+            var mgr = new McpTaskManager(host, dir, TimeSpan.FromSeconds(5));
+            const string key = "radar:partial:organizer-event";
+            var partial = await mgr.StartAsync("PARTIAL_REGISTRATION_TEST", 5, default,
+                requester: "Networking Radar", chat: "Registration", idempotencyKey: key);
+            T.Eq("partial registration yields task done with partial outcome", "done", S(partial, "status"));
+            T.Eq("partial outcome is not success", "partial", S(partial, "outcome"));
+            T.Contains("partial summary preserves organizer uncertainty", S(partial, "summary"), "participant B not confirmed");
+            var reloadedHost = new FakeRunHost();
+            var reloaded = new McpTaskManager(reloadedHost, dir, TimeSpan.FromSeconds(5));
+            var repeated = await reloaded.StartAsync("PARTIAL_REGISTRATION_TEST", 0, default,
+                requester: "Networking Radar", chat: "Registration", idempotencyKey: key);
+            T.Eq("partial result keeps task id after process restart", S(partial, "task_id"), S(repeated, "task_id"));
+            T.Eq("retry does not send another registration", 0, reloadedHost.Started);
+            T.Eq("partial outcome survives restart", "partial", S(repeated, "outcome"));
+            var refused = await reloaded.StartAsync("REFUSED_REGISTRATION_TEST", 5, default,
+                requester: "Networking Radar", chat: "Registration", idempotencyKey: "radar:refused:organizer-event");
+            T.Eq("rejected registration status is failed", "failed", S(refused, "status"));
+            T.Eq("rejected registration outcome is failed", "failed", S(refused, "outcome"));
+            T.Contains("rejected registration reports organizer reason", S(refused, "summary"), "Organizer rejected");
+            try { Directory.Delete(dir, true); } catch { }
+        });
         await T.Section("MCP: external idempotency keys", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_idempotency_" + Guid.NewGuid().ToString("N")[..8]);

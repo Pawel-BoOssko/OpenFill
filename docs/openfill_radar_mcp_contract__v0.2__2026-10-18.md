@@ -41,7 +41,7 @@ Poprzedni audyt: `openfill_radar_mcp_contract__v0.1__2026-10-17_1424.md`.
 
 ## Poziomy potwierdzenia
 - SOURCE: odczytane i zmienione według checkpointów v0.2/v0.3 oraz bieżącej sesji.
-- TEST: 780 PASS / 0 FAIL w pełnej regresji Release przed ostatnią edycją `UserCloseAsync`; wynik kolejnego przebiegu należy zapisać osobno.
-- BUILD: aplikacja OpenFill.App Release kompilowała się poprzednio z 0 błędów i ostrzeżeniem MSB3277. Dzisiejszy build po ostatnich edycjach pozostaje do wykonania.
+- TEST: pełna regresja źródeł 18.10.2026: **794 PASS / 0 FAIL, exit 0**; dodatkowo 12 PASS / 0 FAIL testów skryptu OF-032/033/034. Dziewięć asercji OF-161 w FakeRunHost obejmuje partial/refused oraz ponowienie po restarcie z tym samym idempotency_key; nie jest to test prawdziwego formularza.
+- BUILD: pełna kompilacja OpenFill.App Release po zmianach 18.10: **0 błędów, 1 ostrzeżenie MSB3277**, exit 0. Ostrzeżenie dotyczy konfliktu WindowsBase w zależności WebView2.Wpf.
 - STAGED / DEPLOYED / LIVE-VERIFIED: nowe źródła jeszcze nieobjęte akceptacją; produkcyjna aplikacja to nadal ostatnio potwierdzone 1.52.
 - Otwarte bramki: rzeczywisty test rejestracji, dokładne dopasowanie API Radar, walidacja kalendarza i załączników, OF-223 restore, OF-239 maintenance responder oraz OF-235 produkcyjny smoke.

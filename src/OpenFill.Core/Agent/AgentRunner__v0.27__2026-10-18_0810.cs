@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.26, data 2026-10-17 11:30
+// OpenFill - Metadata: wersja 0.27, data 2026-10-18 08:10
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -32,6 +32,7 @@ public sealed class UsageTotals
 /// </summary>
 public sealed class AgentRunner
 {
+    private readonly string _cacheKey = "openfill-agent-" + Guid.NewGuid().ToString("N")[..12];
     private readonly IModelClient _model;
     private readonly ToolRegistry _registry;
     private readonly AppConfig _config;
@@ -253,8 +254,8 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                 ["tool_choice"] = "auto",
                 ["parallel_tool_calls"] = false,
                 ["store"] = false,
-                // Stable routing key: all calls of this app share the static prefix (tools + instructions), so they land on the same cache.
-                ["prompt_cache_key"] = "openfill-agent",
+                // Routing key per task: each task keeps its own history in cache instead of sharing one key with parallel tasks.
+                ["prompt_cache_key"] = _cacheKey,
                 ["reasoning"] = new JsonObject { ["effort"] = _config.ReasoningEffort },
                 ["include"] = new JsonArray("reasoning.encrypted_content")
             };

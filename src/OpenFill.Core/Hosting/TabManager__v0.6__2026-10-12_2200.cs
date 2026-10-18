@@ -379,23 +379,28 @@ public sealed class TabManager
     /// <summary>The person closes a tab. Refused (false) while a task is running in it or waits for the person.</summary>
     public async Task<bool> UserCloseAsync(string tabId)
     {
-        Rec? r;
-        lock (_lock) r = _recs.FirstOrDefault(x => x.TabId == tabId);
-        if (r is null) return false;
-        if (r.State is "running" or "waiting") return false;
-        string? url = null;
-        try { url = await _ui.UrlAsync(tabId); } catch { }
-        await _ui.CloseTabAsync(tabId);
-        lock (_lock)
+        await _gate.WaitAsync();
+        try
         {
-            if (!string.IsNullOrWhiteSpace(url) && url != "about:blank") r.LastUrl = url;
-            r.TabId = null;
-            if (r.State is "free" or "user") _recs.Remove(r);
-            if (_activeTabId == tabId) _activeTabId = null;
+            Rec? r;
+            lock (_lock) r = _recs.FirstOrDefault(x => x.TabId == tabId);
+            if (r is null) return false;
+            if (r.State is "running" or "waiting") return false;
+            string? url = null;
+            try { url = await _ui.UrlAsync(tabId); } catch { }
+            await _ui.CloseTabAsync(tabId);
+            lock (_lock)
+            {
+                if (!string.IsNullOrWhiteSpace(url) && url != "about:blank") r.LastUrl = url;
+                r.TabId = null;
+                if (r.State is "free" or "user") _recs.Remove(r);
+                if (_activeTabId == tabId) _activeTabId = null;
+            }
+            Save();
+            Refresh();
+            return true;
         }
-        Save();
-        Refresh();
-        return true;
+        finally { _gate.Release(); }
     }
 
     // ------------------------------------------------------------------ internals

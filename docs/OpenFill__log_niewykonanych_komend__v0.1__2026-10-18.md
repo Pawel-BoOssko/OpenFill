@@ -116,4 +116,39 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Skala: jeden nowy plik narzędziowy; bez modyfikacji istniejących plików.
 - Wynik: BŁĄD_TECHNICZNY po stronie przygotowania wywołania: `SyntaxError: Unexpected token ':'`. Polecenie write_file nie zostało wywołane, więc plik nie powstał z tej próby.
 - Zakres: wyłącznie ta próba nowego pliku; brak informacji o odmowie bezpieczeństwa.
-- Dalszy status: poprawić składnię JavaScript i dopiero wtedy wykonać write_file.
+- Dalszy status: NAPRAWIONE. Nowy plik telemetry_window_quality został utworzony na PBOX1, ma 12 PASS/0 FAIL w syntetycznym teście i został odczytany z gałęzi Autosync na GitHub.
+
+### OF-UNEXEC-019: nieudany odczyt drzewa plików repozytorium z GitHub
+- Kiedy: 2026-10-18, bieżąca sesja.
+- Narzędzie: mcp__GitHub__fetch, pojedynczy odczyt metadanych, bez modyfikacji.
+- Żądanie: `https://api.github.com/repos/Pawel-BoOssko/OpenFill/git/trees/autosync%2FPBOX1?recursive=1`.
+- Wynik: BŁĄD_TECHNICZNY / INVALID_ARGUMENT, `HTTPError: 400: GitHub Fetch URL contains an invalid repository path`.
+- Zakres: nie uzyskano listy śledzonych plików do audytu OF-187; inne pliki projektu i produkcja bez zmian.
+- Przyczyna: format URL niezaakceptowany przez akcję GitHub; nie jest to potwierdzona odmowa bezpieczeństwa.
+- Dalszy status: NAPRAWIONE W ODRĘBNYM AUDYCIE. Metadane tej samej gałęzi pobrano później dozwolonym, wyłącznie odczytowym git ls-tree przez Desktop Commander (225 plików); pierwotna próba GitHub fetch pozostaje w logu jako nieudana.
+
+### OF-UNEXEC-020: nieudane przygotowanie protokołu wydania
+- Kiedy: 2026-10-18, bieżąca sesja.
+- Narzędzie: functions.exec, przygotowanie argumentu mcp__Remote_Desktop_Commander__write_file.
+- Operacja: nowy plik docs/openfill_release_evidence__v0.2__2026-10-18_ChatGPT.md; jedna samodzielna operacja.
+- Wynik: BŁĄD_TECHNICZNY w kodzie wywołującym: `TypeError: ... is not a function` (nieprawidłowo zinterpretowany znak w szablonie tekstu). Remote write_file nie zostało wywołane.
+- Zakres: ten nowy dokument nie powstał w tej próbie. Brak podstaw do określenia błędu jako odmowy bezpieczeństwa.
+- Dalszy status: NAPRAWIONE. Utworzono nowy plik docs/openfill_release_evidence__v0.2__2026-10-18_ChatGPT.md, zawierający protokół NO-GO z dowodami TEST/BUILD i brakującymi bramkami wydania.
+
+### OF-UNEXEC-021: zdalny odczyt świeżo utworzonej Technology Map
+- Kiedy: 2026-10-18, bieżąca sesja.
+- Narzędzie: mcp__GitHub__fetch_file; pojedynczy odczyt zdalnej gałęzi, bez modyfikacji.
+- Operacja: `repository_full_name=Pawel-BoOssko/OpenFill`, `path=docs/openfill_technology_map__v0.1__2026-10-18_ChatGPT.md`, `ref=autosync/PBOX1`.
+- Wynik: NIEUDANY ODCZYT, `NOT_FOUND: GitHub API error 404 (Not Found)`.
+- Zakres: nowa mapa istniała na PBOX1, lecz w chwili odczytu nie było potwierdzenia publikacji tego pliku zdalnie.
+- Szczegółowa przyczyna: niepotwierdzona; nie jest to odmowa zabezpieczeń.
+- Dalszy status: sprawdzić po kolejnym normalnym cyklu Autosync, bez ręcznego push.
+
+### OF-UNEXEC-022: brak nowego checkpointu v0.6 na GitHub w chwili kontroli
+- Kiedy: 2026-10-18, po zapisaniu checkpointu v0.6.
+- Narzędzie: mcp__GitHub__fetch_file, pojedynczy odczyt, bez zmian w repozytorium.
+- Operacja: `repository_full_name=Pawel-BoOssko/OpenFill`, `path=docs/OpenFill__implementation_checkpoint__v0.6__2026-10-18_ChatGPT.md`, `ref=autosync/PBOX1`.
+- Wynik: NIEUDANY ODCZYT, `NOT_FOUND: GitHub API error 404 (Not Found)`.
+- Zakres: plik v0.6 jest zapisany lokalnie na PBOX1, ale brak potwierdzenia zdalnej publikacji. Nie oznacza awarii aplikacji lub wydania.
+- Szczegółowa przyczyna: niepotwierdzona; nie stwierdzono blokady bezpieczeństwa.
+- Dalszy status: nie wykonywać ręcznego push, poczekać na prawidłowy cykl Autosync i zweryfikować konkretny plik.
