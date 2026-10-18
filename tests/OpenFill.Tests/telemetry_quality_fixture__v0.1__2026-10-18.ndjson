@@ -1,0 +1,7 @@
+{"tsUtc":"2026-10-18T00:00:00Z","rootPid":100,"rootStartedUtc":"2026-10-17T22:00:00Z","activeTasks":0,"waitingTasks":0,"tabs":2,"webViewProcessCount":3,"cpuPctMachine":1,"workingSetMb":100,"privateBytesMb":200,"cpuPctCoreSum":4}
+{"tsUtc":"2026-10-18T00:00:30Z","rootPid":100,"rootStartedUtc":"2026-10-17T22:00:00Z","activeTasks":0,"waitingTasks":0,"tabs":3,"webViewProcessCount":4,"cpuPctMachine":2,"workingSetMb":110,"privateBytesMb":210,"cpuPctCoreSum":8}
+{"tsUtc":"2026-10-18T00:01:00Z","rootPid":100,"rootStartedUtc":"2026-10-17T22:00:00Z","activeTasks":1,"waitingTasks":0,"tabs":4,"webViewProcessCount":5,"cpuPctMachine":3,"workingSetMb":120,"privateBytesMb":220,"cpuPctCoreSum":12}
+{"tsUtc":"2026-10-18T00:02:30Z","rootPid":100,"rootStartedUtc":"2026-10-17T22:00:00Z","activeTasks":1,"waitingTasks":0,"tabs":5,"webViewProcessCount":6,"cpuPctMachine":4,"workingSetMb":130,"privateBytesMb":230,"cpuPctCoreSum":16}
+{"tsUtc":"2026-10-18T00:03:00Z","rootPid":101,"rootStartedUtc":"2026-10-18T00:02:55Z","activeTasks":0,"waitingTasks":1,"tabs":6,"webViewProcessCount":7,"cpuPctMachine":5,"workingSetMb":140,"privateBytesMb":240,"cpuPctCoreSum":20}
+{"tsUtc":"2026-10-18T00:03:30Z","rootPid":101,"rootStartedUtc":"2026-10-18T00:02:55Z","activeTasks":0,"waitingTasks":1,"tabs":7,"webViewProcessCount":8,"cpuPctMachine":6,"workingSetMb":150,"privateBytesMb":250,"cpuPctCoreSum":24}
+{bad json}

@@ -108,3 +108,12 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Zakres: brak potwierdzenia publikacji tego jednego nowego pliku; zapis lokalny przez Desktop Commander był poprawny.
 - Przyczyna: GitHub nie udostępniał pliku pod wskazanym ref w chwili zapytania; nie stwierdzono błędu zabezpieczeń ani awarii Autosync.
 - Dalszy status: oczekiwanie na normalny cykl Autosync, bez ręcznego push.
+
+### OF-UNEXEC-018: niezapisany skrypt raportu telemetrii z powodu błędu składni wywołania
+- Kiedy: 2026-10-18, bieżąca sesja.
+- Narzędzie: functions.exec, kod JavaScript przygotowujący mcp__Remote_Desktop_Commander__write_file.
+- Operacja: utworzenie `tools/telemetry_window_quality__v0.1__2026-10-18_ChatGPT.ps1` na PBOX1.
+- Skala: jeden nowy plik narzędziowy; bez modyfikacji istniejących plików.
+- Wynik: BŁĄD_TECHNICZNY po stronie przygotowania wywołania: `SyntaxError: Unexpected token ':'`. Polecenie write_file nie zostało wywołane, więc plik nie powstał z tej próby.
+- Zakres: wyłącznie ta próba nowego pliku; brak informacji o odmowie bezpieczeństwa.
+- Dalszy status: poprawić składnię JavaScript i dopiero wtedy wykonać write_file.
