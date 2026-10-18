@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.18, data 2026-10-18 08:34
+// OpenFill - Metadata: wersja 0.19, data 2026-10-18 21:15
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -663,7 +663,13 @@ public sealed class McpTaskManager
                 {
                     McpTaskRecord? r;
                     try { r = JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(f)); }
-                    catch { continue; }
+                    catch (JsonException) { continue; } // Corrupt independent history is ignored.
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // Do not interpret an unreadable task record as "no earlier operation".
+                        // A retry with the same idempotency key could otherwise submit twice.
+                        throw new IOException("Cannot verify previous OpenFill task history; no new task started.", ex);
+                    }
                     if (r?.Requester == requester && r.IdempotencyKey == key)
                     {
                         diskMatch = r;
