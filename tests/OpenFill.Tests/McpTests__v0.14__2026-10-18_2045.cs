@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.13, data 2026-10-18 08:36
+// OpenFill - Metadata: wersja 0.14, data 2026-10-18 20:45
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -181,6 +181,53 @@ public static class McpTests
             var other = await reloaded.StartAsync("Register user7 for event42", 5, default, requester: "Separate app", chat: "Registrations", idempotencyKey: key);
             T.Check("key is scoped to caller", S(other, "task_id") != S(first, "task_id"));
             try { Directory.Delete(dir, true); } catch { }
+        });
+        await T.Section("OF-219: failed orphan persistence must not duplicate external task", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_idempotency_iofail_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(dir);
+            var id = "OF-20261018-2045-abcd";
+            var path = Path.Combine(dir, id + ".json");
+            var rec = new McpTaskRecord
+            {
+                Id = id, TaskText = "REGISTER_ONE_EVENT_FIXTURE", Status = "running",
+                Requester = "Networking Radar · Registrations", IdempotencyKey = "radar:registration:test1",
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-3),
+                UpdatedUtc = DateTime.UtcNow.AddMinutes(-2)
+            };
+            File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(rec));
+            var host = new FakeRunHost();
+            var recovered = new McpTaskManager(host, dir, TimeSpan.FromSeconds(2));
+            File.SetAttributes(path, FileAttributes.ReadOnly);
+            try
+            {
+                var blocked = false;
+                try
+                {
+                    await recovered.StartAsync(rec.TaskText, 0, default, requester: "Networking Radar",
+                        chat: "Registrations", idempotencyKey: rec.IdempotencyKey);
+                }
+                catch (IOException) { blocked = true; }
+                catch (UnauthorizedAccessException) { blocked = true; }
+                T.Check("orphan recovery persistence failure surfaces to caller", blocked);
+                T.Eq("failure did not start a second registration", 0, host.Started);
+                T.Eq("original task file was not overwritten", "running",
+                    System.Text.Json.JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(path))!.Status);
+                File.SetAttributes(path, FileAttributes.Normal);
+                var replay = await recovered.StartAsync(rec.TaskText, 0, default, requester: "Networking Radar",
+                    chat: "Registrations", idempotencyKey: rec.IdempotencyKey);
+                T.Eq("recovered request has original task ID", id, S(replay, "task_id"));
+                T.Eq("recovered request status interrupted", "interrupted", S(replay, "status"));
+                T.Eq("recovered outcome marks external effects uncertain", "partial", S(replay, "outcome"));
+                T.Eq("no duplicate after file restored", 0, host.Started);
+                T.Eq("recovery persisted after write became possible", "interrupted",
+                    System.Text.Json.JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(path))!.Status);
+            }
+            finally
+            {
+                if (File.Exists(path)) File.SetAttributes(path, FileAttributes.Normal);
+                try { Directory.Delete(dir, true); } catch { }
+            }
         });
         await T.Section("MCP: close persists interrupted and notifies polling clients", async () =>
         {
