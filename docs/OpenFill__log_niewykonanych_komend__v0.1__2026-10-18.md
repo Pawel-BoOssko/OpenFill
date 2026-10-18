@@ -152,3 +152,24 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Zakres: plik v0.6 jest zapisany lokalnie na PBOX1, ale brak potwierdzenia zdalnej publikacji. Nie oznacza awarii aplikacji lub wydania.
 - Szczegółowa przyczyna: niepotwierdzona; nie stwierdzono blokady bezpieczeństwa.
 - Dalszy status: nie wykonywać ręcznego push, poczekać na prawidłowy cykl Autosync i zweryfikować konkretny plik.
+
+### OF-UNEXEC-023: odmowa przemianowania pliku testowego OF-231
+- Kiedy: 2026-10-18, około 08:43 CEST.
+- Komputer: PBOX1.
+- Narzędzie: `mcp__Remote_Desktop_Commander__move_file`.
+- Dokładna operacja: `source=tests\OpenFill.Tests\TabTests__v0.6__2026-10-13_1035.cs` do `destination=tests\OpenFill.Tests\TabTests__v0.7__2026-10-18_0843.cs`.
+- Wielkość: mały, samodzielny krok, samo przemianowanie jednego pliku bez zmiany zawartości.
+- Wynik: ODRZUCONE_PRZEZ_NARZĘDZIE; komunikat dosłowny: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
+- Zakres: przemianowanie NIE ZOSTAŁO WYKONANE; brak jakichkolwiek zmian testów niestabilnych w tej próbie. Nie wiadomo, dlaczego narzędzie odrzuciło tę operację.
+- Dalszy status: nie ponawiać tego samego ruchu przez inny interfejs; pominąć punkt 5 w tym przebiegu i przejść do punktu 6.
+
+### OF-UNEXEC-024: odmowa dopisania checkpointu A3 do logu autonomicznego
+- Kiedy: 2026-10-18, około 08:5x CEST (dokładna godzina nieodczytana).
+- Narzędzie: `mcp__Remote_Desktop_Commander__write_file`.
+- Komputer: PBOX1.
+- Dokładna operacja: `mode=append`, `path=docs\openfill_autonomous_log__v0.1__2026-10-18.md`, treść: wynik testów A3 (155 PASS/0 FAIL), statusy OF-225/226/228/229/234, dalsze A7/A9/A10.
+- Wielkość: mały samodzielny zapis jednego punktu do istniejącego dokumentu.
+- Wynik: ODRZUCONE_PRZEZ_NARZĘDZIE. Komunikat dosłowny: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
+- Zakres: nie dopisano tej linijki do autonomous_log. Wcześniejsze testy 155/0 i zmiany statusów w backlogu zostały wykonane niezależnie i pozostają zachowane.
+- Dalszy status: nie ponawiać równoważnego zapisu innym narzędziem; przejść do kolejnych zadań.
+
