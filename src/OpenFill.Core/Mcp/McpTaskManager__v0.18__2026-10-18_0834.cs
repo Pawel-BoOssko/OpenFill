@@ -806,6 +806,7 @@ public sealed class McpTaskManager
                     McpTaskRecord? r;
                     try { r = JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(f.FullName)); } catch { continue; }
                     if (r is null) continue;
+                    r = RecoverPersistedOrphan(r);
                     recent.Add(new JsonObject
                     {
                         ["task_id"] = r.Id,
@@ -850,6 +851,7 @@ public sealed class McpTaskManager
                 ["started"] = rec.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
                 ["updated"] = rec.UpdatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
             };
+            if (status == "interrupted") o["continue_task_id"] = rec.Id;
             if (rec.ContinuedFrom is not null) o["continued_from"] = rec.ContinuedFrom;
             if (o0Url is not null) o["last_url"] = o0Url;
             if (rec.Outcome is not null) o["outcome"] = rec.Outcome;

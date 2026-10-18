@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.12, data 2026-10-14 22:35
+// OpenFill - Metadata: wersja 0.13, data 2026-10-18 08:36
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -244,7 +244,46 @@ public static class McpTests
             T.Eq("crash: interruption persisted durably", "interrupted", S(persisted, "status"));
             original.Cancel(S(live, "task_id"));
             try { Directory.Delete(dir, true); } catch { }
-        });        await T.Section("MCP: start waits for actual state change despite early activity", async () =>
+        });        await T.Section("OF-218: old persisted running/waiting tasks are interrupted on read", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_orphans_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(dir);
+            var states = new[] { "running", "needs_input", "waiting_for_user" };
+            var ids = new List<string>();
+            for (var i = 0; i < states.Length; i++)
+            {
+                var rec = new McpTaskRecord
+                {
+                    Id = "OF-20261016-010" + i + "-fe0" + i,
+                    TaskText = "Simulated interrupted legacy task " + i,
+                    Status = states[i],
+                    Requester = "Historical client",
+                    CreatedUtc = DateTime.UtcNow.AddDays(-2),
+                    UpdatedUtc = DateTime.UtcNow.AddDays(-2),
+                    Question = "Previous unanswered question"
+                };
+                ids.Add(rec.Id);
+                File.WriteAllText(Path.Combine(dir, rec.Id + ".json"),
+                    System.Text.Json.JsonSerializer.Serialize(rec));
+            }
+            var host = new FakeRunHost();
+            var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(5));
+            for (var i = 0; i < states.Length; i++)
+            {
+                var response = await m.StatusAsync(ids[i], 0, default);
+                T.Eq("orphan " + states[i] + " becomes interrupted", "interrupted", S(response, "status"));
+                T.Eq("orphan preserves continue_task_id", ids[i], S(response, "continue_task_id"));
+                T.Contains("orphan reports uncertain external effects", S(response, "summary"), "UNKNOWN");
+                var after = System.Text.Json.JsonSerializer.Deserialize<McpTaskRecord>(
+                    File.ReadAllText(Path.Combine(dir, ids[i] + ".json")))!;
+                T.Eq("orphan transition persisted for " + states[i], "interrupted", after.Status);
+            }
+            T.Eq("reading orphans did not execute tasks", 0, host.Started);
+            var recent = m.Info()["recent_tasks"]!.AsArray();
+            T.Check("info does not advertise any orphan as running", recent.All(item => item?["status"]?.GetValue<string>() == "interrupted"));
+            try { Directory.Delete(dir, true); } catch { }
+        });
+        await T.Section("MCP: start waits for actual state change despite early activity", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_startwait_" + Guid.NewGuid().ToString("N")[..8]);
             var host = new FakeRunHost();
