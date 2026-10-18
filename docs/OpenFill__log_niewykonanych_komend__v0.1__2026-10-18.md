@@ -233,3 +233,11 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Operacja: odczyt przypuszczalnej ścieżki `Documents\\OpenFill-Backups\\EncryptedState\\restore_openfill_portable_age__v0.1__2026-10-16_1216.ps1`.
 - Wynik: `ENOENT: no such file or directory`, ścieżka i wariant były inne niż przewidywane. Brak odmowy zabezpieczeń i brak zmian w danych.
 - Działanie: znaleziono rzeczywisty istniejący skrypt `Documents\\Projects\\OpenFill-Recovery\\tools\\restore_openfill_portable_age__v0.1__2026-10-16_1221.ps1`; odczytano przed użyciem; rzeczywisty restore tego wariantu zakończył się `RESTORE_VERIFIED`, 8864 pliki, 0 niezgodności SHA-256.
+
+### OF-UNEXEC-033: nowy checkpoint v1.0 nie był jeszcze widoczny w pierwszym odczycie GitHub
+- Kiedy: 2026-10-18 około 17:04.
+- Narzędzie: `mcp__GitHub__fetch_file`, pojedynczy odczyt, bez mutacji.
+- Żądanie: `repository_full_name=Pawel-BoOssko/OpenFill`, `path=docs/OpenFill__implementation_checkpoint__v1.0__2026-10-18_1715.md`, `ref=autosync/PBOX1`.
+- Wynik: `NOT_FOUND / GitHub API 404 Not Found` w chwili kontroli. Lokalny checkpoint na PBOX1 został zapisany poprawnie.
+- Zakres: brak potwierdzenia zdalnego występowania tego jednego nowego pliku w momencie wywołania; nie jest to odmowa OpenAI ani dowód awarii Autosync.
+- Dodatkowo: w tej samej kontroli nowe pliki `tools/install__v0.13__2026-10-18_1650.ps1` i `tools/test_install_controlled_shutdown__v0.1__2026-10-18_1655.ps1` były już potwierdzone na zdalnej gałęzi. Nie wykonywano ręcznego push.
