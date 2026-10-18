@@ -1,12 +1,12 @@
-﻿# OpenFill
+# OpenFill
 
 **Tell a chat model what to do on the web. A small, cheap model does the clicking.**
 
 OpenFill is a Windows app that puts a real browser and an AI agent side by side. You (or another AI, such as ChatGPT) describe a job in plain language: *"sign me up for Thursday's 7:00 class on this pool's website"*, *"fill in my profile on this career site with this data"*, *"find the cheapest flight on these dates"*. OpenFill's embedded model then drives the browser until the job is done, asking you only when it truly has to.
 
 ## Metadata
-- Document version: 0.7
-- Date: 2026-10-05 22:11
+- Document version: 1.0
+- Date: 2026-10-18
 - App version: shown at the top of the app window and the panel
 - Author: OpenFill project
 
@@ -22,7 +22,8 @@ Big chat models are good at deciding *what* to do, and expensive and slow at cli
 
 - **Sees structure, not pixels.** The model gets a logical picture of the page (forms, fields, buttons, dialogs, messages, network calls), not screenshots. That is faster, cheaper and more reliable. Screenshots are available when the structure is not enough.
 - **Picks the right way to act.** Fills a whole form in one call, types character by character for autocomplete, or uses real mouse and keyboard events when a page ignores ordinary ones.
-- **Use it from a chat.** A built-in MCP server lets ChatGPT (or any MCP client) start tasks, poll their status, answer questions and cancel.
+- **Use it from a chat.** A built-in MCP server lets ChatGPT, Claude or any MCP client start tasks, poll their status, answer questions, cancel, fetch screenshots and exchange files.
+- **Parallel tasks.** Up to three tasks run at the same time, one per website, each in its own tab.
 - **You stay in control.** Questions only you can answer (codes, passwords) appear as cards in the OpenFill window and are never passed to the calling model. Payments and final submissions always ask first.
 - **Hard cost limits.** Per-task notices, a question to you at a set cost, a hard cumulative limit per website and a lifetime ceiling. Only you can lift a block.
 - **Loop and runaway protection.** Repeated identical actions are detected, warned about and stopped.
@@ -90,8 +91,11 @@ Turn on MCP in **Settings** (or `"mcpEnabled": true` in `config.json`) and resta
 | `openfill_reply` | answer a question from OpenFill's model |
 | `openfill_cancel_task` | cancel the running task |
 | `openfill_info` | diagnostics in one answer: version, settings, limits, cost per site, tabs, recent tasks and errors (no secrets) |
+| `openfill_screenshot` | image of a task's page when the structure is not enough |
+| `openfill_file_transfer` | short-lived private URL to move one file (up to 25 MiB) to or from the shared folder |
+| `openfill_maintenance` | stop accepting new tasks for a set time before a restart or update; running tasks finish |
 
-Statuses: `running`, `needs_input`, `waiting_for_user`, `done`, `failed`, `blocked`, `interrupted`, `busy`. One task runs at a time. A cut-off task can be continued with `continue_task_id`.
+Statuses: `running`, `needs_input`, `waiting_for_user`, `done`, `failed`, `blocked`, `interrupted`, `busy`. Up to three tasks run in parallel, never two on the same website. A cut-off task can be continued with `continue_task_id`.
 
 For a **stable address**, run your own tunnel (for example Tailscale Funnel or a named Cloudflare tunnel) and put its public address in **Settings > Public address** with a fixed MCP port. Without one, OpenFill opens a Cloudflare quick tunnel whose address changes at every start.
 
@@ -187,14 +191,12 @@ The model has no terminal and attaches only files whose path you gave it, or tha
 
 - Content in cross-origin iframes (for example some payment gateways) is not yet visible in `get_page`; the model falls back to `screenshot` and real clicks.
 - CAPTCHAs and SMS verification need a person; OpenFill asks through the panel and does not try to bypass them.
-- One task at a time.
 - Windows only for now.
 
 ## Ideas for later
 
 - Run OpenFill on a separate always-on machine.
 - A stable tunnel on your own domain.
-- Several tasks in parallel.
 
 ## License
 
