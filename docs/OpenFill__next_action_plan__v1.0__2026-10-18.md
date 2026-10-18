@@ -37,5 +37,11 @@ Najpierw 1 i 2 (migające PowerShell). Równolegle read-only punkt 3 i gotowoś�
 
 - 1: WYKONANE, źródło zidentyfikowane i odtworzone (9 kolizji, harmonogram co 15 min), raport OpenFill__powershell_popup_diagnostic__v0.1__2026-10-18.md.
 - 2: NAPRAWIONA PRZYCZYNA KOLIZJI, obowiązujący synchronizator zapisuje poprzednią wersję do Drive/_previous_versions, aktualizuje bieżącą i porównuje SHA-256. Test izolowany 11 PASS/0 FAIL, pierwszy automatyczny run o 15:01 utworzył 9 kopii historii/9 uaktualnień, ponowny run 92 identical/0 skipped. Osobno: kosmetyczny problem widocznego okna PowerShell nadal wymaga jednorazowej zmiany zadania przez administratora Windows (OF-UNEXEC-026); nie blokuje już prawidłowego synchronizowania dokumentów.
-- 3: ROZPOCZĘTO, zweryfikowano read-only zapis historycznego task_id OF-20261018-1424-9b59: status=stopped_by_user, outcome=stopped, UpdatedUtc=12:25:42Z, Summary wskazuje zatrzymanie przez człowieka. `PrepareShutdown` z kodu wywołuje najpierw SaveStrict(interrupted), potem _host.Stop; `Complete` nie nadpisuje już interrupted. Istniejąca regresja MCP potwierdza ten wariant na FakeRunHost. Dokładna przyczyna rozbieżności w rzeczywistym instalatorze nadal nieudowodniona; potrzebny test integracyjny z realną sesją okna i diagnostyka sekwencji.
-- 4-12: DO WYKONANIA / według dostępnych dowodów z checkpoint v0.7.
+- 3: SOURCE FIX + TESTY, LIVE PENDING. Rozpoznano wyścig instalatora 0.12: CloseMainWindow(), tylko 3 s, następnie Stop-Process -Force; ścieżka OnFormClosing zawiera 1,5 s obsługi MCP i do 4 s oczekiwania hosta. Instalator `install__v0.13__2026-10-18_1650.ps1` nie stosuje force kill, czeka do 25 s i przerywa instalację, jeśli normalne zamknięcie nie nastąpi. Test statyczny 10 PASS/0 FAIL, .NET Release 813 PASS/0 FAIL. To prawdopodobny mechanizm przerwania, lecz brak dowodu, że powodował historyczne `stopped_by_user`. Produkcja 1.55 pozostaje bez zmian; realny test upgrade/rollback nadal otwarty.
+- 4-5: DO WYKONANIA (realne GUI i OF-239). 
+- 6: RESTORE VERIFIED 18.10 na SATANAMD, 8 864 plików, 0 różnic SHA-256, prywatna tożsamość wyłącznie SATANAMD, nowy izolowany katalog z chronioną ACL. OF-223 zaliczony bez naruszania produkcji.
+- 7-8: CZĘŚCIOWO, test instalatora 10/0, build .sln 0 error + znane MSB3277, full .NET 813/0. Realne wdrożenie i rollback jeszcze niewykonane.
+- 9: DO WYKONANIA (Radar).
+- 10: SOURCE TESTY PASS, Technology Map 9/0 oraz MainForm PASS, GUI odbiór niepotwierdzony.
+- 11: ZBIERANIE POTWIERDZONE, ostatnie 120 próbek 59,7 min, 0 luk, 0 zmian PID, idle 67 / active 53.
+- 12: W TRAKCIE, aktualizacja backlogu i checkpointu; Autosync verify po zapisie.

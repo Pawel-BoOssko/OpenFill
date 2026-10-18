@@ -219,3 +219,17 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Kiedy: 2026-10-18 około 15:02 CEST. Narzędzie: mcp__lc_multihost__execute_command, PBOX1.
 - Operacja: pojedyncza diagnostyka read-only stanu harmonogramu i folderu archiwum na dysku H:, omyłkowo użyto zmiennej `$home`.
 - Rezultat: `Cannot overwrite variable HOME because it is read-only or constant.` Nie zmieniło dokumentów. Zmienna poprawiona na `$dh` w odrębnym dozwolonym odczycie: 9 plików archiwalnych, zadanie Harmonogramu exit 0, lokalny i Drive backlog miały identyczny hash. Brak odmowy bezpieczeństwa.
+
+### OF-UNEXEC-031: pierwsza wersja testu instalatora zgłosiła błąd
+- Kiedy: 2026-10-18 około 16:55, PBOX1.
+- Narzędzie: Desktop Commander `start_process`, pojedynczy test `tools/test_install_controlled_shutdown__v0.1__2026-10-18_1655.ps1`.
+- Próba: weryfikacja statyczna, że instalator v0.13 czeka 25 s i nie stosuje `Stop-Process -Force`.
+- Wynik: nieudany test harness (nie aplikacji), `FAIL True`, z powodu niewłaściwej konstrukcji tablicy warunków w PowerShell. Brak odmowy bezpieczeństwa.
+- Działanie: skorygowano konstrukcję testu przez osobne wywołania `Check`; powtórzenie zakończyło się **10 PASS, 0 FAIL**. Produkcja niezmieniona.
+
+### OF-UNEXEC-032: nieudany odczyt skryptu odzyskiwania na SATANAMD
+- Kiedy: 2026-10-18 około 16:55, SATANAMD.
+- Narzędzie: Desktop Commander `read_file`, pojedynczy odczyt istniejącego pliku.
+- Operacja: odczyt przypuszczalnej ścieżki `Documents\\OpenFill-Backups\\EncryptedState\\restore_openfill_portable_age__v0.1__2026-10-16_1216.ps1`.
+- Wynik: `ENOENT: no such file or directory`, ścieżka i wariant były inne niż przewidywane. Brak odmowy zabezpieczeń i brak zmian w danych.
+- Działanie: znaleziono rzeczywisty istniejący skrypt `Documents\\Projects\\OpenFill-Recovery\\tools\\restore_openfill_portable_age__v0.1__2026-10-16_1221.ps1`; odczytano przed użyciem; rzeczywisty restore tego wariantu zakończył się `RESTORE_VERIFIED`, 8864 pliki, 0 niezgodności SHA-256.

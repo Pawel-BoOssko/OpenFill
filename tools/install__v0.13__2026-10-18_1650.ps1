@@ -1,8 +1,8 @@
 ﻿<#
   OpenFill - install and update on Windows (no manual setup).
   Metadata:
-    wersja: 0.12
-    data:   2026-10-12 21:26
+    wersja: 0.13
+    data:   2026-10-18 16:50
   What it does (each step only when needed):
     1. .NET SDK 10 - via winget, or the official dotnet-install.ps1 into the user profile (no admin needed).
     2. Microsoft Edge WebView2 Runtime - Microsoft's silent installer (usually already present on Windows 11).
@@ -149,10 +149,25 @@ if ($running.Count -gt 0) {
     })
 }
 if ($running) {
-    Info "Closing the running app so the files can be replaced..."
-    $running | ForEach-Object { $_.CloseMainWindow() | Out-Null }
-    Start-Sleep -Seconds 3
-    $running | Where-Object { -not $_.HasExited } | Stop-Process -Force
+    Info "Requesting controlled shutdown before replacing application files..."
+    foreach ($process in $running) {
+        if (-not $process.CloseMainWindow()) {
+            throw ("Controlled shutdown could not be requested for OpenFill PID " + $process.Id + ". Installation aborted; existing application left intact.")
+        }
+    }
+    # OnFormClosing persists interrupted MCP tasks, gives polling clients time to read them,
+    # and disposes the host. Three seconds is too short; never force-kill the app while it is saving.
+    $closeDeadline = (Get-Date).AddSeconds(25)
+    do {
+        $stillRunning = @($running | Where-Object { Get-Process -Id $_.Id -ErrorAction SilentlyContinue })
+        if ($stillRunning.Count -eq 0) { break }
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $closeDeadline)
+    if ($stillRunning.Count -gt 0) {
+        throw ("OpenFill did not confirm controlled shutdown within 25 seconds (PIDs: " + (($stillRunning | ForEach-Object Id) -join ', ') +
+            "). Installation aborted without forcing task cancellation or replacing application files.")
+    }
+    Info "OpenFill closed through its normal window shutdown; publishing may now begin."
 }
 Step "Data location"
 $dataDir = Join-Path $DataBase $Instance
