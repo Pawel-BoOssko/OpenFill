@@ -677,7 +677,10 @@ public sealed class McpTaskManager
                     }
                 }
         }
-        catch { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new IOException("Cannot verify previous OpenFill task history; no new task started.", ex);
+        }
         if (diskMatch is not null)
         {
             fromDisk = true;

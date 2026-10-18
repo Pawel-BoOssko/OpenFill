@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.14, data 2026-10-18 20:45
+// OpenFill - Metadata: wersja 0.15, data 2026-10-18 21:20
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -228,6 +228,48 @@ public static class McpTests
                 if (File.Exists(path)) File.SetAttributes(path, FileAttributes.Normal);
                 try { Directory.Delete(dir, true); } catch { }
             }
+        });
+        await T.Section("OF-219: locked task record fails closed rather than duplicate registration", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_key_locked_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(dir);
+            var id = "OF-20261018-2120-ccdd";
+            var path = Path.Combine(dir, id + ".json");
+            var rec = new McpTaskRecord
+            {
+                Id = id, TaskText = "REGISTER_LOCKED_HISTORY_TEST", Status = "running",
+                Requester = "Networking Radar · Registrations", IdempotencyKey = "radar:locked:registration",
+                CreatedUtc = DateTime.UtcNow.AddMinutes(-4), UpdatedUtc = DateTime.UtcNow.AddMinutes(-3)
+            };
+            File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(rec));
+            var host = new FakeRunHost();
+            var manager = new McpTaskManager(host, dir, TimeSpan.FromSeconds(2));
+            try
+            {
+                var denied = false;
+                var message = "";
+                using (var locked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    try
+                    {
+                        await manager.StartAsync(rec.TaskText, 0, default, requester: "Networking Radar",
+                            chat: "Registrations", idempotencyKey: rec.IdempotencyKey);
+                    }
+                    catch (IOException ex) { denied = true; message = ex.Message; }
+                    T.Check("locked history prevents new start", denied);
+                    T.Contains("locked history explains refusal", message, "no new task started");
+                    T.Eq("locked record did not trigger a new registration", 0, host.Started);
+                }
+                T.Eq("locked file remains original running task", "running",
+                    System.Text.Json.JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(path))!.Status);
+                var restored = await manager.StartAsync(rec.TaskText, 0, default, requester: "Networking Radar",
+                    chat: "Registrations", idempotencyKey: rec.IdempotencyKey);
+                T.Eq("after unlock: original task id preserved", id, S(restored, "task_id"));
+                T.Eq("after unlock: interrupted instead of duplicate", "interrupted", S(restored, "status"));
+                T.Eq("after unlock: result is partial/unknown", "partial", S(restored, "outcome"));
+                T.Eq("after unlock: still zero duplicate actions", 0, host.Started);
+            }
+            finally { try { Directory.Delete(dir, true); } catch { } }
         });
         await T.Section("MCP: close persists interrupted and notifies polling clients", async () =>
         {
