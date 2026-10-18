@@ -88,3 +88,23 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Wynik: BŁĄD_TECHNICZNY, `AssertionError`, kod zakończenia 1. Test nie przeszedł.
 - Powód: niespójna nazwa pliku źródłowego w początkowej wersji generatora; szczegóły sprawdzono w treści instalatora.
 - Dalszy status: poprawiono ścieżkę `$sourceName` oraz `$logName`, przebudowano ZIP; ponowna walidacja nazw i CRC zakończyła się powodzeniem. Nie uruchamiano instalatora na komputerze użytkownika.
+
+### OF-UNEXEC-016: wyszukiwanie nazw plików w `docs` nie zwróciło istniejących dopasowań
+- Kiedy: 2026-10-18, rano; dokładna godzina nieustalona.
+- Komputer: PBOX1.
+- Narzędzie: mcp__Remote_Desktop_Commander__start_search / get_more_search_results.
+- Komenda: `start_search(path=...\\OpenFill\\docs, searchType=files, pattern="checkpoint|log_niewykonanych|handoff", earlyTermination=false, maxResults=100)`.
+- Wielkość: małe, tylko odczyt.
+- Wynik: NIEUDANE WYSZUKIWANIE. Raport narzędzia: `Status: COMPLETED; Total results: 0 matches; No matches found`.
+- Rzeczywisty stan: `list_directory` wykazał pliki zawierające wymienione fragmenty nazw. Wyszukiwanie nie posłużyło jako dowód ich braku.
+- Zakres: jedno wyszukiwanie plików. Przyczyna niedopasowania: niepotwierdzona, bez komunikatu o odmowie bezpieczeństwa.
+- Dalszy status: kontynuowano niezależny przegląd istniejących plików przez `list_directory`.
+
+### OF-UNEXEC-017: GitHub nie zawierał jeszcze nowego checkpointu v0.4
+- Kiedy: 2026-10-18, rano, po utworzeniu checkpointu.
+- Narzędzie: mcp__GitHub__fetch_file, odczyt zdalny, mały krok.
+- Żądanie: `repository_full_name=Pawel-BoOssko/OpenFill`, `path=docs/OpenFill__implementation_checkpoint__v0.4__2026-10-18.md`, `ref=autosync/PBOX1`.
+- Wynik: NIEUDANY ODCZYT, `NOT_FOUND: GitHub API error 404: {"message":"Not Found","status":"404"}`.
+- Zakres: brak potwierdzenia publikacji tego jednego nowego pliku; zapis lokalny przez Desktop Commander był poprawny.
+- Przyczyna: GitHub nie udostępniał pliku pod wskazanym ref w chwili zapytania; nie stwierdzono błędu zabezpieczeń ani awarii Autosync.
+- Dalszy status: oczekiwanie na normalny cykl Autosync, bez ręcznego push.
