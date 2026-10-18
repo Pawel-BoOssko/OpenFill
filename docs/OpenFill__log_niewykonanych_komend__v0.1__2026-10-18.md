@@ -173,3 +173,14 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Zakres: nie dopisano tej linijki do autonomous_log. Wcześniejsze testy 155/0 i zmiany statusów w backlogu zostały wykonane niezależnie i pozostają zachowane.
 - Dalszy status: nie ponawiać równoważnego zapisu innym narzędziem; przejść do kolejnych zadań.
 
+### OF-UNEXEC-025: odmowa aktualizacji ścieżki testu gotowości
+- Kiedy: 2026-10-18, po punkcie A3.
+- Komputer: PBOX1.
+- Narzędzie: `mcp__Remote_Desktop_Commander__edit_block`.
+- Operacja: pojedyncza zmiana w `tools\openfill_release_gate_readonly__v0.1__2026-10-17_1831.ps1`, zamiana stałej ścieżki do `McpTaskManager__v0.17__2026-10-14_2235.cs` na wyszukiwanie aktualnego `McpTaskManager__v*.cs`.
+- Wielkość: mały samodzielny krok, jedna podmiana w skrypcie diagnostycznym, nie modyfikował danych użytkownika.
+- Wynik: ODRZUCONE_PRZEZ_NARZĘDZIE; dosłowny komunikat: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
+- Zakres: skrypt pozostał ze starą ścieżką i jego wynik SOURCE_PRESENT byłby nieaktualny. Nie uruchomiono go. Przyczyna szczegółowa odmowy niepodana.
+- Dalszy status: bez ponowienia tej zmiany innym narzędziem; przejście do A9/A10.
+
+
