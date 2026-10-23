@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.6, data 2026-10-13 10:35
+// OpenFill - Metadata: wersja 0.7, data 2026-10-23 11:25
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Cdp;
@@ -329,6 +329,29 @@ public static class TabTests
             _ = s6;
         });
 
+        await T.Section("OF-230: checkout tab survives completed task for user payment", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_checkout_" + Guid.NewGuid().ToString("N")[..8]);
+            var ui = new FakeTabs();
+            var manager = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5, releaseFinishedTabs: false);
+            var start = ui.NewBlank();
+            manager.RegisterFree(start, "Start");
+            var task = await manager.BeginAsync("checkout-1", "shopping checkout", null, default,
+                requester: "ChatGPT / shop", preferredDomain: "example.com");
+            ui.Open[task.TabId] = "https://example.com/checkout/payment";
+            await manager.EndAsync("checkout-1");
+            T.Eq("finished checkout keeps same physical tab", task.TabId, manager.Find("checkout-1")?.TabId);
+            T.Eq("checkout URL still open", "https://example.com/checkout/payment", ui.Open[task.TabId]);
+            T.Check("checkout not navigated to blank", !ui.Log.Any(x => x.Contains("about:blank")));
+            T.Check("checkout not automatically closed", !ui.Log.Any(x => x == "close " + task.TabId));
+            var resumed = await manager.BeginAsync("checkout-2", "continue payment", null, default,
+                requester: "ChatGPT / shop", preferredDomain: "example.com");
+            T.Eq("same chat continues original browser session", task.TabId, resumed.TabId);
+            T.Check("session reused, no reopening URL", resumed.Continued && !resumed.Reopened);
+            await manager.EndAsync("checkout-2");
+            T.Check("user can manually close finished checkout", await manager.UserCloseAsync(task.TabId));
+            T.Check("only manual action removed checkout tab", !ui.Exists(task.TabId));
+        });
         await T.Section("TabManager: resource release and continuation", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_release_" + Guid.NewGuid().ToString("N")[..6]);

@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.24, data 2026-10-14 22:59
+// OpenFill - Metadata: wersja 0.25, data 2026-10-23 11:22
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
@@ -265,7 +265,9 @@ public sealed class MainForm : Form
             }))
         };
         _host.Attention += OnAttention;
-        _tabMgr = new TabManager(new TabsAdapter(this), Path.Combine(_paths.Root, "tabs.json"), _config.MaxTabs, releaseFinishedTabs: true);
+        // Keep completed browser tabs alive for checkout, payment, and other manual handoffs.
+        // The existing tab-count limit can still evict the oldest finished tab if all slots are occupied.
+        _tabMgr = new TabManager(new TabsAdapter(this), Path.Combine(_paths.Root, "tabs.json"), _config.MaxTabs, releaseFinishedTabs: false);
         _host.Tabs = _tabMgr;
         _tabMgr.RegisterFree(firstTab.Id, "Start");
         await _host.InitAsync();
