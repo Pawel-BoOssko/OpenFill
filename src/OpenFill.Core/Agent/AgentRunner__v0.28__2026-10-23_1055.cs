@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.27, data 2026-10-18 08:10
+// OpenFill - Metadata: wersja 0.28, data 2026-10-23 10:55
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -52,6 +52,10 @@ public sealed class AgentRunner
     public UsageTotals Usage { get; } = new();
 
     private string _taskPreview = "";
+    private readonly PromptHistoryCompactor _history = new();
+    private string? _lastInputJson;
+    private bool _hasPreviousInput;
+    private int _lastUnchangedPrefixChars;
 
     private double RecordUsage(int step, JsonObject request, JsonObject response, long latencyMs, IReadOnlyList<JsonObject> calls)
     {
@@ -98,12 +102,15 @@ public sealed class AgentRunner
             reasoningTokens = reasoning,
             costUsd = cost,
             tools = toolNames,
-            task = _taskPreview
+            task = _taskPreview,
+            cacheFraction = inTok > 0 ? Math.Round((double)cached / inTok, 4) : 0,
+            firstChangedInputChar = _hasPreviousInput ? _lastUnchangedPrefixChars : (int?)null,
+            historyCompactions = _history.Checkpoints
         });
 
         _log.Write("model", "usage",
             $"Step {step}: {inTok} in ({cached} cached) / {outTok} out, {latencyMs} ms",
-            new { step, model, latencyMs, requestChars = reqChars, inputTokens = inTok, cachedTokens = cached, outputTokens = outTok, reasoningTokens = reasoning, tools = toolNames, totals = Usage },
+            new { step, model, latencyMs, requestChars = reqChars, inputTokens = inTok, cachedTokens = cached, cacheFraction = inTok > 0 ? Math.Round((double)cached / inTok, 4) : 0, outputTokens = outTok, reasoningTokens = reasoning, inputPrefixChars = _lastUnchangedPrefixChars, historyCompactions = _history.Checkpoints, tools = toolNames, totals = Usage },
             status: "info");
         return cost ?? 0;
     }
@@ -220,6 +227,8 @@ Work as independently and quickly as possible: the fewer rounds, the better.
         {
             Msg("user", taskText)
         };
+        // End indices of *complete* response/tool cycles. Never compact inside a call/result pair.
+        var turnEnds = new List<int>();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
         cts.CancelAfter(TimeSpan.FromMinutes(_config.TaskTimeoutMinutes));
@@ -243,7 +252,14 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                 stepLimit += _config.MaxSteps;
                 _log.Write("agent", "step-limit", $"{step - 1} steps used, no loop detected - going on", status: "info");
             }
-            CompactIfNeeded(input);
+            CompactIfNeeded(input, turnEnds);
+            var serializedInput = input.ToJsonString();
+            _lastUnchangedPrefixChars = 0;
+            if (_lastInputJson is { } prior)
+                while (_lastUnchangedPrefixChars < prior.Length && _lastUnchangedPrefixChars < serializedInput.Length
+                       && prior[_lastUnchangedPrefixChars] == serializedInput[_lastUnchangedPrefixChars])
+                    _lastUnchangedPrefixChars++;
+            _lastInputJson = serializedInput;
 
             var request = new JsonObject
             {
@@ -381,6 +397,7 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                         new JsonObject { ["type"] = "input_text", ["text"] = "Page screenshot (from the screenshot tool):" },
                         new JsonObject { ["type"] = "input_image", ["image_url"] = "data:image/jpeg;base64," + img, ["detail"] = "auto" })
                 });
+            turnEnds.Add(input.Count);
         }
 
         return _registry.Conclusion ?? new RunConclusion("partial", $"Reached the limit of {stepLimit} steps and stopped. The work done so far is on the page; start a new task to go on from there.", null);
@@ -519,30 +536,15 @@ Work as independently and quickly as possible: the fewer rounds, the better.
     }
 
     /// <summary>
-    /// When the history grows, truncates the content of older tool results (function_call_output),
-    /// leaving the last few intact. Prevents context bloat.
+    /// One checkpoint per completed batch of whole tool turns. The prefix stays unchanged
+    /// between checkpoints; no sliding edits to previously cached tool outputs.
     /// </summary>
-    private void CompactIfNeeded(JsonArray input)
+    private void CompactIfNeeded(JsonArray input, List<int> turnEnds)
     {
-        int total = input.Sum(n => n?.ToJsonString().Length ?? 0);
-        if (total < _config.HistoryCompactThresholdChars) return;
-
-        var outputs = new List<JsonObject>();
-        foreach (var n in input)
-            if (n is JsonObject o && o["type"]?.GetValue<string>() == "function_call_output") outputs.Add(o);
-
-        // Keep the last 4 results in full; older ones are cut only when very long (complete results stay in the task history).
-        for (int i = 0; i < outputs.Count - 4; i++)
-        {
-            var o = outputs[i];
-            var cur = o["output"]?.GetValue<string>() ?? "";
-            if (cur.Length > 4000)
-                o["output"] = OutputLimiter.Head(cur, 4000) + " [truncated to fit the context]";
-        }
-        // Replace old screenshots with a description (keep the last one).
-        var imageMsgs = input.OfType<JsonObject>().Where(o => o["type"]?.GetValue<string>() == "message" && o.ToJsonString().Contains("\"input_image\"")).ToList();
-        foreach (var m in imageMsgs.Take(Math.Max(0, imageMsgs.Count - 1)))
-            m["content"] = new JsonArray(new JsonObject { ["type"] = "input_text", ["text"] = "[older screenshot removed to fit the context]" });
-        _log.Write("model", "compact", "Truncated older tool results", new { total }, status: "info");
+        if (_history.Apply(input, turnEnds, _config.HistoryCompactThresholdChars,
+            out var before, out var after, out var dropped))
+            _log.Write("model", "compact", "Compressed completed model/tool cycles",
+                new { beforeChars = before, afterChars = after, removedTurns = dropped,
+                    checkpoints = _history.Checkpoints }, status: "info");
     }
 }
