@@ -55,6 +55,8 @@ public sealed class AgentRunner
     private readonly PromptHistoryCompactor _history = new();
     private string? _lastInputJson;
     private bool _hasPreviousInput;
+    private byte[]? _previousRequestBytes;
+    private int? _firstChangedRequestByte;
     private int _lastUnchangedPrefixChars;
 
     private double RecordUsage(int step, JsonObject request, JsonObject response, long latencyMs, IReadOnlyList<JsonObject> calls)
@@ -105,7 +107,8 @@ public sealed class AgentRunner
             task = _taskPreview,
             cacheFraction = inTok > 0 ? Math.Round((double)cached / inTok, 4) : 0,
             firstChangedInputChar = _hasPreviousInput ? _lastUnchangedPrefixChars : (int?)null,
-            historyCompactions = _history.Checkpoints
+            historyCompactions = _history.Checkpoints,
+            firstChangedRequestByte = _firstChangedRequestByte
         });
 
         _log.Write("model", "usage",
@@ -254,6 +257,7 @@ Work as independently and quickly as possible: the fewer rounds, the better.
             }
             CompactIfNeeded(input, turnEnds);
             var serializedInput = input.ToJsonString();
+            _hasPreviousInput = _lastInputJson is not null;
             _lastUnchangedPrefixChars = 0;
             if (_lastInputJson is { } prior)
                 while (_lastUnchangedPrefixChars < prior.Length && _lastUnchangedPrefixChars < serializedInput.Length
@@ -276,6 +280,18 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                 ["include"] = new JsonArray("reasoning.encrypted_content")
             };
 
+            // Compare the exact UTF-8 JSON sent by OpenAIClient, but log only the byte offset.
+            // No prompts, page text, credentials or request bodies enter the diagnostics.
+            var requestBytes = Encoding.UTF8.GetBytes(request.ToJsonString());
+            _firstChangedRequestByte = null;
+            if (_previousRequestBytes is { } previousBytes)
+            {
+                var offset = 0;
+                while (offset < previousBytes.Length && offset < requestBytes.Length
+                       && previousBytes[offset] == requestBytes[offset]) offset++;
+                _firstChangedRequestByte = offset;
+            }
+            _previousRequestBytes = requestBytes;
             _log.Write("model", "request", $"Step {step}: asking the model", new { step, model = _config.Model }, status: "info");
 
             JsonObject response;

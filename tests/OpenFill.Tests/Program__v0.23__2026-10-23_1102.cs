@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.22, aktualizacja 2026-10-15 21:19
+// OpenFill - Metadata: wersja 0.23, data 2026-10-23 11:02
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.App;
@@ -974,6 +974,7 @@ await T.Section("Frames of other domains and sign-in pop-ups", () =>
 
 await TabTests.RunAsync();
 await CostTests.RunAsync();
+await PromptHistoryTests.RunAsync();
 await DefaultsTests.RunAsync();
 await SharedTests.RunAsync();
 if (args.Contains("mcp-only", StringComparer.OrdinalIgnoreCase)) { await McpTests.RunAsync(); return T.Report(); }
