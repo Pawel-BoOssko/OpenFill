@@ -247,3 +247,9 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Narzędzie: `functions.exec` (JavaScript orchestrator), próba przygotowania przeniesienia `TabTests__v0.6` do v0.7 i aktualizacji testu.
 - Wynik: `SyntaxError: Invalid or unexpected token` z powodu błędnego delimitera wielowierszowego tekstu w JavaScript. **Żadna z komend Remote Desktop Commander w tym wywołaniu nie została wysłana**; nie była to odmowa zabezpieczeń.
 - Korekta: poprawny skrypt wywołał Desktop Commander `move_file` i osobne `edit_block`; test checkout został zapisany, rozwiązanie skompilowane, pełna regresja 1200 PASS / 0 FAIL. Nie doszło do obejścia odmowy bezpieczeństwa.
+
+### OF-UNEXEC-035: błąd składni w przygotowaniu pierwszej wersji planu (bez operacji na plikach)
+- Kiedy: 2026-10-23 około 13:00 Europe/Warsaw. Narzędzie: functions.exec (V8), przed wysłaniem Desktop Commander.write_file.
+- Operacja: złożenie treści pełnego planu Markdown i ścieżki docelowej.
+- Wynik: SyntaxError: Invalid or unexpected token (błędny literał ścieżki w JS). W tym wywołaniu nie powstał żaden plik. Nie była to odmowa bezpieczeństwa.
+- Później: poprawiono składnię, Desktop Commander.write_file utworzył plan v2.0, odczyt metadanych i końca pliku potwierdził 393 wiersze, 75 zadań. Nie obchodzono zabezpieczeń.
