@@ -241,3 +241,9 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Wynik: `NOT_FOUND / GitHub API 404 Not Found` w chwili kontroli. Lokalny checkpoint na PBOX1 został zapisany poprawnie.
 - Zakres: brak potwierdzenia zdalnego występowania tego jednego nowego pliku w momencie wywołania; nie jest to odmowa OpenAI ani dowód awarii Autosync.
 - Dodatkowo: w tej samej kontroli nowe pliki `tools/install__v0.13__2026-10-18_1650.ps1` i `tools/test_install_controlled_shutdown__v0.1__2026-10-18_1655.ps1` były już potwierdzone na zdalnej gałęzi. Nie wykonywano ręcznego push.
+
+### OF-UNEXEC-034: błąd składni przed pierwszą próbą zmiany TabTests
+- Data: 2026-10-23, około 11:25, PBOX1.
+- Narzędzie: `functions.exec` (JavaScript orchestrator), próba przygotowania przeniesienia `TabTests__v0.6` do v0.7 i aktualizacji testu.
+- Wynik: `SyntaxError: Invalid or unexpected token` z powodu błędnego delimitera wielowierszowego tekstu w JavaScript. **Żadna z komend Remote Desktop Commander w tym wywołaniu nie została wysłana**; nie była to odmowa zabezpieczeń.
+- Korekta: poprawny skrypt wywołał Desktop Commander `move_file` i osobne `edit_block`; test checkout został zapisany, rozwiązanie skompilowane, pełna regresja 1200 PASS / 0 FAIL. Nie doszło do obejścia odmowy bezpieczeństwa.
