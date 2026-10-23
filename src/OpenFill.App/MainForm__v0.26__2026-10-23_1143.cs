@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.25, data 2026-10-23 11:22
+// OpenFill - Metadata: wersja 0.26, data 2026-10-23 11:43
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
@@ -47,7 +47,10 @@ public sealed class MainForm : Form
     }
 
     private readonly WebView2 _panel = new() { Dock = DockStyle.Fill };
-    private readonly TextBox _address = new() { Dock = DockStyle.Fill };
+    private readonly ComboBox _address = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDown,
+        AutoCompleteMode = AutoCompleteMode.SuggestAppend, AutoCompleteSource = AutoCompleteSource.ListItems,
+        MaxDropDownItems = 12, IntegralHeight = false }; 
+    private readonly AddressHistory _addressHistory;
     private readonly Button _back = new() { Text = "◀", Width = 36, Dock = DockStyle.Fill, FlatStyle = FlatStyle.System };
     private readonly Button _forward = new() { Text = "▶", Width = 36, Dock = DockStyle.Fill, FlatStyle = FlatStyle.System };
     private readonly Button _reload = new() { Text = "⟳", Width = 36, Dock = DockStyle.Fill, FlatStyle = FlatStyle.System };
@@ -75,6 +78,7 @@ public sealed class MainForm : Form
         _paths = paths;
         _config = config;
         _secrets = secrets;
+        _addressHistory = new AddressHistory(Path.Combine(paths.Root, "address_history.json"));
 
         Text = "OpenFill — " + BuildInfo.Headline() + (paths.Instance != "stable" ? $" [{paths.Instance}]" : "");
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? Icon; } catch { }
@@ -100,6 +104,7 @@ public sealed class MainForm : Form
         nav.Controls.Add(_credentials, 5, 0);
         nav.Controls.Add(_firefoxImport, 6, 0);
         _navigation = nav;
+        RefreshAddressHistory();
 
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         _layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, PanelWidth));
@@ -135,6 +140,7 @@ public sealed class MainForm : Form
         };
         _firefoxImport.Click += (_, _) => { using var picker = new FirefoxPasswordPicker(_active?.View.CoreWebView2?.Source); picker.ShowDialog(this); };
         _address.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; NavigateFromAddress(); } };
+        _address.SelectionChangeCommitted += (_, _) => NavigateFromAddress();
 
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.Control && e.KeyCode == Keys.T) { e.SuppressKeyPress = true; NewUserTab(); } };
@@ -204,9 +210,25 @@ public sealed class MainForm : Form
         }
         finally { nav.ResumeLayout(true); }
     }
+    private void RefreshAddressHistory()
+    {
+        // Preserve the text being typed while repopulating the most-recent-first suggestions.
+        var typed = _address.Text;
+        var cursor = _address.SelectionStart;
+        _address.BeginUpdate();
+        try
+        {
+            _address.Items.Clear();
+            _address.Items.AddRange(_addressHistory.Suggestions.Cast<object>().ToArray());
+            _address.Text = typed;
+            _address.SelectionStart = Math.Min(cursor, typed.Length);
+        }
+        finally { _address.EndUpdate(); }
+    }
+
     private void NavigateFromAddress()
     {
-        var url = _address.Text.Trim();
+        var url = _addressHistory.Resolve(_address.Text);
         var current = _active?.View.CoreWebView2;
         if (url.Length == 0 || current is null) return;
         if (_tabMgr?.ActiveTabBusy() == true)
@@ -440,7 +462,11 @@ public sealed class MainForm : Form
             var deferral = e.GetDeferral();
             _ = OpenPopupAsync(e, deferral, f.HasSize ? (int)f.Width : 520, f.HasSize ? (int)f.Height : 700, tab);
         };
-        core.SourceChanged += (_, _) => { if (ReferenceEquals(_active, tab) && !_address.Focused) _address.Text = core.Source; };
+        core.SourceChanged += (_, _) =>
+        {
+            if (_addressHistory.Remember(core.Source)) RefreshAddressHistory();
+            if (ReferenceEquals(_active, tab) && !_address.Focused) _address.Text = core.Source;
+        };
         core.HistoryChanged += (_, _) => { if (ReferenceEquals(_active, tab)) { _back.Enabled = core.CanGoBack; _forward.Enabled = core.CanGoForward; } };
         core.DownloadStarting += (_, e) =>
         {
