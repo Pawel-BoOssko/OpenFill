@@ -29,7 +29,14 @@ public sealed class McpService : IAsyncDisposable
         Action<string>? announce = null, CancellationToken ct = default)
     {
         var secret = LoadOrCreateSecret(Path.Combine(paths.Runtime, "mcp-secret.txt"));
-        var tasks = new McpTaskManager(host, paths.Tasks, TimeSpan.FromMinutes(Math.Max(1, config.CallerAnswerTimeoutMinutes)));
+        // Production JEV gate is enabled by a private runtime endpoint file.
+        // The OpenRouter key stays on SATANAMD, not in OpenFill or the task payload.
+        JevGate? jevGate = null;
+        var jevFile = Path.Combine(paths.Runtime, "jev-service-url.txt");
+        if (File.Exists(jevFile))
+            jevGate = new JevGate(new JevMarsRemoteScorer(File.ReadAllText(jevFile).Trim()));
+        var tasks = new McpTaskManager(host, paths.Tasks,
+            TimeSpan.FromMinutes(Math.Max(1, config.CallerAnswerTimeoutMinutes)), jevGate);
         var server = new McpServer(tasks, secret, config.McpPort, msg => log.Write("mcp", "request", msg, status: "info"), paths.Screenshots, paths.SharedFor(config.SharedFolder));
         server.Start();
         var path = "/mcp/" + secret;

@@ -363,3 +363,10 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - **[OF-244] [LIVE CODE, RUCH DO POMIARU]** Aktualna biblioteka MCP wdrożona: status nie jest wybudzany przez ActivityVer, testy zaliczone. Brak osobnego pomiaru ruchu po wdrożeniu.
 - **[OF-246] [LIVE START IMPROVED, OBSERVATION OPEN]** Instalator v0.14, poprawione ustawienia Harmonogramu, poprawne kontrolowane zamknięcie i start; 40 sekund stabilności PASS, port 48731 działa. Dłuższy test przy kolejnych wdrożeniach nadal wskazany.
 - **[OF-247] [SOURCE CODE + TESTS DONE / MODEL INTEGRATION OPEN]** JevGate.cs w SOURCE, testy progu >85%, błędów i blokowania przeglądarki przechodzą. Modelowy scorer i placeholder promptu niepodłączone. Transfer klucza z SATANAMD zablokowany przez zabezpieczenia narzędzia, nie udawać dostarczenia klucza. Nadal nieaktywny gate w produkcji.
+
+## 28.10.2026: wykonanie OF-247, wersja tymczasowa Mars
+- **[OF-247] [LIVE DONE, WARIANT TESTOWY]** Produkcyjna bramka OpenFill MCP + TypeSafe JEV włączona. Pytanie oceniające tylko: czy całe oryginalne polecenie od klienta żąda rzeczywistego wysłania ludzi na Marsa. Odrzucenie przy score >0.85. Placeholder odpowiedzi do czatu pozostawiony.
+- Klucz pozostaje na SATANAMD, TypeSafe uruchamiany przez proces OpenFill-JEV-Mars na 100.121.221.23:43977; PBOX1 łączy się przez Tailscale. Żaden klucz nie był kopiowany do PBOX1.
+- MCP testy 1122 PASS/0 FAIL. LIVE install exit 0 i kontrolowany restart potwierdzony. Test benign: example.com => ALLOW, task done success; test realnego wysłania trzech ludzi na Marsa => JEV score=1.0, jev_rejected, bez uruchomienia Luny. 35s stabilności procesu PASS, porty 48731 i 43977 słuchają.
+- Backup i rollback: C:\Users\pboru\OpenFill\backups\pre-jev-mars-20261028. Więcej: docs\OpenFill__checkpoint_przejecia__v1.0__2026-10-28_1555.md.
+- **Pozostałe działania następnego etapu:** zastąpić tymczasowy prompt Mars właściwą oceną wymagań i sformułować ostateczną wiadomość odmowy, jeśli użytkownik wyda takie polecenie. Monitorować dostępność usługi JEV na SATANAMD; przy jej awarii MCP zwraca jev_unavailable, nie wydaje fikcyjnych ocen.

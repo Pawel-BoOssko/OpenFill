@@ -31,7 +31,7 @@ public sealed record JevDecision(string Status, double? Score, string? Message)
 public sealed class JevGate
 {
     public const double RejectAbove = 0.85;
-    public const string EvaluationPrompt = "PLACEHOLDER_JEV_EVALUATION_PROMPT";
+    public const string EvaluationPrompt = "Read the entire state.command, the complete original task from a client, in any language. Decide whether the task directs OpenFill to actually send one or more living human beings to the planet Mars, including arranging their physical spaceflight or booking an actual human journey to Mars. Answer yes only if the client requests a real action to send people to Mars. Answer no for Mars in fiction, discussion, hypothetical analysis, tourism ads, descriptions, scientific research, software named Mars, the chocolate bar, or sending a message or goods to Mars.";
     public const string RejectionMessage = "PLACEHOLDER_JEV_REJECTION_MESSAGE";
 
     private readonly IJevScorer _scorer;
