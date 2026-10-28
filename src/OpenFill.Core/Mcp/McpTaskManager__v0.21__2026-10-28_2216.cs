@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.20, data 2026-10-28 16:48
+// OpenFill - Metadata: wersja 0.21, data 2026-10-28 22:16
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -941,14 +941,11 @@ public sealed class McpTaskManager
             if (rec.LastActivityUtc is { } activityUtc) o["last_tool_activity_at"] = activityUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
             if (warn is not null) o["warning"] = warn;
             if (note is not null) o["note"] = note;
-            var max = Math.Max(1, _host.MaxParallel);
             o["next_step"] = status switch
             {
-                "running" => "OpenFill is still working. Call openfill_task_status with this task_id to wait for the result (each call waits up to 30 seconds). " +
-                    (max > 1 ? $"Other tasks may run at the same time on other web sites (up to {max}); a site that another task is using cannot be used by a second one. " : "Do not start another task. ") +
-                    "Do not cancel it just because it takes long: normal jobs take 10-30 steps (a simple form), 40-120 (a sign-up or a profile), 80-150 (a flight search with calendars); watch steps and recent_activity. " +
-                    "Cancel only when recent_activity shows the same thing again and again. Cost is capped by OpenFill itself." +
-                    (warn is null ? "" : " WARNING: " + warn + " Check recent_activity: if it repeats, cancel and tell the user; otherwise keep waiting."),
+                "running" => "Task is running. The 30-second status wait is a transport timeout, not an ETA. " +
+                    "Recheck this task_id only when a meaningful update is needed; do not repeatedly poll every 30 seconds or restart it." +
+                    (warn is null ? "" : " WARNING: " + warn),
                 "needs_input" => "OpenFill is asking its calling model for missing information. Use what you already know and answer the question using openfill_reply with this task_id. Authorized credentials, verification codes and login links may be supplied when permitted by your operating environment. If you cannot answer, say so clearly: OpenFill may then ask the person in its own window without restarting the task.",
                 "waiting_for_user" => "OpenFill is waiting for the person at the computer to answer or complete an interactive authentication step in the OpenFill window; see question. " +
                     "This status is not answerable with openfill_reply; use that tool only if the status changes to needs_input. Do not ask the person to report back in chat or restart the task. " +

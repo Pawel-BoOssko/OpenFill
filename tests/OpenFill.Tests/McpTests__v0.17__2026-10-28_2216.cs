@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.16, data 2026-10-28 17:05
+// OpenFill - Metadata: wersja 0.17, data 2026-10-28 22:16
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -406,6 +406,10 @@ public static class McpTests
             var started = await m.StartAsync("SLOW polling", 0, default, requester: "Test", chat: "Poll");
             T.Eq("poll ceiling", 30, started["poll_wait_max_seconds"]?.GetValue<int>() ?? -1);
             T.Check("no invented ETA", started.ContainsKey("estimated_completion_seconds") && started["estimated_completion_seconds"] is null);
+            var guidance = started["next_step"]?.GetValue<string>() ?? "";
+            T.Check("30-second poll is explicitly not an ETA", guidance.Contains("transport timeout, not an ETA"));
+            T.Check("no frequent polling instruction", guidance.Contains("do not repeatedly poll every 30 seconds"));
+            T.Check("routine running hint stays compact", guidance.Length < 240);
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var pending = m.StatusAsync(S(started, "task_id"), 1, default);
             await Task.Delay(100);
