@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.23, data 2026-10-17 11:30
+// OpenFill - Metadata: wersja 0.24, data 2026-10-28 16:48
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -506,15 +506,7 @@ The URL is private and contains an access secret. Do not publish it or forward i
                 Array.Empty<string>(), idempotent: false, readOnly: true),
             ToolDef("openfill_info",
 """
-Returns diagnostic and operational information about the OpenFill service in a single response.
-
-Includes version, build, runtime, active and recent tasks, task progress, execution costs, outcomes, settings, resource limits, per-site spending, blocked websites, open browser tabs, shared folder availability, and recent errors or warnings.
-
-Use this tool when diagnosing unexpected behavior, checking the current OpenFill configuration, investigating failed or unusually expensive tasks, or identifying available shared storage.
-
-It may also be used before coordinating multiple tasks to determine current activity, capacity constraints, and existing task conflicts.
-
-Use the returned information to avoid redundant operations, unnecessary task restarts, and avoidable domain conflicts.
+Returns a short status of active OpenFill work: who is working and on which website. If no tasks are active, returns an empty working list.
 
 """,
                 new JsonObject(),
@@ -584,7 +576,8 @@ Maintenance blocks new tasks; it does NOT terminate the application. For a contr
                 "openfill_task_status" => await _tasks.StatusAsync(Str(args, "task_id"), wait, _cts.Token),
                 "openfill_reply" => await _tasks.ReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait, _cts.Token),
                 "openfill_cancel_task" => _tasks.Cancel(Str(args, "task_id")),
-                "openfill_info" => InfoResult(),
+                "openfill_info" => _tasks.ShortInfo(),
+                "openfill_full_status" => InfoResult(),
                 "openfill_maintenance" => _tasks.Maintenance(args?["minutes"] is null ? null : Int(args, "minutes", 0), Str(args, "reason"), Str(args, "requester")),
                 "openfill_screenshot" => await ScreenshotResultAsync(Str(args, "task_id")),
                 "openfill_file_transfer" => _files is null

@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.19, data 2026-10-18 20:49
+// OpenFill - Metadata: wersja 0.20, data 2026-10-28 16:48
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -275,7 +275,8 @@ public sealed class McpTaskManager
         if (rec is null) return NotFound(id);
         if (!fromDisk)
         {
-            int v, av; lock (_lock) { v = rec.Ver; av = rec.ActivityVer; } await WaitAsync(rec, v, waitSeconds, ct, av);
+            int v; lock (_lock) v = rec.Ver;
+            await WaitAsync(rec, v, waitSeconds, ct);
         }
         return Snapshot(rec, null, fromDisk);
     }
@@ -530,13 +531,13 @@ public sealed class McpTaskManager
 
     // ------------------------------------------------------------------ helpers
 
-    private async Task WaitAsync(McpTaskRecord rec, int startVersion, int seconds, CancellationToken ct, int? activityVersion = null)
+    private async Task WaitAsync(McpTaskRecord rec, int startVersion, int seconds, CancellationToken ct)
     {
         var end = DateTime.UtcNow.AddSeconds(Math.Clamp(seconds, 0, MaxWaitSeconds));
         while (DateTime.UtcNow < end)
         {
             // waiting_for_user is a long wait on the person: keep waiting until something changes, do not return at once.
-            lock (_lock) { if ((rec.Status != "running" && rec.Status != "waiting_for_user") || rec.Ver != startVersion || (activityVersion.HasValue && rec.ActivityVer != activityVersion.Value)) return; }
+            lock (_lock) { if ((rec.Status != "running" && rec.Status != "waiting_for_user") || rec.Ver != startVersion) return; }
             try { await Task.Delay(250, ct); }
             catch (OperationCanceledException) { return; }
         }
@@ -771,6 +772,36 @@ public sealed class McpTaskManager
     private const string BlockedStep = "The site reached its hard cost limit and is blocked. Tell the user what was done so far (summary). The block can be lifted only by the user, in the OpenFill window - you cannot do it. Do not start more tasks on that site.";
 
     private static string Preview(string s) => s.Length > 200 ? s[..200] + "..." : s;
+
+    /// <summary>Small MCP status: only the caller and current site for each active task.</summary>
+    public JsonObject ShortInfo()
+    {
+        var working = new JsonArray();
+        foreach (var rec in OpenRecords())
+        {
+            JsonObject? tab = null;
+            try { tab = _host.TabDetailsOf(rec.Id); } catch { }
+            var who = tab?["requester"]?.GetValue<string>()
+                ?? rec.Requester?.Replace("\u0007", " · ").Trim()
+                ?? "nieznany";
+            var site = tab?["domain"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(site))
+            {
+                try
+                {
+                    if (Uri.TryCreate(_host.LastUrlOf(rec.Id), UriKind.Absolute, out var url))
+                        site = url.Host;
+                }
+                catch { }
+            }
+            working.Add(new JsonObject
+            {
+                ["who"] = who,
+                ["site"] = string.IsNullOrWhiteSpace(site) ? "nieustalona" : site
+            });
+        }
+        return new JsonObject { ["working"] = working };
+    }
 
     /// <summary>One answer with everything that helps to find out what is wrong: version, runtime, open and recent tasks, and what the host knows.</summary>
     public JsonObject Info()

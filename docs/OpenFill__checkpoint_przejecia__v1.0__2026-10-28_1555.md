@@ -34,3 +34,8 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Kod: `src/OpenFill.Core/Mcp/McpServer__v0.23__2026-10-17_1130.cs` definiuje `openfill_info` bez parametrów (okolice linii 507) i wywołuje `InfoResult()` (okolice linii 587); `src/OpenFill.Core/Hosting/AppHost__v0.22__2026-10-14_2259.cs` generuje diagnostykę m.in. per-site koszty i karty. Pozostaje zbadać klientów i testy kontraktowe przed zmianą.
 - Propozycja, nie wdrożenie: krótka odpowiedź MCP domyślnie i pełna diagnostyka na żądanie, z zachowaniem ważnych błędów i aktywnych zadań. Wpisano jako punkty 15-19 w planie operacyjnym v1.0.
 - STATUS: DODANE DO BACKLOGU. SOURCE/LIVE/TEST bez zmian. Brak restartów i modyfikacji MCP.
+
+## 28.10: potwierdzony kontrakt uproszczonego statusu MCP
+- Polecenie użytkownika: openfill_info ma zwracać wyłącznie kto pracuje oraz na której witrynie (dla aktywnych zadań), bez wersji, kosztów, runtime, logów i historii; przy braku zadań pusta lista.
+- Zrezygnowano z pomysłu uprawnień, ukryć pełny status przez brak deklaracji jego komendy w tools/list i opisach narzędzi. Nie dodawać publicznego parametru detail=full.
+- Kod źródłowy wskazany: McpServer v0.23 InfoResult i tools/list, McpTaskManager v0.19 Info; planowana zmiana tylko SOURCE, potwierdzenie przez testy, bez przerywania aktywnych zadań produkcyjnych.
