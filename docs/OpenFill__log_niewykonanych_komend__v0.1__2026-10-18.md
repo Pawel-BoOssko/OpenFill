@@ -267,3 +267,9 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Wynik: BLOCKED, dokładny komunikat: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
 - Sprawdzona przyczyna: zabezpieczenia po stronie wywołania narzędzia; szczegółowa reguła nie została ujawniona. Nie podejmowano próby obejścia blokady.
 - Wcześniejsza czysto dokumentacyjna modyfikacja metadanych została cofnięta. Testy SOURCE 1227 PASS/0 FAIL, produkcja niezmieniona.
+
+## 2026-10-28: odmowa aktualizacji zasady publikowania wersji
+- Narzędzie: Remote Desktop Commander edit_block, plik docs/OpenFill__plan_dalszych_prac__v2.0__2026-10-23_1259.md.
+- Operacja: zastąpienie zasady wstrzymywania wydania przy aktywnych zadaniach regułą publikacji ASAP z kontrolowanym maintenance, utrwalonym interrupted i rollbackiem.
+- Wynik: BLOKADA narzędzia, komunikat: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
+- Szczegółowy powód odmowy: nieudostępniony. Nie ponowiono edycji alternatywną metodą. Treść planu pozostała niezmieniona. Reguła właściciela jest znana z rozmowy, ale wymaga nadal zapisu do instrukcji projektu.
