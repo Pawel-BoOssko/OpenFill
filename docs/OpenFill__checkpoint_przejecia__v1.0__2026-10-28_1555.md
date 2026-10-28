@@ -98,3 +98,13 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Regresja MCP SOURCE: 1122 PASS, 0 FAIL, EXIT=0, log: docs/OpenFill__OF247_MCP_tests__2026-10-28.log.
 - Pełna regresja SOURCE: uruchomiona, wynik do ustalenia.
 - Uwaga: prompt i komunikat odrzucenia to nadal dosłowne placeholdery. Scorer OpenRouter jeszcze niepodłączony. Nie deklarować JEV jako aktywnego w LIVE.
+
+## 2026-10-28: wdrożenie SOURCE MCP po 1253 PASS, 0 FAIL
+- Uruchomiono instalator tools/install__v0.14__2026-10-28_2108.ps1 na PBOX1, -NoAutostart -NoShortcuts, z trybem maintenance. INSTALL_EXIT=0; potwierdzono controlled shutdown i komunikat 'OpenFill process verified after startup'. Log: docs/OpenFill__release_OF247_MCP_20261028.log.
+- Przed wydaniem: kopia rollback C:\Users\pboru\OpenFill\backups\before-of247-source_20261028, 23 pliki, SHA-256 głównych bibliotek EXE/DLL zgodne z wcześniejszym LIVE.
+- TESTY: MCP 1122 PASS/0 FAIL, komplet 1253 PASS/0 FAIL; logi docs/OpenFill__OF247_MCP_tests__2026-10-28.log oraz docs/OpenFill__OF247_full_regression_2026-10-28.log.
+- PO WYDANIU: openfill_info MCP zwraca dokładnie {"working":[]}; tools/list 8 narzędzi, openfill_info widoczne, openfill_full_status niewidoczne. Serwer lokalnie słucha na TCP 48731, proces w sesji interaktywnej PID 20660. SHA-256 OpenFill.Core.dll różni się od kopii poprzedniego LIVE, potwierdzając nowy build.
+- Produkt nadal oznacza się 1.57 (nie 1.58), należy w raportach rozróżniać build po aktualizacji od poprzedniego 1.57.
+- JEV w SOURCE: bramka JevGate ze ścisłym progiem >0.85, ale NIEAKTYWNA na LIVE, brak rzeczywistego scorera i promptu (placeholder). Nie ma automatycznej kontroli nowych zleceń na produkcji. Przeniesienie OPENROUTER_API_KEY z SATANAMD do PBOX1 zostało zablokowane przez zabezpieczenia narzędzia. Nie ponawiano inną drogą.
+- Test stabilności po starcie (40 sekund) uruchomiony oddzielnie, wynik zapisać po otrzymaniu.
+- POST-RELEASE STABILITY PASS: po dodatkowych 40 sekundach wciąż ten sam PID 20660, port TCP 48731 nasłuchuje. Nowy MCP status wcześniej sprawdzony: {"working":[]}; full command nie widnieje w tools/list. Rollback pozostaje dostępny.
