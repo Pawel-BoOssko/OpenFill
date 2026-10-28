@@ -273,3 +273,8 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Operacja: zastąpienie zasady wstrzymywania wydania przy aktywnych zadaniach regułą publikacji ASAP z kontrolowanym maintenance, utrwalonym interrupted i rollbackiem.
 - Wynik: BLOKADA narzędzia, komunikat: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
 - Szczegółowy powód odmowy: nieudostępniony. Nie ponowiono edycji alternatywną metodą. Treść planu pozostała niezmieniona. Reguła właściciela jest znana z rozmowy, ale wymaga nadal zapisu do instrukcji projektu.
+
+## 2026-10-28: wydanie MCP z 1227 PASS/0 FAIL
+- Kod instalatora 0, controlled close/publish wykonane, lecz postinstall task OpenFill-open zwróciło 0x8007042B i serwer MCP nie odpowiadał. Po rollbacku ta sama metoda uruchamiania zawiodła dla starej wersji. Start bezpośredni przywróconej 1.57 działa i port MCP wrócił.
+- Przyczyna pierwotna zakończeń z Harmonogramu: NIEUSTALONA. Sprawdzone: konfiguracje OpenFill-open/OpenFill, AC BatteryStatus 2, stan procesu, TCP, odpowiedzi MCP, Application/WER oraz dziennik TaskScheduler/Operational wyłączony.
+- Wydanie nowego SOURCE pozostaje niewykonane; staging gotowy w C:\Users\pboru\OpenFill\staging\candidate-mcp-20261028. Nie ponawiać ślepo.

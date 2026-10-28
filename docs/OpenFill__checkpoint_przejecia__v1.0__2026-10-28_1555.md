@@ -59,3 +59,21 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 ## Dodatkowy wynik diagnostyki Harmonogramu
 - Kod ostatniego wykonania zadania OpenFill-open 2147943467 = 0x8007042B = WIN32 1067. `net helpmsg 1067` na PBOX1: „Proces zakończył się nieoczekiwanie.” To wynik zadania Harmonogramu, nie pełna diagnoza przyczyny zamknięcia aplikacji.
 - Przeszukano do 1500 ostatnich zdarzeń dziennika Microsoft-Windows-TaskScheduler/Operational z dwóch dni pod kątem nazwy OpenFill, nie uzyskano dodatkowych szczegółów. Nie ustalono, czy zdarzenie 27.10 wynikało z tej samej usterki. Nie ingerowano w autostart.
+
+## 28.10.2026, wydanie ASAP: preflight przed kontrolowanym shutdown
+- HOST: PBOX1. LIVE 1.57 build 2026-10-27 15:16, openfill_info status ok, aktywne zadania=0, maintenance=false (pomiar 19:42:53 EAT).
+- SOURCE MCP: wersje plików McpTaskManager v0.20, McpServer v0.24, McpTests v0.16. Testy pełne: 1227 PASS, 0 FAIL, kod 0.
+- Wydana paczka staging: C:\Users\pboru\OpenFill\staging\candidate-mcp-20261028, dotnet publish exit 0, 13 plików. Zmieniły się rzeczywiste DLL OpenFill.Core.dll i OpenFill.dll wobec LIVE; OpenFill.exe jest apphost o niezmiennym SHA, nie dowodzi identyczności kodu.
+- Kopia rollback: C:\Users\pboru\OpenFill\backups\pre-mcp-20261028\app, 13 plików, nazwy zgodne z LIVE, SHA-256 EXE zgodny, kopia z LIVE przed wdrożeniem.
+- Próba podniesienia ProductVersion z 1.57 do 1.58 w poprzedniej turze została odrzucona przez zabezpieczenia narzędzia. Nie zmieniono numeru. Jeśli będzie wydanie, należy je raportować jako 1.57 z nową datą build, a nie 1.58. To wyjątek od idealnego release versioning, nie mylić z nową wersją numerowaną.
+- Instalator źródłowy narzędzia tools/install__v0.13__2026-10-18_1650.ps1: controlled CloseMainWindow, do 25 sekund na zamknięcie, brak kill; końcowy start z Harmonogramu sesji interaktywnej. Nie dotykać C:\Users\pboru\OpenFill\data\stable.
+- Diagnoza sprawy konta: docs/OpenFill__diag_Claude_konto_LinkedIn__2026-10-28.md. Żadnych zmian obsługi kont.
+
+## 28.10: rzeczywiste wdrożenie i rollback
+- maintenance przez MCP: active=true, running_tasks=0; kontrolowane zamknięcie przez instalator potwierdzone. tools/install__v0.13 uruchomiono z -NoShortcuts -NoAutostart. INSTALL_EXIT=0, komunikat „OpenFill started”, log: docs/OpenFill__release_mcp_2026-10-28.log; instalacja danych stable nie modyfikowała.
+- Po instalacji OpenFill.exe nie pozostawał uruchomiony, TCP:48731 nie nasłuchiwał, openfill_info: „The tool failed internally”. Planowane wydanie NIE POWIODŁO SIĘ na etapie trwałego uruchomienia, mimo kodu instalatora 0. Task Scheduler OpenFill-open: LastTaskResult=2147943467 (0x8007042B, Windows 1067).
+- Wykonano rollback z C:\Users\pboru\OpenFill\backups\pre-mcp-20261028\app. SHA-256 OpenFill.exe, OpenFill.Core.dll i OpenFill.dll dokładnie zgodne z kopią. Stara aplikacja uruchamiana przez OpenFill-open również kończyła się po chwili.
+- Uruchomienie starej kompilacji bezpośrednio w interaktywnej sesji (Start-Process) utrzymało proces >45 sekund. Test TCP 48731 PASS, test MCP openfill_info PASS, LIVE po rollbacku 1.57 build 2026-10-27 15:16, 0 zadań, maintenance=false. Nowa paczka pozostaje tylko w staging, nie na LIVE.
+- Porównanie zadań: OpenFill-open: StopIfGoingOnBatteries=true, DisallowStartIfOnBatteries=true, ExecutionTimeLimit=PT72H, RestartCount=0. OpenFill: odpowiednio false,false,PT0S,5. Monitorowane zasilanie w odczycie AC BatteryStatus=2, więc nie udowodniono, że nastąpił spadek na baterię. Dziennik TaskScheduler/Operational istnieje, ale IsEnabled=false, więc brak pełnego dowodu przyczyny zakończeń.
+- Potwierdzony błąd: tryb uruchomienia post-install jest zawodny i nie weryfikuje utrzymania procesu; kod 0 instalatora nie oznacza pozytywnego smoke. Nie ustalono dokładnej przyczyny zakończenia procesu przez Harmonogram. Nie mylić ze zmianą bibliotek MCP, bo stary build uruchomiony tym samym zadaniem także się kończył.
+- Kolejny priorytet: powtarzalne uruchomienie przez prawidłowe zadanie w sesji 1, test stabilności procesu i smoke MCP po wydaniu; dopiero wtedy kwalifikować LIVE. Nie ponawiać aktualizacji bez preflightu i zabezpieczenia pracy klienta.
