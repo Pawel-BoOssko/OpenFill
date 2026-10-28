@@ -27,3 +27,10 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Opracować weryfikowalne wymagania JEV, testy pozytywne i negatywne, lokalizację wdrożenia w LC MultiHost.
 - Zaktualizować plan rozwoju i statusy LIVE; checkpoint po każdym zakończonym etapie.
 - Nie uruchamiać ręcznego git commit/push, ChatGPT Tasks ani restartu usług przy niepewnej sesji.
+
+## Uzupełnienie 28.10, analiza MCP openfill_info (bez zmian implementacji)
+- Potwierdzono: problem dotyczy narzędzia MCP `openfill_info`, nie publicznego API ani zadań przeglądarkowych OpenFill.
+- Pomiar faktycznej odpowiedzi: 17 543 znaki, szacunkowo 4 386 tokenów (nie mierzone tokenizerem); 8 ostatnich zadań, 60 pozycji kosztów domen, 5 kart, 1 aktywne zadanie. Sekcje dominujące: `openfill` 8528 znaków, `recent_tasks` 4576, `active_tasks` 1683, `active_task` 1681 (duplikacja).
+- Kod: `src/OpenFill.Core/Mcp/McpServer__v0.23__2026-10-17_1130.cs` definiuje `openfill_info` bez parametrów (okolice linii 507) i wywołuje `InfoResult()` (okolice linii 587); `src/OpenFill.Core/Hosting/AppHost__v0.22__2026-10-14_2259.cs` generuje diagnostykę m.in. per-site koszty i karty. Pozostaje zbadać klientów i testy kontraktowe przed zmianą.
+- Propozycja, nie wdrożenie: krótka odpowiedź MCP domyślnie i pełna diagnostyka na żądanie, z zachowaniem ważnych błędów i aktywnych zadań. Wpisano jako punkty 15-19 w planie operacyjnym v1.0.
+- STATUS: DODANE DO BACKLOGU. SOURCE/LIVE/TEST bez zmian. Brak restartów i modyfikacji MCP.
