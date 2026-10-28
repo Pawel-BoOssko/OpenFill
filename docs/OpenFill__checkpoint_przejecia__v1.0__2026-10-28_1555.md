@@ -39,3 +39,23 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Polecenie użytkownika: openfill_info ma zwracać wyłącznie kto pracuje oraz na której witrynie (dla aktywnych zadań), bez wersji, kosztów, runtime, logów i historii; przy braku zadań pusta lista.
 - Zrezygnowano z pomysłu uprawnień, ukryć pełny status przez brak deklaracji jego komendy w tools/list i opisach narzędzi. Nie dodawać publicznego parametru detail=full.
 - Kod źródłowy wskazany: McpServer v0.23 InfoResult i tools/list, McpTaskManager v0.19 Info; planowana zmiana tylko SOURCE, potwierdzenie przez testy, bez przerywania aktywnych zadań produkcyjnych.
+
+## 28.10: status MCP i diagnostyka 30 s, kolejny checkpoint
+- SOURCE (PBOX1) zmienione: McpTaskManager v0.20 / McpServer v0.24; zwykłe openfill_info zwraca listę who+site, pełny status dostępny tylko po nazwie wywołania openfill_full_status, niewymienianej w tools/list. Nie dodano uprawnień. LIVE nadal 1.57, bez wdrożenia, sesje pozostawione.
+- Build .sln Release po pierwszej zmianie: exit=0, 0 errors, 1 znane ostrzeżenie MSB3277, czas 5m10s. Po kolejnej zmianie trwa test i kompilacja, wynik jeszcze nieznany.
+- 30 s: McpTaskManager MaxWaitSeconds=30 to ograniczenie oczekiwania na odpowiedź pojedynczego żądania MCP, nie harmonogram serwera. StatusAsync wcześniej kończył oczekiwanie także przy zmianie ActivityVer, czyli po zwykłej czynności agenta. Zmiana SOURCE: reaguje na zmianę stanu (Ver) i timeout, bez wybudzania na każdy wpis aktywności; oczekiwanie na needs_input/done pozostaje.
+- Lokalna ResourceTelemetrySeconds=30, domyślnie, nie oznacza żądania sieciowego. Nie zmieniono: diagnostyka ma własną retencję i cele. Ruch do linkedin.com /realtime/sendHeartbeat znaleziony w logu ok. co 59 s, z krótkimi seriami, generowany przez stronę, nie serwer MCP.
+- Dodatkowy test McpTests v0.16: skrócony kontrakt, brak pełnej komendy w tools/list, brak wybudzenia po aktywności; test jeszcze w toku.
+- Przy edycji opisu MCP narzędzie Remote Desktop Commander odmówiło: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.” Nie obchodzono odmowy. Dotyczyło tekstu opisów (nie zmian w działającym mechanizmie).
+- Następny krok: wynik testów, preflight LIVE i zapis raportu; bez restartu przy aktywnych zadaniach.
+
+## 28.10: testy PASS i ograniczenie wydania
+- Drugi pełny przebieg testów po dostosowaniu HTTP kontraktu: 1227 PASS, 0 FAIL, TEST_EXIT=0; log: docs/OpenFill__test_status_mcp__v0.2__2026-10-28.log. Poprzedni przebieg: 1210 PASS / 2 FAIL (stary kontrakt statusu w testach), naprawione.
+- SOURCE: McpServer v0.24, McpTaskManager v0.20, McpTests v0.16. Nie wdrożono do LIVE, bo nadal aktywne zadanie Claude Papa na linkedin.com i zachowanie kart przy aktualizacji.
+- Próba nadania wersji 1.58 w Directory.Build.props została odrzucona komunikatem bezpieczeństwa OpenAI; nie ponawiano innym narzędziem. Poprzedzająca ją zmiana samych metadanych została cofnięta, plik ponownie deklaruje 1.57, data 23.10 11:55.
+- NOWY odczyt Harmonogramu PBOX1: zadanie OpenFill uruchamiane triggerem logowania, 5 prób restartu w odstępie PT1M, ostatni wynik 1, ostatnie uruchomienie 22.10. Zadanie OpenFill-open bez triggera cyklicznego, ostatni wynik 2147943467 w dniu 27.10. OpenFillMonitor i Docs_GDrive_Sync działają poprawnie, oba ostatni wynik 0. To wyjaśnia brak niezależnego watchdog dla cichego zamknięcia procesu, ale nie dowodzi przyczyny zakończenia 27.10.
+- Etap następny: analiza wyniku Harmonogramu i niezależnego mechanizmu nadzoru w backlogu; testy i dokumentacja ukończone, release ZABLOKOWANY. Nie ruszano LIVE/data/stable.
+
+## Dodatkowy wynik diagnostyki Harmonogramu
+- Kod ostatniego wykonania zadania OpenFill-open 2147943467 = 0x8007042B = WIN32 1067. `net helpmsg 1067` na PBOX1: „Proces zakończył się nieoczekiwanie.” To wynik zadania Harmonogramu, nie pełna diagnoza przyczyny zamknięcia aplikacji.
+- Przeszukano do 1500 ostatnich zdarzeń dziennika Microsoft-Windows-TaskScheduler/Operational z dwóch dni pod kątem nazwy OpenFill, nie uzyskano dodatkowych szczegółów. Nie ustalono, czy zdarzenie 27.10 wynikało z tej samej usterki. Nie ingerowano w autostart.

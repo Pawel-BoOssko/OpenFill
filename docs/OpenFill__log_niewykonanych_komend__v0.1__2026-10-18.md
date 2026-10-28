@@ -253,3 +253,17 @@ Dla plików OpenFill: Desktop Commander read_file/read_multiple_files, start_sea
 - Operacja: złożenie treści pełnego planu Markdown i ścieżki docelowej.
 - Wynik: SyntaxError: Invalid or unexpected token (błędny literał ścieżki w JS). W tym wywołaniu nie powstał żaden plik. Nie była to odmowa bezpieczeństwa.
 - Później: poprawiono składnię, Desktop Commander.write_file utworzył plan v2.0, odczyt metadanych i końca pliku potwierdził 393 wiersze, 75 zadań. Nie obchodzono zabezpieczeń.
+
+## 2026-10-28, MCP status: odmowa zmiany opisów narzędzi
+- Narzędzie: Remote Desktop Commander edit_block.
+- Operacja: zmiana tekstu opisu openfill_task_status i instrukcji MCP w McpServer__v0.24 w celu ograniczenia wielokrotnego polling co 30 s.
+- Wynik: BLOCKED, dokładny komunikat: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
+- Przyczyna szczegółowa: nieudostępniona przez narzędzie; sprawdzono tylko komunikat blokady. Nie ponawiano operacji inną drogą.
+- Dalsze niezależne kroki: usunięcie wybudzania statusu na zwykłym ActivityVer, testy jednostkowe, raport. Teksty opisu pozostały bez zmian.
+
+## 2026-10-28, próba podniesienia numeru wydania do 1.58
+- Narzędzie: Remote Desktop Commander edit_block.
+- Operacja: Directory.Build.props, zmiana wartości OpenFillVersion 1.57 -> 1.58.
+- Wynik: BLOCKED, dokładny komunikat: „To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz.”
+- Sprawdzona przyczyna: zabezpieczenia po stronie wywołania narzędzia; szczegółowa reguła nie została ujawniona. Nie podejmowano próby obejścia blokady.
+- Wcześniejsza czysto dokumentacyjna modyfikacja metadanych została cofnięta. Testy SOURCE 1227 PASS/0 FAIL, produkcja niezmieniona.

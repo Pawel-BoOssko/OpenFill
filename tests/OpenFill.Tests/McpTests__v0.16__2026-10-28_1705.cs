@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.15, data 2026-10-18 20:50
+// OpenFill - Metadata: wersja 0.16, data 2026-10-28 17:05
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -116,6 +116,22 @@ public static class McpTests
 
     public static async Task RunAsync()
     {
+        await T.Section("MCP: short status exposes only who and site", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_shortstatus_" + Guid.NewGuid().ToString("N")[..8]);
+            var host = new FakeRunHost { TabStatus = _ => new JsonObject { ["requester"] = "ChatGPT · Status", ["domain"] = "example.org" } };
+            var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(5));
+            T.Eq("no active work", 0, m.ShortInfo()["working"]!.AsArray().Count);
+            var started = await m.StartAsync("SLOW sample job", 0, default, requester: "ChatGPT", chat: "Status");
+            var small = m.ShortInfo();
+            T.Eq("status contains only working", 1, small.Count);
+            T.Eq("one active job", 1, small["working"]!.AsArray().Count);
+            T.Eq("correct caller", "ChatGPT · Status", small["working"]![0]?["who"]?.GetValue<string>());
+            T.Eq("correct website", "example.org", small["working"]![0]?["site"]?.GetValue<string>());
+            T.Check("full diagnostic command not advertised in MCP tools/list", !McpServer.ToolList().ToJsonString().Contains("openfill_full_status"));
+            m.Cancel(S(started, "task_id"));
+            try { Directory.Delete(dir, true); } catch { }
+        });
         await T.Section("MCP: temporary account data survives tool handoff", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_cred_test_" + Guid.NewGuid().ToString("N")[..8]);
@@ -382,7 +398,7 @@ public static class McpTests
             T.Eq("start was executed once", 1, host.Started);
             try { Directory.Delete(dir, true); } catch { }
         });
-        await T.Section("MCP: activity wakes polling and does not invent ETA", async () =>
+        await T.Section("MCP: routine activity does not force early status polling", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_poll_" + Guid.NewGuid().ToString("N")[..8]);
             var host = new FakeRunHost();
@@ -391,12 +407,12 @@ public static class McpTests
             T.Eq("poll ceiling", 30, started["poll_wait_max_seconds"]?.GetValue<int>() ?? -1);
             T.Check("no invented ETA", started.ContainsKey("estimated_completion_seconds") && started["estimated_completion_seconds"] is null);
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var pending = m.StatusAsync(S(started, "task_id"), 3, default);
+            var pending = m.StatusAsync(S(started, "task_id"), 1, default);
             await Task.Delay(100);
             host.EmitActivity?.Invoke("Next action");
             var response = await pending;
-            T.Check("poll: activity wakes before full timeout", stopwatch.ElapsedMilliseconds < 2000);
-            T.Check("progress woke waiting status", response["last_tool_activity_at"] is not null);
+            T.Check("routine activity does not force early status response", stopwatch.ElapsedMilliseconds >= 750);
+            T.Check("activity remains available after wait", response["last_tool_activity_at"] is not null);
             T.Eq("task still running", "running", S(response, "status"));
             m.Cancel(S(started, "task_id"));
         });
@@ -628,9 +644,9 @@ public static class McpTests
             T.Check("initialize reports the server version", init["result"]?["serverInfo"]?["version"]?.GetValue<string>() == OpenFill.Core.BuildInfo.Version);
             var ver = await Rpc("""{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"openfill_info","arguments":{}}}""");
             var verBody = System.Text.Json.Nodes.JsonNode.Parse(ver["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
-            T.Eq("info tool ok", "ok", S(verBody, "status"));
-            T.Eq("info tool reports the version", OpenFill.Core.BuildInfo.Version, verBody["app"]!["version"]!.GetValue<string>());
-            T.Check("info tool has runtime and recent tasks", verBody["runtime"] is not null && verBody["recent_tasks"] is not null);
+            T.Eq("info tool returns only working", 1, verBody.Count);
+            T.Eq("info tool has no jobs initially", 0, verBody["working"]!.AsArray().Count);
+            T.Check("info omits diagnostics and history", verBody["runtime"] is null && verBody["recent_tasks"] is null && verBody["app"] is null);
 
             var call = await Rpc("""{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"openfill_start_task","arguments":{"task":"Simple http test task","wait_seconds":5,"requester":"Claude Test","chat":"Test chat"}}}""");
             var payload = JsonNode.Parse(call["result"]!["content"]![0]!["text"]!.GetValue<string>())!.AsObject();
