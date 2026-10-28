@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.1, data 2026-10-28 22:03
+// OpenFill - Metadata: wersja 0.2, data 2026-10-28 22:45
 // JEV scorer: sends complete task text to the private SATANAMD JEV endpoint.
 using System;
 using System.Collections.Generic;
@@ -12,7 +12,10 @@ namespace OpenFill.Core.Mcp;
 
 public sealed class JevMarsRemoteScorer : IJevScorer
 {
-    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(45) };
+    private static readonly HttpClient Client = new(new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(5) })
+    {
+        Timeout = TimeSpan.FromSeconds(45)
+    };
     private readonly Uri _url;
 
     public JevMarsRemoteScorer(string url)

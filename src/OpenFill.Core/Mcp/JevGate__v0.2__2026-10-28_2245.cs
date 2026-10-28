@@ -1,8 +1,9 @@
-// OpenFill - Metadata: wersja 0.1, data 2026-10-28 21:18
-// OF-247: decision boundary staged in SOURCE. Not enabled until a real model scorer and prompt are configured.
+// OpenFill - Metadata: wersja 0.2, data 2026-10-28 22:45
+// OF-247: active production gate, fail-closed with structured diagnostic categories.
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -55,9 +56,17 @@ public sealed class JevGate
         {
             throw;
         }
-        catch (Exception)
+        catch (OperationCanceledException)
         {
-            return new("jev_unavailable", null, "JEV assessment unavailable. Task not started.");
+            return new("jev_unavailable", null, "JEV request timed out. Task not started.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new("jev_unavailable", null, "JEV transport error (" + ex.HttpRequestError + "). Task not started.");
+        }
+        catch (Exception ex)
+        {
+            return new("jev_unavailable", null, "JEV assessment unavailable (" + ex.GetType().Name + "). Task not started.");
         }
     }
 }

@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.1, data 2026-10-28 21:19
+// OpenFill - Metadata: wersja 0.2, data 2026-10-28 22:45
 using System.Text.Json.Nodes;
 using OpenFill.Core.Mcp;
 
@@ -8,11 +8,13 @@ internal sealed class ScriptedJevScorer : IJevScorer
 {
     public IReadOnlyDictionary<string, double>? Scores { get; set; } = new Dictionary<string, double>();
     public bool Throw { get; set; }
+    public bool ThrowTransport { get; set; }
     public int Calls { get; private set; }
 
     public Task<IReadOnlyDictionary<string, double>> ScoreAsync(string taskText, CancellationToken ct)
     {
         Calls++;
+        if (ThrowTransport) throw new System.Net.Http.HttpRequestException(System.Net.Http.HttpRequestError.ConnectionError, "simulated network issue");
         if (Throw) throw new InvalidOperationException("simulated JEV failure");
         return Task.FromResult(Scores ?? (IReadOnlyDictionary<string, double>)new Dictionary<string, double>());
     }
@@ -55,7 +57,15 @@ public static class JevGateTests
             scorer.Scores = new Dictionary<string, double> { ["p1"] = 1.01 };
             T.Eq("out of range assessment not allowed", "jev_unavailable", (await gate.ReviewAsync("sample", default)).Status);
             scorer.Throw = true;
-            T.Eq("provider failure not interpreted as zero", "jev_unavailable", (await gate.ReviewAsync("sample", default)).Status);
+            var error = await gate.ReviewAsync("sample", default);
+            T.Eq("provider failure not interpreted as zero", "jev_unavailable", error.Status);
+            T.Check("provider failure type is given", (error.Message ?? "").Contains("InvalidOperationException"));
+            scorer.Throw = false;
+            scorer.ThrowTransport = true;
+            error = await gate.ReviewAsync("sample", default);
+            T.Eq("transport failure not interpreted as zero", "jev_unavailable", error.Status);
+            T.Check("transport class is visible to caller", (error.Message ?? "").Contains("ConnectionError"));
+            scorer.ThrowTransport = false;
         });
         await T.Section("OF-247: JEV blocks browser before side effects", async () =>
         {
