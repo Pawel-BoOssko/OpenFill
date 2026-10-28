@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.6, data 2026-10-12 22:00
+// OpenFill - Metadata: wersja 0.7, data 2026-10-28 22:22
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenFill.Core.Cdp;
@@ -141,6 +141,22 @@ public sealed class TabManager
             _activeTabId = tabId;
         }
         Refresh();
+    }
+
+    // Manual tabs share the physical limit with Luna's tabs. Keep the gate held
+    // across eviction and creation so a concurrent task cannot create a sixth tab.
+    public async Task<bool> TryOpenUserTabAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            try { await MakeRoomAsync(); }
+            catch (IOException) { return false; }
+            var id = await _ui.OpenTabAsync("about:blank", "New tab", ct);
+            RegisterUser(id, "New tab");
+            return true;
+        }
+        finally { _gate.Release(); }
     }
 
     // ------------------------------------------------------------------ task life cycle

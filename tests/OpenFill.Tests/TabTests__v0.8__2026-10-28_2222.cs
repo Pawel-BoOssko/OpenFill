@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.7, data 2026-10-23 11:25
+// OpenFill - Metadata: wersja 0.8, data 2026-10-28 22:22
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Cdp;
@@ -85,6 +85,40 @@ public static class TabTests
 {
     public static async Task RunAsync()
     {
+        await T.Section("TabManager: manual plus obeys five-tab cap", async () =>
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "openfill_manual_limit_" + Guid.NewGuid().ToString("N")[..8] + ".json");
+            var ui = new FakeTabs();
+            var first = ui.NewBlank();
+            var mgr = new TabManager(ui, dir, 2);
+            mgr.RegisterFree(first, "Start");
+            T.Check("first manual tab added", await mgr.TryOpenUserTabAsync());
+            T.Eq("two physical tabs", 2, ui.Open.Count);
+            T.Check("second manual tab replaces free tab", await mgr.TryOpenUserTabAsync());
+            T.Eq("manual tab creation never exceeds cap", 2, ui.Open.Count);
+            T.Check("manual tabs cannot evict other user tabs", !await mgr.TryOpenUserTabAsync());
+            T.Eq("both user tabs stay alive", 2, ui.Open.Count);
+            try { File.Delete(dir); } catch { }
+        });
+        await T.Section("TabManager: manual plus cannot evict active tasks", async () =>
+        {
+            var file = Path.Combine(Path.GetTempPath(), "openfill_manual_active_" + Guid.NewGuid().ToString("N")[..8] + ".json");
+            var ui = new FakeTabs();
+            var first = ui.NewBlank();
+            var mgr = new TabManager(ui, file, 2);
+            mgr.RegisterFree(first, "Start");
+            var a = await mgr.BeginAsync("running-a", "A", null, default);
+            var b = await mgr.BeginAsync("running-b", "B", null, default);
+            T.Check("two active task tabs exist", ui.Exists(a.TabId) && ui.Exists(b.TabId));
+            T.Check("manual plus refused when all slots active", !await mgr.TryOpenUserTabAsync());
+            T.Eq("still two tabs", 2, ui.Open.Count);
+            mgr.SetState("running-b", "finished");
+            T.Check("manual plus evicts only finished task", await mgr.TryOpenUserTabAsync());
+            T.Eq("running task preserved", true, ui.Exists(a.TabId));
+            T.Eq("finished tab closed", false, ui.Exists(b.TabId));
+            T.Eq("still capped at two", 2, ui.Open.Count);
+            try { File.Delete(file); } catch { }
+        });
         await T.Section("SwitchableCdpConnection: follows the active tab", async () =>
         {
             var sw = new SwitchableCdpConnection();

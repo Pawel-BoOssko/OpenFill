@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.26, data 2026-10-23 11:43
+// OpenFill - Metadata: wersja 0.27, data 2026-10-28 22:22
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
@@ -590,9 +590,13 @@ public sealed class MainForm : Form
         if (_tabMgr is null || _browserEnv is null) return;
         try
         {
-            var tab = await CreateTabAsync("about:blank");
-            ActivateTab(tab);
-            _tabMgr.RegisterUser(tab.Id, "New tab");
+            if (!await _tabMgr.TryOpenUserTabAsync())
+            {
+                _host?.Session.Log.Write("browser", "tab_limit",
+                    "Cannot open a manual tab: all tab slots are occupied by user or active tabs.",
+                    status: "warn");
+                return;
+            }
             _address.Focus();
             _address.SelectAll();
         }
