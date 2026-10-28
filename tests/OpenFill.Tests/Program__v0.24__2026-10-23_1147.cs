@@ -978,7 +978,8 @@ await PromptHistoryTests.RunAsync();
 await AddressHistoryTests.RunAsync();
 await DefaultsTests.RunAsync();
 await SharedTests.RunAsync();
-if (args.Contains("mcp-only", StringComparer.OrdinalIgnoreCase)) { await McpTests.RunAsync(); return T.Report(); }
+if (args.Contains("mcp-only", StringComparer.OrdinalIgnoreCase)) { await JevGateTests.RunAsync(); await McpTests.RunAsync(); return T.Report(); }
+await JevGateTests.RunAsync();
 await McpTests.RunAsync();
 await FileTransferTests.RunAsync();
 await ParallelTests.RunAsync(testsite, Page);

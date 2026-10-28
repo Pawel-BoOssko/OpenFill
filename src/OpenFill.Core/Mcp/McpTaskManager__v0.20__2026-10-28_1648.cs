@@ -62,15 +62,17 @@ public sealed class McpTaskManager
     }
 
     private readonly IRunHost _host;
+    private readonly JevGate? _jev;
     private readonly string _dir;
     private readonly TimeSpan _answerTimeout;
     private readonly object _lock = new();
     private readonly Dictionary<string, Live> _open = new();
     private McpTaskRecord? _last;
 
-    public McpTaskManager(IRunHost host, string tasksDir, TimeSpan answerTimeout)
+    public McpTaskManager(IRunHost host, string tasksDir, TimeSpan answerTimeout, JevGate? jev = null)
     {
         _host = host;
+        _jev = jev;
         _dir = tasksDir;
         _answerTimeout = answerTimeout;
     }
@@ -134,6 +136,13 @@ public sealed class McpTaskManager
                 ["next_step"] = "Refresh the tool definitions if requester and chat are not in your openfill_start_task, then call openfill_start_task again with requester and chat."
             };
         who = who + " · " + chatName;
+        // Assess every new chat command before task records, browser activity or side effects.
+        // Until a genuine scorer and prompt are configured, _jev is null and LIVE is unchanged.
+        if (_jev is not null)
+        {
+            var decision = await _jev.ReviewAsync(task, ct).ConfigureAwait(false);
+            if (!decision.CanStart) return decision.ToMcpResult(requester ?? "", chat ?? "");
+        }
         if (idempotencyKey is not null)
         {
             idempotencyKey = idempotencyKey.Trim();

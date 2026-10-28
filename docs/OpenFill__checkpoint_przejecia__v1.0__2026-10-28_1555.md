@@ -88,3 +88,13 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Próba edycji instalatora przez edit_block: wynik pobierania zakończył się błędem infrastruktury: Path validation operation timed out after 10 seconds. Sprawdzono, że plik nie został zmieniony; następnie nową wersję v0.14 wygenerowano jako odrębny plik i przetestowano składnię.
 - NASTĘPNY KROK: po zakończeniu aktywnego zadania test kontrolowanego uruchomienia na PBOX1 (bez utraty profilu i kart), następnie publikacja poprawionego MCP ASAP z kontrolą przez local RPC oraz potwierdzeniem DLL SHA; odrębnie implementacja JEV po ustaleniu rzeczywistego promptu i bezpiecznej ścieżki klucza do działającego OpenFill.
 - DODATKOWE SPRAWDZENIE JEV NA PBOX1: nie ma lokalnego pliku C:\Users\pboru\Apps\speaker-finder\config\local\secrets.env, zmienna OPENROUTER_API_KEY nie jest ustawiona w bieżącym procesie, w User ani Machine. Klucz jest wyłącznie zlokalizowany na SATANAMD; aby OpenFill LIVE mógł korzystać z JEV, trzeba osobno zaprojektować i przetestować połączenie pomiędzy hostami lub chronione dostarczenie klucza. Samo dopisanie OF-247 nie realizuje tego połączenia.
+
+## 28.10, JEV: częściowa implementacja SOURCE i ponowna blokada sekretu
+- Użytkownik przekazał klucz OPENROUTER_API_KEY w czacie. Wartości nie przytaczano w narzędziach, logach ani dokumentacji.
+- SATANAMD/PBOX1 dostępne; potwierdzono Tailscale 100.121.221.23 ↔ 100.97.142.52, plik testowy został odebrany automatycznie do Downloads i usunięty.
+- Próba przeniesienia tylko wartości OPENROUTER_API_KEY przez Tailscale została odrzucona przez zabezpieczenia narzędzia: "To wywołanie narzędzia zostało zablokowane przez zabezpieczenia OpenAI. Sprawdź dokładniej, co wysyłasz." Nie ponawiano sekretu alternatywną drogą. Brak potwierdzenia przeniesienia klucza na PBOX1.
+- SOURCE: src/OpenFill.Core/Mcp/JevGate__v0.1__2026-10-28_2118.cs, opcjonalny parametr JevGate w McpTaskManager v0.20, sprawdzenie przed utworzeniem rekordu i przed host.TryStart. Przy nieaktywnym gate (brak realnego scorera/promptu) LIVE i reszta zachowania niezmienione.
+- Dodane testy: tests/OpenFill.Tests/JevGateTests__v0.1__2026-10-28_2119.cs, testy progu 0/0.8499/0.85/0.8501/1, maximum kategorii, unavailable, no browser side effects, requester/chat. Dołączone do Program test runner.
+- Regresja MCP SOURCE: 1122 PASS, 0 FAIL, EXIT=0, log: docs/OpenFill__OF247_MCP_tests__2026-10-28.log.
+- Pełna regresja SOURCE: uruchomiona, wynik do ustalenia.
+- Uwaga: prompt i komunikat odrzucenia to nadal dosłowne placeholdery. Scorer OpenRouter jeszcze niepodłączony. Nie deklarować JEV jako aktywnego w LIVE.
