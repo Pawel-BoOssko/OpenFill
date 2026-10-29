@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.22, data 2026-10-14 22:59
+// OpenFill - Metadata: wersja 0.23, data 2026-10-29 08:07
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -775,6 +775,10 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         if (!match.Success)
             match = System.Text.RegularExpressions.Regex.Match(task,
                 @"^\s*(?:Otw[o\u00F3]rz|Przejd[z\u017A]\s+do|Wejd[z\u017A]\s+na|Open|Visit|Go\s+to)(?:\s+(?:stron\u0119|strone|page))?\s+(https?://\S+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success)
+            match = System.Text.RegularExpressions.Regex.Match(task,
+                @"^\s*(?:(?:Na\s+(?:stronie|witrynie))|(?:On\s+(?:the\s+)?(?:page|site))|(?:(?:Otw[o\u00F3]rz|Przejd[z\u017A]\s+do|Wejd[z\u017A]\s+na|Open|Visit|Go\s+to)(?:\s+(?:stron\u0119|strone|page))?))\s+((?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/\?#]\S*)?)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!match.Success) return null;
         var url = match.Groups[1].Value.TrimEnd('.', ',', ';', ')', ']');

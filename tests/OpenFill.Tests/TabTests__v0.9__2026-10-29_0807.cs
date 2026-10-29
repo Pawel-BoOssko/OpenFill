@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.8, data 2026-10-28 22:22
+// OpenFill - Metadata: wersja 0.9, data 2026-10-29 08:07
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Cdp;
@@ -451,6 +451,13 @@ public static class TabTests
             T.Eq("legacy panel start URL", "linkedin.com", AppHost.InitialTaskDomain("Start from this page: https://www.linkedin.com/mynetwork/"));
             T.Check("URL merely to enter in a form does not lock the site", AppHost.InitialTaskDomain("Type https://linkedin.com into the website field") is null);
             T.Check("URL mentioned in task body is not automatically a browser target", AppHost.InitialTaskDomain("Send a note containing https://linkedin.com/in/example") is null);
+            T.Eq("Polish domain without scheme", "example.com", AppHost.InitialTaskDomain("Na stronie example.com sprawdź liczbę nagłówków H1"));
+            T.Eq("English on site", "example.com", AppHost.InitialTaskDomain("On the site example.com count headings"));
+            T.Eq("English Open bare domain", "example.com", AppHost.InitialTaskDomain("Open example.com and read the title"));
+            T.Eq("Polish open bare domain", "example.com", AppHost.InitialTaskDomain("Otwórz stronę example.com i odczytaj tekst"));
+            T.Eq("Country suffix from page context", "example.co.uk", AppHost.InitialTaskDomain("Na stronie portal.example.co.uk odczytaj dokument"));
+            T.Check("Domain in a quoted message is not a navigation target", AppHost.InitialTaskDomain("Send a message containing example.com to a colleague") is null);
+            T.Check("A typed bare domain is not a navigation target", AppHost.InitialTaskDomain("Type example.com into the form field") is null);
             return Task.CompletedTask;
         });
         await T.Section("TabManager: same chat/domain automatically reuses finished tab", async () =>
