@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
 $target = 'C:\Users\pboru\OpenFill\data\stable\runtime\jev-api-key.bin'
 $candidates = @(
+  'C:\Users\pboru\zakazanawieza.txt',
   'C:\Users\pboru\Documents\Projects\AI-Radar\config\local\secrets.env',
   'C:\Users\pboru\Documents\Projects\BusinessContactRadar\config\local\secrets.env',
   'C:\Users\pboru\Documents\Projects\Networking-Radar\config\secrets.env'

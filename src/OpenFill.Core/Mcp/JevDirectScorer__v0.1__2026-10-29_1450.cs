@@ -14,6 +14,11 @@ using System.Threading.Tasks;
 
 namespace OpenFill.Core.Mcp;
 
+public interface IJevMessageInspector
+{
+    Task<double> InspectAsync(string message, CancellationToken ct);
+}
+
 public sealed class JevDirectScorer : IJevScorer, IJevMessageInspector
 {
     public const string Model = "typesafe/jev-1.13";
