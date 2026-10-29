@@ -17,6 +17,7 @@ public sealed class McpServer : IAsyncDisposable
     private static readonly string[] KnownProtocols = { "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05" };
 
     private readonly McpTaskManager _tasks;
+    private readonly IJevMessageInspector? _jevInspector;
     private readonly string _secret;
     private readonly Action<string>? _log;
     private readonly HttpListener _listener = new();
@@ -30,11 +31,12 @@ public sealed class McpServer : IAsyncDisposable
     /// <summary>Address of the MCP endpoint as the caller sees it (public when there is one). Screenshot links are built from it.</summary>
     public string? LinkBase { get; set; }
 
-    public McpServer(McpTaskManager tasks, string secret, int port = 0, Action<string>? log = null, string? screenshotsDir = null, string? sharedFolder = null)
+    public McpServer(McpTaskManager tasks, string secret, int port = 0, Action<string>? log = null, string? screenshotsDir = null, string? sharedFolder = null, IJevMessageInspector? jevInspector = null)
     {
         _shotsDir = screenshotsDir;
         _files = string.IsNullOrWhiteSpace(sharedFolder) ? null : new FileTransfer(sharedFolder);
         _tasks = tasks;
+        _jevInspector = jevInspector;
         _secret = secret;
         _log = log;
         Port = port > 0 ? port : FreePort();
@@ -595,6 +597,7 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
         // A screenshot travels inside the tool result as an MCP image block, so the model sees it without opening any link.
         string? imageB64 = null;
         if (result.ContainsKey("_image")) { imageB64 = result["_image"]?.GetValue<string>(); result.Remove("_image"); }
+        result = await JevOutputGuard.ReviewAsync(name, result, _jevInspector, _log, _cts.Token).ConfigureAwait(false);
         var content = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = result.ToJsonString() });
         if (!string.IsNullOrEmpty(imageB64)) content.Add(new JsonObject { ["type"] = "image", ["data"] = imageB64, ["mimeType"] = "image/jpeg" });
         return new JsonObject

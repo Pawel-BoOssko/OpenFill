@@ -125,8 +125,8 @@ public sealed class McpTaskManager
 
     public async Task<JsonObject> StartAsync(string? task, int waitSeconds, CancellationToken ct, string? continueTaskId = null, string? title = null, string? requester = null, string? chat = null, string? idempotencyKey = null)
     {
-        task = (task ?? "").Trim();
-        if (task.Length == 0) return Error("The task text is empty. Describe what OpenFill should do in the browser, with all the data it needs.");
+        task ??= "";
+        if (string.IsNullOrWhiteSpace(task)) return Error("The task text is empty. Describe what OpenFill should do in the browser, with all the data it needs.");
         var who = CleanWho(requester);
         var chatName = CleanWho(chat);
         if (who is null || chatName is null)

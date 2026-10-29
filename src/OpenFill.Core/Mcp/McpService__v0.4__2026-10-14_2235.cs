@@ -32,12 +32,17 @@ public sealed class McpService : IAsyncDisposable
         // Production JEV gate is enabled by a private runtime endpoint file.
         // The OpenRouter key stays on SATANAMD, not in OpenFill or the task payload.
         JevGate? jevGate = null;
+        IJevMessageInspector? jevInspector = null;
         var jevFile = Path.Combine(paths.Runtime, "jev-service-url.txt");
         if (File.Exists(jevFile))
-            jevGate = new JevGate(new JevMarsRemoteScorer(File.ReadAllText(jevFile).Trim()));
+        {
+            var remote = new JevRemoteScorer(File.ReadAllText(jevFile).Trim());
+            jevGate = new JevGate(remote);
+            jevInspector = remote;
+        }
         var tasks = new McpTaskManager(host, paths.Tasks,
             TimeSpan.FromMinutes(Math.Max(1, config.CallerAnswerTimeoutMinutes)), jevGate);
-        var server = new McpServer(tasks, secret, config.McpPort, msg => log.Write("mcp", "request", msg, status: "info"), paths.Screenshots, paths.SharedFor(config.SharedFolder));
+        var server = new McpServer(tasks, secret, config.McpPort, msg => log.Write("mcp", "request", msg, status: "info"), paths.Screenshots, paths.SharedFor(config.SharedFolder), jevInspector);
         server.Start();
         var path = "/mcp/" + secret;
         var localUrl = $"http://127.0.0.1:{server.Port}{path}";
