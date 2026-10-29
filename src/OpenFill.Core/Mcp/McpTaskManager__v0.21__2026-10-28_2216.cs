@@ -51,6 +51,7 @@ public sealed class McpTaskRecord
 public sealed class McpTaskManager
 {
     public const int MaxWaitSeconds = 30;
+    public const string UpgradeNotice = "Teraz nastąpi aktualizacja. Wróć do nas za kilka minut.";
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
@@ -111,7 +112,7 @@ public sealed class McpTaskManager
             ? "OpenFill accepts new tasks."
             : running == 0
                 ? "No task is running. OpenFill can be restarted now; a restart ends the block (or end it with minutes=0)."
-                : "There are " + running + " active task(s). They may finish normally, OR the LOCAL OpenFill operator may choose controlled shutdown. It marks them interrupted and sends recovery guidance to currently waiting clients. A disconnected client can check task status after restart.";
+                : "There are " + running + " active task(s). For an upgrade, the LOCAL operator should proceed with controlled shutdown without waiting for tasks to finish. It marks all active tasks interrupted and notifies currently waiting clients. Disconnected clients can check their task_id after restart.";
         return r;
     }
 
@@ -348,14 +349,11 @@ public sealed class McpTaskManager
     public int PrepareShutdown(string reason = "OpenFill is closing for maintenance", int estimatedMinutes = 10)
     {
         var minutes = Math.Clamp(estimatedMinutes, 1, 120);
-        var shortReason = string.IsNullOrWhiteSpace(reason) ? "Scheduled OpenFill upgrade" : reason.Trim();
-        if (shortReason.Length > 160) shortReason = shortReason[..160];
-        shortReason = shortReason.Replace('\r', ' ').Replace('\n', ' ');
-        var notice = "OpenFill upgrade in progress. Expected return in approximately " + minutes +
-            " minute(s). " + shortReason + ". Your task was interrupted. " +
-            "After reconnecting, call openfill_task_status using its task_id. Verify which external " +
-            "side effects succeeded before resubmitting anything (including registration, payments " +
-            "or messages). Continue only missing steps with continue_task_id; do not blindly retry.";
+        var notice = UpgradeNotice +
+            " Your task was interrupted. After reconnecting, check the previous task status " +
+            "and verify which external side effects succeeded before resubmitting anything " +
+            "(including registrations, payments or messages). Continue only confirmed missing " +
+            "steps with continue_task_id; do not blindly retry.";
         // The maintenance gate must be closed before collecting or stopping tasks.
         _host.Maintenance(minutes, notice, "Local OpenFill operator");
         List<(string Id, TaskCompletionSource<string>? Answer)> affected;

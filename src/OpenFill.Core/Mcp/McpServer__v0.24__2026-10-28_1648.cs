@@ -531,11 +531,11 @@ Cancellation should not be used as a substitute for ordinary task continuation o
 """
 Controls the maintenance block of OpenFill, used before restarting or updating it.
 
-With minutes (1-120) OpenFill stops accepting NEW tasks for that long: openfill_start_task answers with status maintenance. Tasks that are already running, openfill_reply and openfill_task_status keep working, so running tasks can finish.
+With minutes (1-120) OpenFill blocks NEW tasks: openfill_start_task answers with status maintenance. Existing task status and replies remain readable while the application is up. For an upgrade, proceed immediately to controlled shutdown and interrupt all tasks; do NOT wait for them to finish.
 
 With minutes=0 the block ends. Without arguments the tool only reports the state and how many tasks are still running (running_tasks).
 
-Maintenance blocks new tasks; it does NOT terminate the application. For a controlled upgrade, the LOCAL operator may close OpenFill even with running tasks. The close flow marks affected tasks interrupted and tells waiting clients the estimated downtime, task_id and how to recover; reconnecting clients can poll for status. There is no unsolicited push to disconnected models. No need to wait until running_tasks is zero.
+Maintenance blocks new tasks; it does NOT itself terminate the application. For an upgrade, the LOCAL operator initiates controlled shutdown immediately regardless of running_tasks. The close flow persists interrupted statuses, presents "Teraz nastąpi aktualizacja. Wróć do nas za kilka minut.", and gives waiting clients task_id and recovery guidance. Reconnecting clients can read task status after restart. No substitute MCP server is used during the update, and no unsolicited push is possible to disconnected models.
 """,
                 new JsonObject
                 {

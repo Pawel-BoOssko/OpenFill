@@ -298,6 +298,8 @@ public static class McpTests
             T.Eq("shutdown: one pending task marked", 1, count);
             var interrupted = await m.StatusAsync(S(pending, "task_id"), 0, default);
             T.Eq("shutdown: client sees interrupted", "interrupted", S(interrupted, "status"));
+            T.Contains("shutdown: exact user update notice", S(interrupted, "summary"), McpTaskManager.UpgradeNotice);
+            T.Check("shutdown: no fictional ETA", !S(interrupted, "summary").Contains("minute(s)"));
             T.Contains("shutdown: retry advice", S(interrupted, "summary"), "continue_task_id=");
             await Task.Delay(50);
             var restored = new McpTaskManager(new FakeRunHost(), dir, TimeSpan.FromSeconds(5));
@@ -494,7 +496,8 @@ public static class McpTests
             var resultB = await pendingB;
             T.Eq("upgrade wakes long poll A", "interrupted", S(resultA, "status"));
             T.Eq("upgrade wakes long poll B", "interrupted", S(resultB, "status"));
-            T.Contains("upgrade advertises ETA", S(resultA, "summary"), "7 minute(s)");
+            T.Contains("upgrade notifies current poller", S(resultA, "summary"), McpTaskManager.UpgradeNotice);
+            T.Check("upgrade avoids invented ETA", !S(resultA, "summary").Contains("7 minute(s)"));
             T.Contains("upgrade gives precise recovery ID", S(resultA, "summary"), "continue_task_id=" + S(a, "task_id"));
             T.Contains("upgrade warns about side effects", S(resultB, "summary"), "side effects");
             T.Eq("upgrade marks partial result", "partial", S(resultA, "outcome"));
@@ -504,7 +507,7 @@ public static class McpTests
             var reloaded = new McpTaskManager(new FakeRunHost(), dir, TimeSpan.FromSeconds(3));
             var diskA = await reloaded.StatusAsync(S(a, "task_id"), 0, default);
             T.Eq("upgrade persisted interrupted status", "interrupted", S(diskA, "status"));
-            T.Contains("upgrade persisted ETA across restart", S(diskA, "summary"), "7 minute(s)");
+            T.Contains("upgrade persisted exact notice across restart", S(diskA, "summary"), McpTaskManager.UpgradeNotice);
             T.Eq("upgrade kept original task ID", S(a, "task_id"), S(diskA, "task_id"));
             try { Directory.Delete(dir, true); } catch { }
         });
@@ -614,7 +617,7 @@ public static class McpTests
             var answers = await Task.WhenAll(first, second);
             T.Eq("HTTP client one receives interrupted", "interrupted", S(answers[0], "status"));
             T.Eq("HTTP client two receives interrupted", "interrupted", S(answers[1], "status"));
-            T.Contains("HTTP client one receives downtime", S(answers[0], "summary"), "12 minute(s)");
+            T.Contains("HTTP client one receives exact notice", S(answers[0], "summary"), McpTaskManager.UpgradeNotice);
             T.Contains("HTTP client two receives recovery instructions", S(answers[1], "next_step"), "continue_task_id=");
         });
         await T.Section("MCP: HTTP server", async () =>

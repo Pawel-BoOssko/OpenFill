@@ -112,7 +112,7 @@ public sealed class MainForm : Form
         _left.Controls.Add(_browserHost);
         _left.Controls.Add(_strip);
         _left.Controls.Add(nav);
-        _left.Controls.Add(TechnologyAtlas.CreateBanner(() => { using var dialog = new TechnologyAtlasDialog(); dialog.ShowDialog(this); }, () => { using var dialog = new ControlledUpgradeDialog(); if (dialog.ShowDialog(this) != DialogResult.OK) return; _upgradeDowntimeMinutes = dialog.EstimatedMinutes; _shutdownReason = "OpenFill operator-requested upgrade"; Close(); }));
+        _left.Controls.Add(TechnologyAtlas.CreateBanner(() => { using var dialog = new TechnologyAtlasDialog(); dialog.ShowDialog(this); }, () => { using var dialog = new ControlledUpgradeDialog(); if (dialog.ShowDialog(this) != DialogResult.OK) return; _shutdownReason = "OpenFill operator-requested upgrade"; Close(); }));
         _right.Controls.Add(_panel);
         _layout.Controls.Add(_left, 0, 0);
         _layout.Controls.Add(_right, 1, 0);
@@ -832,10 +832,25 @@ public sealed class MainForm : Form
         if (_closing || _host is null) return;
         e.Cancel = true;
         _closing = true;
+        // Show the update notice also when the installer closes the window (without the operator dialog).
+        var updateNotice = new Label
+        {
+            Text = McpTaskManager.UpgradeNotice,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            BackColor = Color.White,
+            ForeColor = Color.Black,
+            Font = new Font(Font.FontFamily, 18f, FontStyle.Bold)
+        };
+        Controls.Add(updateNotice);
+        updateNotice.BringToFront();
+        updateNotice.Refresh();
         try { _mcp?.Tasks.PrepareShutdown(_shutdownReason, _upgradeDowntimeMinutes); }
         catch (Exception ex)
         {
             _closing = false;
+            Controls.Remove(updateNotice);
+            updateNotice.Dispose();
             MessageBox.Show(this,
                 "OpenFill could not verify that all interrupted tasks were saved. Shutdown has been cancelled. " +
                 "Do not deploy until the task history is durable. Details: " + ex.Message,
