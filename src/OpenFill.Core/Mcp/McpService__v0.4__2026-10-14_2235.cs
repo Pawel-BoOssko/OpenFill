@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using OpenFill.Core.Config;
+using OpenFill.Core.Agent;
 using OpenFill.Core.Logging;
 
 namespace OpenFill.Core.Mcp;
@@ -28,6 +29,8 @@ public sealed class McpService : IAsyncDisposable
     public static async Task<McpService> StartAsync(IRunHost host, AppPaths paths, AppConfig config, EventLog log,
         Action<string>? announce = null, CancellationToken ct = default, Func<string?>? localJevKey = null)
     {
+        PublicSuffixResolver.EnableAutoRefresh(paths.Runtime);
+        log.Write("psl", "startup", "PSL auto-refresh enabled; cached snapshot and embedded fallback available", status: "info");
         var secret = LoadOrCreateSecret(Path.Combine(paths.Runtime, "mcp-secret.txt"));
         // Direct HTTPS API call from PBOX1: no SATANAMD endpoint or proxy.
         // The per-user DPAPI key is read exclusively from OpenFill's local store.

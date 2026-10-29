@@ -202,10 +202,22 @@ public sealed class FrameLayer
             {
                 var part = await CallAsync(f.Key, scripts, "window.__openfill.extract", arg, ct) as JsonObject;
                 if (part is not null && part["ok"]?.GetValue<bool>() != false) Merge(main, part, f);
+                else AddFrameWarning(main, f, "extractor_returned_no_data");
             }
             catch (OperationCanceledException) { throw; }
-            catch { /* one frame that cannot be read must not spoil the page */ }
+            catch (Exception ex) { AddFrameWarning(main, f, ex.GetType().Name); }
         }
+    }
+
+    private static void AddFrameWarning(JsonObject page, Frame frame, string reason)
+    {
+        if (page["headings"] is not JsonArray notices)
+        {
+            notices = new JsonArray();
+            page["headings"] = notices;
+        }
+        notices.Add("FRAME_UNREADABLE " + frame.Key + " (" + frame.Host + "), reason=" + reason +
+            ". Use screenshot and realClick/realType; do not claim that the login form is absent.");
     }
 
     private static void PrefixIds(JsonNode? n, string prefix)

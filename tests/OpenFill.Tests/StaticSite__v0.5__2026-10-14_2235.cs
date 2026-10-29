@@ -59,6 +59,32 @@ public sealed class StaticSite : IDisposable
     {
         var path = ctx.Request.Url!.AbsolutePath;
 
+        if (path == "/of090-frame-parent")
+        {
+            var frame = ctx.Request.QueryString["frame"] ?? "";
+            if (!Uri.TryCreate(frame, UriKind.Absolute, out var iframeUrl) ||
+                iframeUrl.Host != "127.0.0.1" || iframeUrl.Scheme != "http")
+            {
+                ctx.Response.StatusCode = 400;
+                ctx.Response.Close();
+                return;
+            }
+            await Html(ctx, "<!doctype html><html><body><h1>Test hidden modal and iframe</h1>" +
+                "<dialog open id='cookie-modal'>Cookie modal <button id='close-cookie' onclick='document.querySelector(\"dialog\").close()'>Close modal</button></dialog>" +
+                "<iframe title='Login widget' style='width:650px;height:360px' src='" +
+                WebUtility.HtmlEncode(frame) + "'></iframe></body></html>");
+            return;
+        }
+
+        if (path == "/of090-frame-child")
+        {
+            await Html(ctx, "<!doctype html><html><body><form onsubmit='event.preventDefault();document.querySelector(\"#result\").textContent=\"LOGIN_SUBMITTED\"'>" +
+                "<label>Testowy login <input name='username' autocomplete='username'></label>" +
+                "<label>Testowe hasło <input type='password' name='password'></label>" +
+                "<button id='submit-login'>Wyślij formularz</button></form><p id='result'></p></body></html>");
+            return;
+        }
+
         if (path == "/api/companies")
         {
             var q = ctx.Request.QueryString["q"] ?? "";
