@@ -419,3 +419,9 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 ## 29.10.2026 — NOWE WYMAGANIE NADRZĘDNE OF-247: PBOX1 / BEZ POŚREDNIKA [NIEZROBIONE]
 - Decyzja właściciela: OpenFill bezpośrednio wywołuje API TypeSafe JEV (OpenRouter) z PBOX1; klucz zapisany lokalnie w aplikacji na PBOX1, żadnego pobierania klucza z SATANAMD i żadnego pośrednika JEV na SATANAMD. Wcześniejsze oznaczenie OF-247 jako ZROBIONE dotyczy starej architektury i nie zamyka tego nowego wymogu.
 - Stan: dwie kopie zatwierdzonych promptów przygotowane lokalnie w SOURCE PBOX1; praca przy lokalnym magazynie poświadczeń została odrzucona przez zabezpieczenia narzędzia (dokładny komunikat w checkpointcie). Brak bezpośredniego klienta w LIVE i brak potwierdzonego lokalnego klucza. Bezpieczeństwa narzędzia nie obchodzono. Wdrożenie NIEZROBIONE.
+
+## Audyt priorytetów — 29.10.2026 (wersja z czterema statusami)
+- Na żądanie właściciela nadano każdemu wymienionemu zadaniu status **Do zrobienia**, **Rozpoczęte**, **Zrobione**, **Błąd** na podstawie SOURCE, testów, LIVE i SQLite Radar. Pełna tabela z dowodami: `docs/OPENFILL_PRIORYTETY_STATUSY_ZWERYFIKOWANE_2026-10-29.md`.
+- OF-236: 15 z 16 zmian Zrobione; punkt 16 Błąd (brak pliku tools/tester/INSTRUKCJA w obecnym SOURCE). OF-090 Błąd (cross-origin iframe niedostępny w get_page), OF-231 Zrobione (kolejka piątego limitu), OF-233 Rozpoczęte (SOURCE potwierdza 2/5, brak realnego E2E), OF-238 Rozpoczęte (prompt, brak testu strony), OF-062 Rozpoczęte (pełna PSL, brak aktualizatora).
+- Networking Radar SQLite LIVE: 9 rejestracji = 6 done/partial + 3 unknown, 0 success; 5 Calendar = wszystkie not_attempted. OF-156 i OF-178 Błąd (brak sukcesu E2E); OF-163/185 Błąd (kontrakt v0.4 opisuje 1.55 przy LIVE 1.57). Zobacz raport dla pozostałych pozycji.
+- Historyczne opisy [DO ZROBIENIA] w sekcjach A4/A8 są stanami z dawnych dat i nie zastępują audytu 29.10. Nie zmieniać statusów bez nowego dowodu.

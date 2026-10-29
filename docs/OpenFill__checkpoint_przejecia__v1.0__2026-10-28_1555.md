@@ -280,3 +280,7 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Drugi task po instalacji OF-20261029-1634-7f24 miał w momencie przeglądu status running; nie twierdzić, że zakończony.
 - W app_20261029.ndjson dotychczasowe oznaczenia injection_warning pochodzą z godz. 13:xx i 15:xx, przed instalacją 16:28. Brak w nich potwierdzonego rozstrzygnięcia na nowym bezpośrednim kliencie JEV. Test script tools/jev_direct_mcp_acceptance__v0.1__2026-10-29.ps1 istnieje, ale bez potwierdzonego logu uruchomienia i wyniku. Raport użytkownika, że test wykonał, nie jest tożsamy z posiadaniem jego wyjścia do niezależnego audytu. Nie wykonywać ponownie zbędnych testów przeglądarkowych; w razie audytu przeanalizować faktyczny log wyniku.
 - Stan: OpenFill LIVE po migracji wykonuje zadania, lokalny klucz DPAPI istnieje. Odbiór obu klasyfikatorów JEV na DIRECT path wymaga wykazanego wyniku p/status, nie samych successful tasks (tryb fail-open mógłby przepuszczać zadania bez JEV).
+
+## 2026-10-29 — audyt listy priorytetów, statusy 4-stanowe
+- Właściciel nakazał dla wszystkich wymienionych priorytetów statusy: Do zrobienia / Rozpoczęte / Zrobione / Błąd. Odczytano SOURCE, szczegóły 16 OF-236, tab manager, postęp MCP, PSL, kontrakt Radar, testy i SQLite LIVE read-only.
+- Raport kanoniczny bieżącego przeglądu: `docs/OPENFILL_PRIORYTETY_STATUSY_ZWERYFIKOWANE_2026-10-29.md` (60 linii). Zapisany na PBOX1, nie modyfikowano kodu ani LIVE. Nie twierdzić, że brak przeglądu oznacza automatycznie brak implementacji; kierować się konkretnymi dowodami z tabeli.
