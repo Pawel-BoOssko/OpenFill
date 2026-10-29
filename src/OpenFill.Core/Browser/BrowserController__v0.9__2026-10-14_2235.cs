@@ -478,6 +478,14 @@ public sealed class BrowserController
         return await _session.EvaluateAsync(wrapped, awaitPromise: true, ct: ct);
     }
 
+    // One real CDP text insertion into the focused editor, without a model round trip.
+    public async Task InsertTextAsync(string text, CancellationToken ct = default)
+    {
+        await SyncTargetAsync(ct);
+        await _session.SendAsync("Input.insertText",
+            new JsonObject { ["text"] = text }, ct);
+    }
+
     public async Task<string> CurrentUrlAsync(CancellationToken ct = default)
     {
         await SyncTargetAsync(ct);

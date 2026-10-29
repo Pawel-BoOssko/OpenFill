@@ -1093,6 +1093,7 @@ await T.Section("OF-090: real cross-origin iframe form and untrusted page text",
     finally { await conn.DisposeAsync(); }
 });
 
+await WhatsAppTests.RunAsync(testsite, Page);
 await TabTests.RunAsync();
 await CostTests.RunAsync();
 await PromptHistoryTests.RunAsync();

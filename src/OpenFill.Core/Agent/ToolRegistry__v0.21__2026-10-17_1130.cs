@@ -99,10 +99,65 @@ public sealed class ToolRegistry
     private static JsonObject Schema(JsonObject properties, params string[] required)
         => new() { ["type"] = "object", ["properties"] = properties, ["required"] = new JsonArray(required.Select(r => (JsonNode)r).ToArray()), ["additionalProperties"] = false };
 
+    // The first WhatsApp DOM snapshot is delivered before Luna's FIRST model call.
+    // No chat is opened, no history is fetched and no model decision is needed.
+    public async Task<string?> InitialWhatsAppViewAsync(string task, CancellationToken ct)
+    {
+        var url = await _browser.CurrentUrlAsync(ct);
+        var targetWhatsApp = task.Contains("whatsapp", StringComparison.OrdinalIgnoreCase)
+            || WhatsAppBrowser.IsWhatsAppUrl(url);
+        if (!targetWhatsApp) return null;
+        try
+        {
+            if (!WhatsAppBrowser.IsWhatsAppUrl(url))
+                await _browser.NavigateAsync("https://web.whatsapp.com/", ct);
+            var view = await new WhatsAppBrowser(_browser).ReadVisibleAsync(ct);
+            return "WHATSAPP INITIAL DOM VIEW (automatically loaded; no conversations opened):\n"
+                   + (view?.ToJsonString() ?? "{\"error\":\"empty_view\"}");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return "WHATSAPP INITIAL DOM VIEW: unavailable (" + ex.GetType().Name + ").";
+        }
+    }
+
     public List<Tool> Build()
     {
         _temporaryCredentials.Clear();
         var tools = new List<Tool>();
+        var whatsapp = new WhatsAppBrowser(_browser);
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_read_visible",
+            Description = "ONE DOM read of WhatsApp Web. All currently rendered conversation previews and all currently loaded messages of the open conversation, without browsing older history, screenshots or individual-message clicks.",
+            Parameters = Schema(Obj()),
+            Handler = async (args, ct) => ToolResult.Text((await whatsapp.ReadVisibleAsync(ct))?.ToJsonString() ?? "{}")
+        });
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_open",
+            Description = "Opens a WhatsApp conversation DIRECTLY using the supplied internationally formatted number or supported phone JID. Never searches chat rows. Returns the loaded conversation view.",
+            Parameters = Schema(Obj(("target", Str("International phone number or phone-type WhatsApp JID provided by the task giver"))), "target"),
+            Handler = async (args, ct) => ToolResult.Text((await whatsapp.OpenAsync(args["target"]?.GetValue<string>() ?? "", ct))?.ToJsonString() ?? "{}")
+        });
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_list_all_previews",
+            Description = "On explicit request only, ONE batch DOM operation gathers all accessible WhatsApp sidebar conversation previews by scrolling its virtualized list; NEVER opens chats. Returns completeness flag and every preview.",
+            Parameters = Schema(Obj()),
+            Handler = async (args, ct) => ToolResult.Text((await whatsapp.ReadAllPreviewsAsync(ct))?.ToJsonString() ?? "{}")
+        });
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_send",
+            Description = "ONE browser operation: directly open supplied number / phone JID, focus composer, insert complete text, press Send and read the outgoing result. Do not recheck recipient by searching sidebar. sent_ui confirms a new outgoing bubble, not delivery to device.",
+            Parameters = Schema(Obj(("target", Str("Provided international number or supported phone-type JID")),
+              ("message", Str("Exact message content to send"))), "target", "message"),
+            Handler = async (args, ct) => ToolResult.Text((await whatsapp.SendAsync(
+                args["target"]?.GetValue<string>() ?? "",
+                args["message"]?.GetValue<string>() ?? "", ct))?.ToJsonString() ?? "{}")
+        });
 
         tools.Add(new Tool
         {

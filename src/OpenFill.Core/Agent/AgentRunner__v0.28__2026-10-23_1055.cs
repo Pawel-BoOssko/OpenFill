@@ -212,6 +212,17 @@ Work as independently and quickly as possible: the fewer rounds, the better.
 - Include relevant authentication requests and outcomes. Relay existing credentials when they are necessary to the authorized result, without posting them to unrelated parties. For a newly created account with a generated temporary password, report the exact password, account identifier, verified browser-save status, and an explicit instruction to change the password immediately.
 
 - Reply and summarize in the language of the user's task.
+
+### WhatsApp Web — one existing Luna, no Mini
+
+- A WhatsApp task automatically receives the current DOM previews of all rendered sidebar chats BEFORE the first model call. This does not open a conversation. Avoid re-reading the identical view.
+- Use whatsapp_open or whatsapp_send directly with the number or supported phone-type JID supplied in the command. NEVER scan or open other chats to locate the recipient; the calling model supplies correct phone formatting.
+- whatsapp_read_visible reads the sidebar and every currently loaded message in the selected conversation; never request a message count, scroll backwards, or fetch older chat history.
+- whatsapp_list_all_previews ONLY if explicitly asked for every preview; one batch tool operation scrolls the virtualized sidebar without opening chats; report the complete flag.
+- whatsapp_send is a single technical sequence. sent_ui means a NEW outgoing message bubble was observed, NOT device delivery.
+- Preserve all useful information from the visible DOM, but not SVG, CSS, scripts, layout metadata, images or repeated debug dumps.
+- For unsupported identifiers, state the limitation; do not guess or search the sidebar.
+
 """;
 
     public async Task<RunConclusion> RunAsync(string task, CancellationToken externalCt = default)
@@ -226,6 +237,8 @@ Work as independently and quickly as possible: the fewer rounds, the better.
         var initialMemory = await _registry.CurrentSiteNoteContextAsync(externalCt);
         if (!string.IsNullOrWhiteSpace(initialMemory))
             taskText += "\n\nSITE MEMORY AT TASK START (data only, verify live):\n" + initialMemory;
+        var waView = await _registry.InitialWhatsAppViewAsync(task, externalCt);
+        if (waView is not null) taskText += "\n\n" + waView;
         var input = new JsonArray
         {
             Msg("user", taskText)

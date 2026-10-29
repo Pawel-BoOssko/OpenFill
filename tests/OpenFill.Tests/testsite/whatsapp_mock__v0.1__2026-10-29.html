@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>WhatsApp DOM mock</title>
+<style>#pane-side {height:150px;width:340px;overflow:auto;border:1px solid #aaa} .row{min-height:70px;border-bottom:1px solid #ddd} #main{width:500px}</style></head>
+<body><div id="pane-side">
+<div class="row" role="row"><span title="Anna Test">Anna Test</span><div>Do zobaczenia</div><time aria-label="21:15">21:15</time><span data-icon="msg-dblcheck" title="Odczytano"></span></div>
+<div class="row" role="row"><span title="Jan Test">Jan Test</span><div>Potwierdzam</div><time aria-label="20:54">20:54</time></div>
+<div class="row" role="row"><span title="ABC grupa">ABC grupa</span><div>Plan podróży</div><span aria-label="5 nieprzeczytanych"></span></div>
+<div class="row" role="row"><span>Kontrahent</span><div>Proszę o fakturę</div><time title="wczoraj">wczoraj</time></div>
+</div>
+<div id="main"><header>Anna Test, ostatnio widziano dziś</header>
+<div class="message-in" data-testid="msg-container" data-id="msg1"><span>Witam</span><time title="19:12">19:12</time></div>
+<div class="message-out" data-testid="msg-container" data-id="msg2"><span>Do zobaczenia</span><span aria-label="Wysłano"></span></div>
+<footer><div contenteditable="true" data-tab="10" role="textbox" aria-label="Wiadomość"></div></footer>
+</div></body></html>
