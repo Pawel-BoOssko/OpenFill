@@ -425,3 +425,13 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - OF-236: 15 z 16 zmian Zrobione; punkt 16 Błąd (brak pliku tools/tester/INSTRUKCJA w obecnym SOURCE). OF-090 Błąd (cross-origin iframe niedostępny w get_page), OF-231 Zrobione (kolejka piątego limitu), OF-233 Rozpoczęte (SOURCE potwierdza 2/5, brak realnego E2E), OF-238 Rozpoczęte (prompt, brak testu strony), OF-062 Rozpoczęte (pełna PSL, brak aktualizatora).
 - Networking Radar SQLite LIVE: 9 rejestracji = 6 done/partial + 3 unknown, 0 success; 5 Calendar = wszystkie not_attempted. OF-156 i OF-178 Błąd (brak sukcesu E2E); OF-163/185 Błąd (kontrakt v0.4 opisuje 1.55 przy LIVE 1.57). Zobacz raport dla pozostałych pozycji.
 - Historyczne opisy [DO ZROBIENIA] w sekcjach A4/A8 są stanami z dawnych dat i nie zastępują audytu 29.10. Nie zmieniać statusów bez nowego dowodu.
+
+## 29.10.2026 — realizacja bez Networking Radar, LIVE
+- Na polecenie właściciela wykonano OF-090, OF-233, OF-236 (pkt16), OF-238, OF-062, bez dotykania Networking Radar.
+- SOURCE FULL 1319 PASS/0 FAIL. Wydanie LIVE v0.14 exit0; kopia rollback `C:\Users\pboru\OpenFill\backups\pre-OF-090-233-236-238-062-20261029`. PID 8148, 21:15:31.
+- OF-236 16/16 ZROBIONE: utworzono brakujący plik `tools/tester/INSTRUKCJA__v0.2__2026-10-29_1900.md`.
+- OF-062 ZROBIONE: resolver używa codziennie odświeżanego Mozilla PSL, LIVE cache 338012 B i 16564 wierszy; fallback embedded.
+- OF-090 ZROBIONE dla lokalnego testu cross-origin iframe i wypełniania, poprawione ostrzeżenie FRAME_UNREADABLE i dołączanie nagłówków; rzeczywiste strony problemowe wymagają osobnych prób.
+- OF-238 ZROBIONE w realnym E2E na bezpiecznej stronie testowej: manipulacja "BANANA" pominięta, wynik 42; `OF-20261029-2119-6306`, done/success.
+- OF-233 ZROBIONE w realnym E2E lokalnego batcha: `OF-20261029-2121-0712`, `confirmed_progress` 5/5, done/success; żadnych realnych zaproszeń LinkedIn nie wysłano. Pierwszy błędny port testowy 18885 obsługiwał obcą stronę, zadanie skorygowane przez `openfill_reply` na 60010 z tym samym task_id.
+- Raport i dowody: `docs/OPENFILL_NONRADAR_PRIORYTETY_WDROZENIE_2026-10-29.md`. Historyczne statusy tabeli audytowej są wcześniejsze niż to wydanie.

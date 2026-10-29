@@ -284,3 +284,10 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 ## 2026-10-29 — audyt listy priorytetów, statusy 4-stanowe
 - Właściciel nakazał dla wszystkich wymienionych priorytetów statusy: Do zrobienia / Rozpoczęte / Zrobione / Błąd. Odczytano SOURCE, szczegóły 16 OF-236, tab manager, postęp MCP, PSL, kontrakt Radar, testy i SQLite LIVE read-only.
 - Raport kanoniczny bieżącego przeglądu: `docs/OPENFILL_PRIORYTETY_STATUSY_ZWERYFIKOWANE_2026-10-29.md` (60 linii). Zapisany na PBOX1, nie modyfikowano kodu ani LIVE. Nie twierdzić, że brak przeglądu oznacza automatycznie brak implementacji; kierować się konkretnymi dowodami z tabeli.
+
+## 2026-10-29 — finalny checkpoint, priorytety poza Networking Radar
+- **LIVE WDROŻONE**, instalator v0.14 exit0, OpenFill PID8148, PBOX1, klucz JEV DPAPI lokalny. FULL SOURCE 1319/1319 PASS. Kopia rollback: `C:\Users\pboru\OpenFill\backups\pre-OF-090-233-236-238-062-20261029`.
+- Zakres: OF-090 iframe + headings/error fallback, OF-233 verified batch 5/5 przez LIVE MCP, OF-236 pełny pakiet 16 punktów, OF-238 ignorowanie prompt injection w LIVE, OF-062 aktualizowanie PSL (cache LIVE obecny), bez prac nad Radar.
+- Trzy testy produkcyjne: example.com OF-20261029-2117-765b, injection OF-20261029-2119-6306, 5/5 confirmed progress OF-20261029-2121-0712; wszystkie done/success. Nadmiarowe pierwsze polecenie przykładowe odrzucone przez JEV 0.98 zgodnie z projektem.
+- Testy lokalne używały tylko formularzy mock; brak wysłania prawdziwych zaproszeń LinkedIn i osobnych prób problemowych stron Trello. Port 18885 obca strona, dopiero port 60010 był właściwy; po potrzebnym `openfill_reply` to samo zadanie ukończono z postępem 5/5. Testowy serwer i fixture usunięte.
+- Raport: `docs/OPENFILL_NONRADAR_PRIORYTETY_WDROZENIE_2026-10-29.md`. Przed dalszymi pracami przeczytać aktualny raport, nie wracać do starych niedokończonych statusów. Nie uruchamiać Radaru.
