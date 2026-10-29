@@ -235,7 +235,7 @@ public sealed class FrameLayer
     {
         PrefixIds(part, f.Key + ":");
         var added = 0;
-        foreach (var name in new[] { "forms", "looseFields", "buttons", "links", "dialogs", "messages" })
+        foreach (var name in new[] { "forms", "looseFields", "buttons", "links", "dialogs", "messages", "headings" })
         {
             if (part[name] is not JsonArray src || src.Count == 0) continue;
             if (main[name] is not JsonArray dst) { dst = new JsonArray(); main[name] = dst; }

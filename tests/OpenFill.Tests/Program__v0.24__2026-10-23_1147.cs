@@ -876,8 +876,18 @@ await T.Section("Model tools on a hard form (modal, React, autocomplete, custom 
             {
                 var sent = await Call("act", new { id = loginButton, action = "click" });
                 T.Check("OF090: frame form submitted", sent.Ok);
+                var frames = await browser.Frames.DiscoverAsync(CancellationToken.None);
+                var inFrame = frames.FirstOrDefault(fr => fr.Url.Contains("of090-frame-child"));
+                T.Check("OF090: frame still discoverable after submit", inFrame is not null);
+                if (inFrame is not null)
+                {
+                    var confirmation = await browser.Frames.EvalAsync(inFrame,
+                        "document.querySelector('#result')?.textContent", false, CancellationToken.None);
+                    T.Eq("OF090: server-side frame DOM confirms submit", "LOGIN_SUBMITTED",
+                        confirmation?.GetValue<string>() ?? "");
+                }
                 var result = await Call("get_page", new { });
-                T.Contains("OF090: frame confirms submit", result.Output, "LOGIN_SUBMITTED");
+                T.Contains("OF090: frame confirms submit in get_page", result.Output, "LOGIN_SUBMITTED");
             }
         }
     }

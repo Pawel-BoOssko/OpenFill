@@ -941,8 +941,9 @@ public sealed class McpTaskManager
             if (note is not null) o["note"] = note;
             o["next_step"] = status switch
             {
-                "running" => "Task running (10-30 steps can be normal). The 30-second status wait is a transport timeout, not an ETA. " +
-                    "Recheck this task_id only when a meaningful update is needed; do not repeatedly poll every 30 seconds or restart it. Other tasks may run at the same time if capacity and site locks permit." +
+                "running" => "Task running (10-30 steps). A 30-second status wait is a transport timeout, not an ETA. " +
+                    "Other tasks may run at the same time. Do not restart; do not repeatedly poll every 30 seconds. " +
+                    "Check this task_id after meaningful progress." +
                     (warn is null ? "" : " WARNING: " + warn),
                 "needs_input" => "OpenFill is asking its calling model for missing information. Use what you already know and answer the question using openfill_reply with this task_id. Authorized credentials, verification codes and login links may be supplied when permitted by your operating environment. If you cannot answer, say so clearly: OpenFill may then ask the person in its own window without restarting the task.",
                 "waiting_for_user" => "OpenFill is waiting for the person at the computer to answer or complete an interactive authentication step in the OpenFill window; see question. " +

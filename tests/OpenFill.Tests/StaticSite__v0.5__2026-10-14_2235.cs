@@ -81,7 +81,7 @@ public sealed class StaticSite : IDisposable
             await Html(ctx, "<!doctype html><html><body><form onsubmit='event.preventDefault();document.querySelector(\"#result\").textContent=\"LOGIN_SUBMITTED\"'>" +
                 "<label>Testowy login <input name='username' autocomplete='username'></label>" +
                 "<label>Testowe hasło <input type='password' name='password'></label>" +
-                "<button id='submit-login'>Wyślij formularz</button></form><p id='result'></p></body></html>");
+                "<button id='submit-login'>Wyślij formularz</button></form><h2 id='result'></h2></body></html>");
             return;
         }
 

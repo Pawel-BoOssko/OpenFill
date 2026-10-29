@@ -189,7 +189,7 @@ The model has no terminal and attaches only files whose path you gave it, or tha
 
 ## Limitations
 
-- Content in cross-origin iframes (for example some payment gateways) is not yet visible in `get_page`; the model falls back to `screenshot` and real clicks.
+- Cross-origin iframes are read through CDP where the browser grants a frame context; `get_page` exposes their controls with prefixed IDs (`f1:of3`). An inaccessible frame is explicitly reported as `FRAME_UNREADABLE`; then use a screenshot and real clicks rather than treating the form as absent.
 - Parallel tasks never share a site: while one task works on a site, other tasks are refused for that site (by design).
 - The panel shows when the last task finished; the "+" button (or Ctrl+T) in the window opens a new tab by hand, which no task will use.
 - Windows only for now.
