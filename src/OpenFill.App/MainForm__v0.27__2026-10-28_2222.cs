@@ -81,6 +81,7 @@ public sealed class MainForm : Form
         _config = config;
         _secrets = secrets;
         _jevKeyStore = new SecretStore(Path.Combine(paths.Runtime, "jev-api-key.bin"), new DpapiSecretProtector());
+        _jevKey.Text = _jevKeyStore.GetStoredApiKey() is null ? "JEV: brak" : "JEV: zapisany";
         _addressHistory = new AddressHistory(Path.Combine(paths.Root, "address_history.json"));
 
         Text = "OpenFill — " + BuildInfo.Headline() + (paths.Instance != "stable" ? $" [{paths.Instance}]" : "");
@@ -364,6 +365,7 @@ public sealed class MainForm : Form
         {
             _jevKeyStore.SetApiKey(input.Text);
             input.Clear();
+            _jevKey.Text = "JEV: zapisany";
             MessageBox.Show(this, "Klucz JEV zapisany lokalnie na PBOX1 (DPAPI).", "JEV",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
