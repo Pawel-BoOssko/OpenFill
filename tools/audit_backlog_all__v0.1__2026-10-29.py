@@ -23,27 +23,39 @@ for ln,line in enumerate(raw.splitlines(),1):
     if ident=="OF-239":
         tasks[ident]["section"]="ANULOWANE"
 
+# Restore every individually numbered task from the v1.5 canonical ancestor.
+# v1.7 consolidated many into cross-references; they must not disappear from the audit.
+OLDER=R/"docs"/"openfill_master_action_plan__v1.5__2026-10-17_1016.md"
+historical_section="HISTORYCZNE"
+for ln,line in enumerate(OLDER.read_text(encoding="utf-8").splitlines(),1):
+    if line.startswith("## P"): historical_section="HISTORYCZNE_"+line[3:5]
+    old=re.match(r"^\s*\d+\.\s+\*\*\[OF-(\d{3})\]\*\*\s*(.*)",line)
+    if not old: continue
+    ident="OF-"+old.group(1)
+    if ident not in tasks:
+        tasks[ident]={"id":ident,"section":historical_section,"line":ln,"requirement":old.group(2).strip(),"updates":[],"legacy_source":"v1.5"}
+        
 # All three statuses refer to execution, not approval for future work.
 DONE=set("""
 001 002 003 004
-029 031 033 034 054 080 100 102 122 140 143
+029 031 033 034 054 080 100 102 122 140 141 143 146 154 167 198 214 215 220 221 222
 180 183 203 204 205 207 208 209 210 212 218 219 223 224
 225 226 227 228 229 232 233 241 242 243 244 246
 """.split())
 NOT=set("""
-038 039 090 156 162 164 169 170 171 172 174 177 178 237 239 245
+038 039 090 142 150 153 156 162 164 169 170 171 172 174 177 178 181 216 237 239 245
 """.split())
 # All other entries are PARTIAL only when a concrete existing component is identified.
 # No default 'complete' from a historical label.
 def family(n):
     if n<=30 or n in (168,184,188,201): return "panel"
-    if n in (31,32,33,34,38,39,46,48,177): return "telemetry"
-    if n in (51,52,53,54,55,57,58,59,61,62,63,64,66,69,170,171): return "credentials"
-    if n in (74,75,78,80,81,82,83,84,85,86,87,128): return "notes"
-    if n in (89,90,91,93,95,96,97,162,164,174): return "dom"
-    if n in (100,102,104,105,108,109,110,113,114,120,123,124,126,173,175): return "mcp"
-    if n in (117,140,143,149,176,180,182,183,187,189,212,218,219,223,224,237,240,246): return "release"
-    if n in (155,156,157,158,159,160,161,163,178,185): return "radar"
+    if 31<=n<=49 or n==177: return "telemetry"
+    if 50<=n<=73 or n in (170,171): return "credentials"
+    if 74<=n<=88 or n==128: return "notes"
+    if 89<=n<=99 or n in (162,164,174): return "dom"
+    if 100<=n<=128 or n in (173,175): return "mcp"
+    if 129<=n<=154 or 167<=n<=189 or 202<=n<=224 or n in (237,240,246): return "release"
+    if 155<=n<=166 or n in (178,185): return "radar"
     if n in (203,204,205,206,207,208,209,210,211): return "upgrade"
     if n in (225,226,227,228,229,230,231,232,233,234,235,242): return "tabs"
     if n==236: return "policy"
@@ -161,11 +173,11 @@ head=[
 "# OpenFill: audyt wszystkich osobnych pozycji backlogu (SOURCE + LIVE)",
 "",
 "Data: 2026-10-29. Host: PBOX1. SOURCE: "+str(R)+".",
-"Pozycje: każdy identyfikator z własnym wierszem zadania. Numery wspomniane wyłącznie jako odsyłacze nie są osobnymi pozycjami, nie tworzą sztucznych zadań.",
+"Pozycje: 155 bezpośrednio ujętych w v1.7 oraz 93 wcześniejsze, zachowane jako odrębne numerowane zadania w v1.5 (235 zadań). Łącznie 248 identyfikatorów. Pominięto powtórzenia tego samego OF, nie usunięto wymagań skonsolidowanych w nowszej wersji.",
 "Statusy wykonania wyłącznie: **ZROBIONE**, **CZĘŚCIOWO ZROBIONE**, **NIEZROBIONE**.",
 "",
 f"**Wynik:** {len(tasks)} różnych pozycji. ZROBIONE: {states['ZROBIONE']}; CZĘŚCIOWO ZROBIONE: {states['CZĘŚCIOWO ZROBIONE']}; NIEZROBIONE: {states['NIEZROBIONE']}.",
-f"Struktura: sekcja A {group['A']}, sekcja B {group['B']}, dopiski {group['C']}, anulowane {group['ANULOWANE']}.",
+f"Struktura: sekcja A {group['A']}, sekcja B {group['B']}, dopiski {group['C']}, wcześniejsze odrębne pozycje v1.5 {sum(v for k,v in group.items() if k.startswith('HISTORYCZNE'))}, anulowane {group['ANULOWANE']}.",
 "",
 "**Znaczenie stanu:** ZROBIONE wymaga potwierdzenia działania lub odbioru wymaganego zakresu; CZĘŚCIOWO ZROBIONE oznacza wykazany fragment implementacji i konkretną nieukończoną część; NIEZROBIONE dotyczy niewykonanego wskazanego zadania/testu. Anulowane OF-239 jest NIEZROBIONE, lecz nie jest zadaniem do realizacji.",
 "",

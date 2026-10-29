@@ -3,6 +3,14 @@ Data: 2026-10-17 11:45 Europe/Warsaw
 Źródło: `openfill_master_action_plan__v1.5__2026-10-17_1016.md` (235 pozycji, gałąź `autosync/PBOX1`) + decyzje Pawła z 17.10.2026 (przegląd: Claude).
 Identyfikatory OF-### są stałe. Nowe pozycje: OF-236–OF-239. v1.7: przegląd części B (decyzje Pawła 17.10).
 
+## Aktualne stany wykonania po audycie 29.10.2026
+
+**NADRZĘDNE STATUSY** są zapisane w pliku `docs/OPENFILL_AUDYT_PELNEGO_BACKLOGU_2026-10-29.md`, wraz z dowodem i pozostałym zakresem dla wszystkich **248 odrębnych identyfikatorów OF** z bieżącego v1.7 i wcześniejszego numerowanego v1.5. Podział: **48 ZROBIONE, 179 CZĘŚCIOWO ZROBIONE, 21 NIEZROBIONE**. Spośród nich 93 to wymagania odtworzone ze starszego dokumentu, których v1.7 nie przedstawia już jako odrębnych wierszy. Historyczne etykiety `DO ZROBIENIA`, `LIVE PENDING`, `SOURCE DONE` i inne niżej są **archiwalną treścią wpisu**, nie obowiązującym statusem. Wersja maszynowa audytu: `docs/OPENFILL_AUDYT_PELNEGO_BACKLOGU_2026-10-29.json`.
+
+Osobny audyt dawnego planu 75 kroków: `docs/OPENFILL_AUDYT_PLANU_75_KROKOW_2026-10-29.md` (19 ZROBIONE, 37 CZĘŚCIOWO ZROBIONE, 19 NIEZROBIONE). Utrzymuje się decyzję właściciela: OF-239 i kroki 29–31 starego planu **ANULOWANE**, nie są zadaniami do realizacji. Pomysły z części B pozostają niezatwierdzone, nawet gdy przeanalizowano ich stan techniczny.
+
+Nie nadawać statusu ZROBIONE wyłącznie na podstawie starego oznaczenia lub istnienia pliku SOURCE. Jeśli implementacja obejmuje tylko część wymagań, właściwy status to CZĘŚCIOWO ZROBIONE.
+
 ## Zasady (obowiązują każdy czat pracujący nad OpenFill)
 
 1. **OpenFill nie dokłada własnych ograniczeń.** Luna próbuje rozwiązać każdy problem sama, a człowieka woła dopiero wtedy, gdy czegoś potrzebuje i nie może tego zdobyć sama. Zgoda z urzędu jest wymagana tylko przed płatnością i przed ostatecznym wysłaniem, o które zadanie nie prosiło. Wbudowane zasady samych modeli (Luna, ChatGPT, Claude) zostają, jakie są; OpenFill nie dopisuje do nich niczego od siebie.
