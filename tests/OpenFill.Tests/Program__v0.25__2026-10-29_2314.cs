@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.24, data 2026-10-23 11:47
+// OpenFill - Metadata: wersja 0.25, data 2026-10-29 23:14
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.App;

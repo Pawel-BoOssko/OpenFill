@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.9, data 2026-10-14 22:35
+// OpenFill - Metadata: wersja 0.10, data 2026-10-29 23:14
 using System.Text.Json.Nodes;
 using OpenFill.Core.Assets;
 using OpenFill.Core.Cdp;
