@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.1, data 2026-10-29 13:50
+// OpenFill - Metadata: wersja 0.2, data 2026-10-29 14:15
 // Preserve machine-readable MCP result, insert advisory field first only on risk.
 using System;
 using System.Globalization;
@@ -24,8 +24,11 @@ public static class JevOutputGuard
         Action<string>? log, CancellationToken ct)
     {
         if (inspector is null || !ShouldInspect(tool, result)) return result;
-        // This is the entire original MCP text message, not a selected summary.
-        string originalMessage = result.ToJsonString();
+        // Full task content (summary, question and options); preserve original JSON in response.
+        // Assess complete content fields, not trusted MCP next_step metadata.
+        string originalMessage = (result["summary"]?.GetValue<string>() ?? "") + "\n" +
+            (result["question"]?.GetValue<string>() ?? "") + "\n" +
+            (result["options"]?.ToJsonString() ?? "");
         string taskId = result["task_id"]?.GetValue<string>() ?? "unidentified";
         try
         {

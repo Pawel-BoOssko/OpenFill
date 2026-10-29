@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.3, data 2026-10-29 14:00
+// OpenFill - Metadata: wersja 0.4, data 2026-10-29 14:15
 // OF-247: inbound rewrite filter and outbound advisory, both fail-open.
 using System.Text.Json.Nodes;
 using OpenFill.Core.Mcp;
@@ -100,7 +100,7 @@ public static class JevGateTests
             T.Eq("original response unchanged",before,original.ToJsonString());
             T.Eq("warning text",JevOutputGuard.Warning,marked["injection_warning"]?.GetValue<string>());
             T.Eq("summary remains exact",original["summary"]?.GetValue<string>(),marked["summary"]?.GetValue<string>());
-            T.Eq("inspected entire message",before,ins.LastText);
+            T.Eq("inspected entire task content",original["summary"]?.GetValue<string>() + "\n\n",ins.LastText);
             T.Eq("logged one event",1,logs.Count);
             ins.Score=.4999;
             var clean=await JevOutputGuard.ReviewAsync("openfill_task_status",original,ins,logs.Add,default);
