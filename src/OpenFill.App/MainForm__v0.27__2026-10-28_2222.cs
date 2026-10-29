@@ -24,6 +24,7 @@ public sealed class MainForm : Form
     private readonly AppPaths _paths;
     private readonly AppConfig _config;
     private readonly SecretStore _secrets;
+    private readonly SecretStore _jevKeyStore;
 
     // Browser tabs: one WebView2 per tab (all share one profile), the active one is on top of the stack; the strip lists them.
     private readonly Panel _browserHost = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
@@ -57,6 +58,7 @@ public sealed class MainForm : Form
     private readonly Button _go = new() { Text = "Go", Width = 70, Dock = DockStyle.Fill, FlatStyle = FlatStyle.System };
     private readonly Button _credentials = new() { Text = "Credentials", Width = 112, Dock = DockStyle.Fill, FlatStyle = FlatStyle.System };
     private readonly Button _firefoxImport = new() { Text = "Import Firefox", Width = 132, Dock = DockStyle.Fill, FlatStyle = FlatStyle.System };
+    private readonly Button _jevKey = new() { Text = "JEV API", Width = 106, Dock = DockStyle.Fill };
     // Fixed, deterministic layout: the browser on the left (the rest of the width), a fixed-width panel on the right.
     // (Earlier a SplitContainer was used - with DPI scaling it could collapse the panel to a few dozen pixels.)
     private const int PanelWidth = 520;
@@ -78,6 +80,7 @@ public sealed class MainForm : Form
         _paths = paths;
         _config = config;
         _secrets = secrets;
+        _jevKeyStore = new SecretStore(Path.Combine(paths.Runtime, "jev-api-key.bin"), new DpapiSecretProtector());
         _addressHistory = new AddressHistory(Path.Combine(paths.Root, "address_history.json"));
 
         Text = "OpenFill — " + BuildInfo.Headline() + (paths.Instance != "stable" ? $" [{paths.Instance}]" : "");
@@ -88,7 +91,7 @@ public sealed class MainForm : Form
         if (Program.StartMinimized) { WindowState = FormWindowState.Minimized; ShowInTaskbar = true; }
         MinimumSize = new Size(1000, 600);
 
-        var nav = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 7, RowCount = 1, Padding = new Padding(4, 3, 4, 3) };
+        var nav = new TableLayoutPanel { Dock = DockStyle.Top, Height = 34, ColumnCount = 8, RowCount = 1, Padding = new Padding(4, 3, 4, 3) };
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
@@ -96,6 +99,7 @@ public sealed class MainForm : Form
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        nav.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
         nav.Controls.Add(_back, 0, 0);
         nav.Controls.Add(_forward, 1, 0);
         nav.Controls.Add(_reload, 2, 0);
@@ -103,6 +107,7 @@ public sealed class MainForm : Form
         nav.Controls.Add(_go, 4, 0);
         nav.Controls.Add(_credentials, 5, 0);
         nav.Controls.Add(_firefoxImport, 6, 0);
+        nav.Controls.Add(_jevKey, 7, 0);
         _navigation = nav;
         RefreshAddressHistory();
 
@@ -122,6 +127,7 @@ public sealed class MainForm : Form
         _forward.Click += (_, _) => { var c = _active?.View.CoreWebView2; if (c?.CanGoForward == true) c.GoForward(); };
         _reload.Click += (_, _) => _active?.View.CoreWebView2?.Reload();
         _go.Click += (_, _) => NavigateFromAddress();
+        _jevKey.Click += (_, _) => ConfigureJevApiKey();
                 _credentials.Click += (_, _) =>
         {
             using var dialog = new ImportedAccountsDialog();
@@ -320,12 +326,52 @@ public sealed class MainForm : Form
                 try
                 {
                     _mcp = await McpService.StartAsync(mcpHost, _paths, _config, mcpHost.Session.Log,
-                        url => BeginInvoke(new Action(() => { try { Clipboard.SetText(url); } catch { } })));
+                        url => BeginInvoke(new Action(() => { try { Clipboard.SetText(url); } catch { } })),
+                        localJevKey: () => _jevKeyStore.GetStoredApiKey());
                 }
                 catch (Exception ex) { mcpHost.Session.Log.Write("mcp", "error", "MCP failed to start: " + ex.Message, status: "error"); }
             });
         }
         _host.Session.Log.Write("app", "start", $"OpenFill started - {BuildInfo.Headline()}, instance {_paths.Instance}");
+    }
+
+    private void ConfigureJevApiKey()
+    {
+        using var dialog = new Form
+        {
+            Text = "TypeSafe JEV — klucz OpenRouter na PBOX1",
+            Width = 550, Height = 205, StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false
+        };
+        var message = new Label
+        {
+            Text = "Klucz API zapisze się wyłącznie lokalnie w OpenFill na PBOX1, szyfrowany przez Windows DPAPI. Nie będzie wysyłany na SATANAMD.",
+            Location = new Point(16, 12), Size = new Size(505, 47)
+        };
+        var input = new TextBox { Location = new Point(16, 68), Width = 505, UseSystemPasswordChar = true };
+        var save = new Button { Text = "Zapisz lokalnie", Location = new Point(325, 113), Width = 128, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Anuluj", Location = new Point(220, 113), Width = 95, DialogResult = DialogResult.Cancel };
+        dialog.Controls.AddRange(new Control[] { message, input, save, cancel });
+        dialog.AcceptButton = save;
+        dialog.CancelButton = cancel;
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        if (string.IsNullOrWhiteSpace(input.Text))
+        {
+            MessageBox.Show(this, "Nie podano klucza API.", "JEV", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        try
+        {
+            _jevKeyStore.SetApiKey(input.Text);
+            input.Clear();
+            MessageBox.Show(this, "Klucz JEV zapisany lokalnie na PBOX1 (DPAPI).", "JEV",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Zapis klucza JEV nie powiódł się: " + ex.GetType().Name,
+                "JEV", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     // ------------------------------------------------------------------ browser tabs (one per task)

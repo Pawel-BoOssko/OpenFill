@@ -34,6 +34,20 @@ public sealed class SecretStore
         _protector = protector ?? new PlainSecretProtector();
     }
 
+    // JEV key is local to OpenFill. Do not use the OpenAI environment key or any
+    // external credential file; each service has its own DPAPI-encrypted file.
+    public string? GetStoredApiKey()
+    {
+        try
+        {
+            if (!File.Exists(_file)) return null;
+            var data = _protector.Unprotect(File.ReadAllBytes(_file));
+            var key = Encoding.UTF8.GetString(data).Trim();
+            return key.Length == 0 ? null : key;
+        }
+        catch { return null; }
+    }
+
     public string? GetApiKey()
     {
         var env = Environment.GetEnvironmentVariable("OPENAI_API_KEY");

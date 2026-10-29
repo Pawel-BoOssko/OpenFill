@@ -26,20 +26,14 @@ public sealed class McpService : IAsyncDisposable
     }
 
     public static async Task<McpService> StartAsync(IRunHost host, AppPaths paths, AppConfig config, EventLog log,
-        Action<string>? announce = null, CancellationToken ct = default)
+        Action<string>? announce = null, CancellationToken ct = default, Func<string?>? localJevKey = null)
     {
         var secret = LoadOrCreateSecret(Path.Combine(paths.Runtime, "mcp-secret.txt"));
-        // Production JEV gate is enabled by a private runtime endpoint file.
-        // The OpenRouter key stays on SATANAMD, not in OpenFill or the task payload.
-        JevGate? jevGate = null;
-        IJevMessageInspector? jevInspector = null;
-        var jevFile = Path.Combine(paths.Runtime, "jev-service-url.txt");
-        if (File.Exists(jevFile))
-        {
-            var remote = new JevRemoteScorer(File.ReadAllText(jevFile).Trim());
-            jevGate = new JevGate(remote);
-            jevInspector = remote;
-        }
+        // Direct HTTPS API call from PBOX1: no SATANAMD endpoint or proxy.
+        // The per-user DPAPI key is read exclusively from OpenFill's local store.
+        var jevClient = new JevDirectScorer(localJevKey ?? (() => null));
+        JevGate? jevGate = new JevGate(jevClient);
+        IJevMessageInspector? jevInspector = jevClient;
         var tasks = new McpTaskManager(host, paths.Tasks,
             TimeSpan.FromMinutes(Math.Max(1, config.CallerAnswerTimeoutMinutes)), jevGate);
         var server = new McpServer(tasks, secret, config.McpPort, msg => log.Write("mcp", "request", msg, status: "info"), paths.Screenshots, paths.SharedFor(config.SharedFolder), jevInspector);

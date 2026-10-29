@@ -11,5 +11,7 @@
     <EmbeddedResource Include="Assets\actions*.js" LogicalName="OpenFill.Assets.actions.js" />
     <EmbeddedResource Include="Assets\panel*.html" LogicalName="OpenFill.Assets.panel.html" />
     <EmbeddedResource Include="Assets\public_suffix_list*.dat" LogicalName="OpenFill.Assets.public_suffix_list.dat" />
+    <EmbeddedResource Include="Assets\jev_inbound__v1.1__2026-10-29.json" LogicalName="OpenFill.Assets.jev_inbound.json" />
+    <EmbeddedResource Include="Assets\jev_outbound*.json" LogicalName="OpenFill.Assets.jev_outbound.json" />
   </ItemGroup>
 </Project>
