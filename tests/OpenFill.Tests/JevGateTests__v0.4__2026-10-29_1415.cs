@@ -114,5 +114,17 @@ public static class JevGateTests
             T.Eq("plain running status not inspected",before,(await JevOutputGuard.ReviewAsync(
                 "openfill_info",original,ins,logs.Add,default)).ToJsonString());
         });
+        await T.Section("JEV direct OpenRouter, embedded prompts, no SATANAMD", async () =>
+        {
+            var direct = new JevDirectScorer(() => null);
+            T.Eq("direct API model", "typesafe/jev-1.13", JevDirectScorer.Model);
+            T.Eq("direct API endpoint", "https://openrouter.ai/api/alpha/decisions", JevDirectScorer.Endpoint);
+            var gate = new JevGate(direct);
+            T.Eq("no local key permits task (fail-open)", "allow",
+                (await gate.ReviewAsync("Task without configured key", default)).Status);
+            var normal = new JsonObject { ["status"] = "done", ["summary"] = "Example Domain" };
+            T.Eq("no local key preserves MCP result", normal.ToJsonString(),
+                (await JevOutputGuard.ReviewAsync("openfill_task_status", normal, direct, null, default)).ToJsonString());
+        });
     }
 }
