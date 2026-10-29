@@ -1,0 +1,1 @@
+CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""C:\Users\pboru\OpenFill\monitor\OpenFill_monitor__v0.3__2026-10-29_0830.ps1""", 0, False

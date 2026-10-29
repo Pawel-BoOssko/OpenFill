@@ -391,3 +391,7 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 
 ## 29.10.2026: OF-248 osobna diagnostyka awarii sieci
 - [OF-248] [CURRENT PASS / CAUSE OF PRIOR OUTAGE UNKNOWN] Nowa wersja tools/release_smoke__v0.2__2026-10-29_0825.ps1: przy awarii /health raportuje exact HTTP exception message, Tailscale service status, 3s TCP probe oraz route interface; bez drukowania sekretów. Parser PASS, aktualny zdrowy smoke exit0, failed-path nie testowano destrukcyjnie. Nie uruchamia żadnego dodatkowego harmonogramu ani nie resetuje usług.
+
+## 29.10.2026: poprawka monitora kontraktu OF-243 i zdrowia OF-248
+- [OF-243 / OpenFillMonitor] [LIVE DONE]: Monitor v0.2 zakładał dawny pełny openfill_info, dziś compact {working:[]}; raportował pustą wersję i uptime0. Monitor v0.3 używa working, metadanych EXE i czasu startu procesu. Test -TestMode oraz harmonogram LIVE: version1.57, uptime18min, MCP True, aktywne0. Poprzednia wersja i launcher w backupie, źródło skopiowane do tools/monitor.
+- [OF-248] [HEALTH MONITOR LIVE / ROOT CAUSE OPEN]: Istniejący harmonogram OpenFillMonitor bez dodatkowego zadania sprawdza PBOX1->SATANAMD /health co 10 min i rejestruje jev_unreachable/jev_not_configured z timestampami początków i zakończeń. Test zdrowy i symulowana awaria w -TestMode PASS: dokładnie 1 problem_start i 1 problem_end. LIVE status jevHealthy True, HTTP200. Incydent z 28.10 nadal bez ustalonej pierwotnej przyczyny.
