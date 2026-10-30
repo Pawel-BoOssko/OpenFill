@@ -532,6 +532,7 @@ public static class TabTests
             ui.FailClose = false;
             var b = await tm.BeginAsync("eviction-b", "second", null, default);
             T.Check("later retry can free capacity", b.TabId != a.TabId && ui.Open.Count == 1);
+            T.Check("successful capacity close logged", events.Exists(x => x.Contains("action=close") && x.Contains("capacity_limit_1")));
         });        await T.Section("OF-234: three sequential batches in one chat and domain", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_batches_" + Guid.NewGuid().ToString("N")[..8]);
