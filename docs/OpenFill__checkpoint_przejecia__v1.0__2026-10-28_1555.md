@@ -364,3 +364,15 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Audyt 156 próbek telemetrii z 78 minut: 1 karta, WorkingSet średnio 463,889 MB i trend spadkowy, PrivateBytes po rozgrzaniu około 870 MB; nadal otwarte wielogodzinne testy.
 - Wykryto niezależne problemy sieci: wifi_flaps i błędy WhatsApp ERR_NAME_NOT_RESOLVED oraz ERR_TIMED_OUT. Przyczyna warstwy sieciowej nieustalona.
 - Bez modyfikacji LIVE i konfiguracji sieci; Networking Radar poza zakresem. Nie wykonywano git commit/push/reset.
+
+## 2026-10-30: wykonanie czterech aktywnych obszarów i regresja 1383/0
+- Raport pełny: docs/OPENFILL_FINAL_ACCEPTANCE_20261030.md.
+- Karty: 9/9 logowanych zamknięć action=close miało reason=capacity_limit_5; karta ta8d07117 zamknięta dopiero po ~1 h 51 min, gdy przekroczono limit 5. Brak dowodów czasowego automatycznego zamykania.
+- MCP upgrade: test z 2 running + needs_input + waiting_for_user, zachowanie interrupted/partial/ID oraz realny lokalny transport HTTP long-poll; SOURCE FULL 1383 PASS, 0 FAIL, exit 0, docs/OpenFill_waitstates_HTTP_full_regression_20261030.log.
+- CPU/RAM: proces OpenFill PID21012 działa 3 h+, 93 porównywalne próbki w ciągu 46 min przy 5 kartach; WorkingSet średnio 865->769 MB, PrivateBytes 1451->1469 MB, CPU 8.26->8.48% całej maszyny; bez wykazanego wycieku w tym oknie.
+- Wi-Fi: WLAN 8003 11:27:05 EAT -> 8001 11:27:11, 6 s; sterownik Intel Netwtw06 miał zdarzenia 6000 BSS missed beacons i 7003 roaming przed rozłączeniem.
+- Monitor v0.5 SOURCE+LIVE: usunięto fałszywe liczenie eventu 11004 jako przerwania Wi-Fi. TestMode i LIVE potwierdzone flaps=0, MCP/JEV True, LastTaskResult=0. Backup launchera zachowany, SOURCE/LIVE SHA256 zgodne.
+- Finalny LIVE smoke: MCP OK, ACTIVE_TASK_COUNT=0, JEV transport reachable, process stable PID21012, LIVE_SMOKE=PASS, exit0. Biblioteka OpenFill LIVE nie była restartowana ani zmieniana.
+- Oddzielny test QA OpenFill --instance qa_upgrade_20261030 faktycznie uruchomiony na PID28256, porcie 48742; próba QA RPC została odrzucona dokładnym komunikatem "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending." Nie uzyskano QA MCP response. QA graceful closed, fixture stopped, QA folder usunięty, stable nietknięte.
+- Pozostaje do rzeczywistego odbioru: human waiting_on_user podczas faktycznego QA/LIVE upgrade (test HTML/MCP uruchomiony tylko na fake host); oddzielna wielogodzinna retencja tej samej karty bez presji limitu. Nie deklarować pełnej realizacji obu.
+- Networking Radar wyłączony. Bez ręcznych Git commit/push/reset.

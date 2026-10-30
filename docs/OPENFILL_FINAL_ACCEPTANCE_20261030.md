@@ -46,3 +46,16 @@ Host: PBOX1. Dotyczy tylko OpenFill. Networking Radar poza zakresem.
 - Zrobione: analiza zamknięć kart, źródłowa i HTTP-MCP regresja czterech stanów aktualizacji, pomiar 3 h zasobów, rozpoznanie przyczyny radiowej, poprawka monitora v0.5 i LIVE smoke.
 - Nie w pełni odebrane w LIVE: fizyczna karta bez presji limitu po wielu godzinach; upgrade w prawdziwym waiting_for_user z realną interakcją człowieka.
 - Nie ruszano produkcyjnej biblioteki OpenFill. Bez git commit/push/reset. Networking Radar nietknięty.
+
+## 5. Próba rzeczywistej izolowanej instancji LIVE
+- Zidentyfikowano i zweryfikowano obsługę `--instance qa_upgrade_20261030` w Program.cs, oddzielny root/profil/konfigurację/Mutex.
+- Uruchomiono dodatkowy OpenFill.exe w interaktywnej sesji 1, PID 28256. QA port 48742 LISTEN, osobny mcp-secret.txt istniał, mcpTunnel=false; produkcyjny OpenFill PID 21012 pozostał uruchomiony.
+- Próba wykonania lokalnego QA MCP RPC przez zdalne narzędzie została zablokowana jeszcze na etapie wywołania narzędzia: `This tool call was blocked by OpenAI's safety checks. Please double check what you are sending.`
+- Brak odpowiedzi z QA MCP, a więc NIE uruchomiono zadania `waiting_for_user` na rzeczywistym QA OpenFill. Źródło odmowy jest w warstwie narzędzia; nie ustalono, która część żądania ją spowodowała. Nie zgadywać awarii OpenFill MCP.
+- Wykonano kontrolowane `CloseMainWindow()` QA: zwróciło True; po 5 s PID 28256 nie istniał. Tymczasowy Python HTTP fixture PID 6380 zatrzymany. Katalog `data/qa_upgrade_20261030` usunięty po weryfikacji PID, bez naruszania stable; potwierdzono LIVE PID21012 nadal działa.
+- Wniosek: węższy test integracyjny REAL HTTP MCP z symulowanym wykonawcą PASSED (1383/0), natomiast UI LIVE human-wait pozostaje otwarte z powodu konkretnej odmowy narzędzia. Nie należy oznaczać tego przypadku DONE.
+
+## 6. Dodatkowy dowód utrzymania karty po ponad godzinie
+- Karta `te5ae7409` zakończona 12:53:20 EAT (09:53:20Z) została zamknięta 14:01:29 EAT (11:01:29Z) z reason=capacity_limit_5, a więc po 68 min 9 s.
+- Wraz z kartą `ta8d07117` (~111 min) daje to dwa niezależne przykłady retencji ponad 1 h do chwili presji limitu; żaden nie potwierdza arbitralnego timeoutu.
+- Nadal brak testu wielogodzinnego w warunkach bez presji limitu 5 kart.

@@ -435,3 +435,11 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - OF-238 ZROBIONE w realnym E2E na bezpiecznej stronie testowej: manipulacja "BANANA" pominięta, wynik 42; `OF-20261029-2119-6306`, done/success.
 - OF-233 ZROBIONE w realnym E2E lokalnego batcha: `OF-20261029-2121-0712`, `confirmed_progress` 5/5, done/success; żadnych realnych zaproszeń LinkedIn nie wysłano. Pierwszy błędny port testowy 18885 obsługiwał obcą stronę, zadanie skorygowane przez `openfill_reply` na 60010 z tym samym task_id.
 - Raport i dowody: `docs/OPENFILL_NONRADAR_PRIORYTETY_WDROZENIE_2026-10-29.md`. Historyczne statusy tabeli audytowej są wcześniejsze niż to wydanie.
+
+## 30.10.2026: finalny status czterech aktywnych obszarów po przejęciu
+- Pełne dowody: `docs/OPENFILL_FINAL_ACCEPTANCE_20261030.md`. SOURCE pełna regresja 1383 PASS, 0 FAIL. LIVE smoke PASS, PID21012 bez restartu.
+- Tab lifecycle: 9/9 rzeczywistych zamknięć z powodu limitu 5, naprawa utrzymana. Pozostaje wyłącznie długi test identycznego tab_id bez osiągnięcia limitu.
+- Upgrade: testy logiki i rzeczywistego lokalnego HTTP z 2 running + needs_input + waiting_for_user zaliczone; fizyczny eksperyment izolowanej instancji QA przerwany odmową narzędzia (dokładny komunikat w raporcie), realny E2E z człowiekiem w oknie nadal otwarty.
+- Pamięć: 3h+ obserwacji, 46min stabilnego zestawu pięciu kart, brak dowodu niekontrolowanego wycieku, CPU ~8,3% całej maszyny w idle przy 5 kartach. Pomiary zakończone, dalsze optymalizacje tylko przy odrębnym priorytecie.
+- Sieć: rzeczywiste 6 s rozłączenie przez sterownik Intel, wcześniej wielokrotne Netwtw06 BSS missed beacons; błędne monitorowanie 11004 naprawione jako monitor v0.5, test LIVE PASS. Nie modyfikowano konfiguracji Wi-Fi/sterownika.
+- OF-239 pozostaje ANULOWANE. Networking Radar poza zakresem. Do kolejnego działania nie wymagają ponowienia zaliczone testy JEV/WhatsApp/Trello.
