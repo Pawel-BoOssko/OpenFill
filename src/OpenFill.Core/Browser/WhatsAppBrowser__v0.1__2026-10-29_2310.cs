@@ -60,11 +60,13 @@ public sealed class WhatsAppBrowser
    if(node.closest('[data-testid="msg-container"],.message-in,.message-out')!==node) continue;
    const text=clean(node.innerText);
    const labels=attrs(node);
-   const id=clean(node.getAttribute('data-id')||node.closest('[data-id]')?.getAttribute('data-id')||'');
+   const id=clean(node.getAttribute('data-id')||node.closest('[data-id]')?.getAttribute('data-id')||node.querySelector('[data-id]')?.getAttribute('data-id')||'');
    if(!text&&!labels.length) continue;
    const sig=id||text+'|'+labels.join('|');
    if(used.has(sig)) continue;used.add(sig);
-   messages.push({id,text,attributes:labels,direction:node.classList.contains('message-out')?'out':node.classList.contains('message-in')?'in':'unknown'});
+   const out=node.matches('.message-out')||!!node.closest('.message-out')||!!node.querySelector('.message-out')||id.startsWith('true_')||labels.some(v=>/^(read|sent|delivered|odczytano|wysłano|dostarczono)$/i.test(v));
+   const incoming=node.matches('.message-in')||!!node.closest('.message-in')||!!node.querySelector('.message-in')||id.startsWith('false_');
+   messages.push({id,text,attributes:labels,direction:out?'out':incoming?'in':'unknown'});
  }
  const editor=main?.querySelector('[contenteditable="true"][data-tab],[contenteditable="true"][role="textbox"]');
  return {
@@ -167,8 +169,14 @@ public sealed class WhatsAppBrowser
         while (true);
     }
 
-    public async Task<JsonNode?> ReadAllPreviewsAsync(CancellationToken ct) =>
-        await EvaluateAsync(ScrollScript,ct);
+    public async Task<JsonNode?> ReadAllPreviewsAsync(CancellationToken ct)
+    {
+        // A virtualized list may mount after the page is already navigated.
+        var ready = await ReadReadyAsync(ct, 20000);
+        if (ready?["ready"]?.GetValue<bool>() != true)
+            return new JsonObject { ["complete"] = false, ["error"] = "chat_list_not_loaded", ["preview_count"] = 0 };
+        return await EvaluateAsync(ScrollScript,ct);
+    }
 
     // WhatsApp's direct phone route resolves asynchronously after browser navigation.
     private async Task<JsonNode?> WaitForConversationAsync(CancellationToken ct, int maxWaitMs = 12000)

@@ -50,6 +50,8 @@ public static class WhatsAppTests
                 T.Check("last text appears",view?.ToJsonString().Contains("Do zobaczenia")==true);
                 T.Check("read receipt meaning appears",view?.ToJsonString().Contains("Odczytano")==true);
                 T.Check("two loaded messages only",view?["messages"]?.AsArray().Count==2);
+                T.Eq("nested outgoing DOM is classified out", "out", view?["messages"]?[1]?["direction"]?.GetValue<string>());
+                T.Eq("outgoing message DOM id preserved", "true_msg2", view?["messages"]?[1]?["id"]?.GetValue<string>());
                 T.Check("composer visible",view?["composer_visible"]?.GetValue<bool>()==true);
                 await browser.RunJsAsync("(() => { const p=document.querySelector('#pane-side'); p.style.display='none'; setTimeout(()=>p.style.display='',950); return true; })()");
                 var premature=await wa.ReadVisibleAsync(default);
@@ -62,6 +64,10 @@ public static class WhatsAppTests
                 T.Check("whole preview list read in one tool operation",all?["complete"]?.GetValue<bool>()==true);
                 T.Eq("all previews preserved",4,all?["preview_count"]?.GetValue<int>()??-1);
                 T.Eq("no conversation opened during list",0,all?["opened_conversations"]?.GetValue<int>()??-1);
+                await browser.RunJsAsync("(() => { const p=document.querySelector('#pane-side'); p.style.display='none'; setTimeout(()=>p.style.display='',850); return true; })()");
+                var delayedAll=await wa.ReadAllPreviewsAsync(default);
+                T.Eq("full list waits until DOM panel is rendered",4,delayedAll?["preview_count"]?.GetValue<int>()??-1);
+                T.Check("full list succeeds after deferred rendering",delayedAll?["complete"]?.GetValue<bool>()==true);
                 var noSend=await wa.OpenAsync("Anna Test",default);
                 T.Eq("unsupported target does not search", "unsupported_identifier_for_direct_open", noSend?["error"]?.GetValue<string>());
             }
