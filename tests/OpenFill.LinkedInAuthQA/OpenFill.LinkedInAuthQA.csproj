@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><OutputType>WinExe</OutputType><EnableWindowsTargeting>true</EnableWindowsTargeting><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+<ItemGroup><ProjectReference Include="..\..\src\OpenFill.App\OpenFill.App__v0.3__2026-10-12_2034.csproj" /><Compile Include="..\..\src\OpenFill.App\FirefoxLogins__v0.1__2026-10-14_2235.cs" Link="FirefoxLogins.cs" /></ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+{
+  "started_utc": "2026-10-30T17:23:19.6145189Z",
+  "status": "authentication_required",
+  "initial_url": "https://www.linkedin.com/login/?session_redirect=https%3A%2F%2Fwww.linkedin.com%2Fmessaging%2F",
+  "qa_tab_id": "t6e07786e",
+  "initial_authenticated_url": false,
+  "firefox_linkedin_candidates": 4,
+  "credential_source": "Firefox most recently used LinkedIn entry",
+  "credentials_read": true,
+  "login_form_submitted": true,
+  "post_login_url": "https://www.linkedin.com/login/?session_redirect=https%3A%2F%2Fwww.linkedin.com%2Fmessaging%2F",
+  "reason": "LinkedIn remained on login/checkpoint page after single isolated QA attempt",
+  "finished_utc": "2026-10-30T17:23:45.0310197Z"
+}
