@@ -1,3 +1,4 @@
+// WEBVIEW2_PERMISSIONS_20261030
 // OpenFill - Metadata: wersja 0.27, data 2026-10-28 22:22
 using System.Diagnostics;
 using System.Drawing;
@@ -411,6 +412,23 @@ public sealed class MainForm : Form
         }
     }
 
+    /// <summary>Permission policy belongs to the owning WebView2 tab, not the model.</summary>
+    private void HandlePermissionRequest(string tabId, CoreWebView2PermissionRequestedEventArgs e)
+    {
+        var taskTab = _tabMgr?.Open().Any(x => x.TabId == tabId &&
+            (x.State == "running" || x.State == "waiting")) == true;
+        var allowMultiple = taskTab && e.PermissionKind == CoreWebView2PermissionKind.MultipleAutomaticDownloads;
+        if (allowMultiple)
+        {
+            e.State = CoreWebView2PermissionState.Allow;
+            e.Handled = true;
+        }
+        var msg = "WebView2 permission " + e.PermissionKind + " from " + e.Uri +
+            " (userInitiated=" + e.IsUserInitiated + ", decision=" + (allowMultiple ? "allow_task_downloads" : "default") + ")";
+        _host?.Session.Log.Write("browser", "permission", msg, status: allowMultiple ? "ok" : "warn");
+        OpenFill.Core.Browser.BrowserNotificationBus.Post(tabId, msg);
+    }
+
     private async Task OpenPopupAsync(CoreWebView2NewWindowRequestedEventArgs e, CoreWebView2Deferral deferral, int width, int height, BrowserTab opener)
     {
         try
@@ -441,6 +459,7 @@ public sealed class MainForm : Form
             var pc = view.CoreWebView2;
             // Like a tab: dialogs are accepted, the browser may fill in saved passwords, and the task that owns the opener tab works in this window.
             pc.Settings.AreDefaultScriptDialogsEnabled = false;
+            pc.PermissionRequested += (_, p) => HandlePermissionRequest(opener.Id, p);
             pc.Settings.IsPasswordAutosaveEnabled = true;
             pc.Settings.IsGeneralAutofillEnabled = true;
             pc.ScriptDialogOpening += (_, a) => { a.ResultText = a.DefaultText; a.Accept(); };
@@ -476,12 +495,15 @@ public sealed class MainForm : Form
         core.Settings.AreDefaultScriptDialogsEnabled = false;
         // The person logs in once and lets the browser remember the password; later the fields fill themselves
         // and the model only clicks "Next". The password never goes through the model (the page model hides password fields).
+        core.PermissionRequested += (_, p) => HandlePermissionRequest(tab.Id, p);
         core.Settings.IsPasswordAutosaveEnabled = true;
         core.Settings.IsGeneralAutofillEnabled = true;
         // A manual account selection can answer one HTTP Basic authentication challenge without
         // sending the password to a model or relying on the browser's separate autofill store.
         core.BasicAuthenticationRequested += (_, e) =>
         {
+            _host?.Session.Log.Write("browser", "basic-auth-request", "HTTP Basic challenge: " + e.Uri + " realm=" + e.Challenge, status:"warn");
+            OpenFill.Core.Browser.BrowserNotificationBus.Post(tab.Id, "HTTP Basic authentication requested from " + e.Uri);
             if (!_basicAuthChoices.TryGetValue(tab.Id, out var selected)) return;
             var requested = OpenFill.Core.Agent.ImportedCredentialVault.NormalizeOrigin(e.Uri);
             if (!string.Equals(requested, selected.Origin, StringComparison.OrdinalIgnoreCase)) return;
@@ -521,6 +543,13 @@ public sealed class MainForm : Form
             var name = Path.GetFileName(e.ResultFilePath);
             e.ResultFilePath = Path.Combine(_paths.Downloads, name);
             _host?.Session.Log.Write("browser", "download", "Download: " + name, new { path = e.ResultFilePath });
+            OpenFill.Core.Browser.BrowserNotificationBus.Post(tab.Id, "Download started: " + name);
+            e.DownloadOperation.StateChanged += (_, _) =>
+            {
+                var state = e.DownloadOperation.State.ToString();
+                _host?.Session.Log.Write("browser", "download-state", name + ": " + state, status: state == "Completed" ? "ok" : "info");
+                OpenFill.Core.Browser.BrowserNotificationBus.Post(tab.Id, "Download " + name + ": " + state);
+            };
         };
         tab.Conn = new WebView2CdpConnection(this, core, () => { ActivateTab(tab); var ok = NativeInput.BringToFront(Handle); try { tab.View.Focus(); } catch { } return ok ? Handle : IntPtr.Zero; });
         tab.TaskConn.Attach(tab.Conn, tab.Id);
@@ -548,6 +577,7 @@ public sealed class MainForm : Form
 
     private async Task CloseTabCoreAsync(string tabId)
     {
+        OpenFill.Core.Browser.BrowserNotificationBus.Clear(tabId);
         ClosePopupsForTab(tabId);
         _basicAuthChoices.TryRemove(tabId, out var unusedChoice);
         if (!_tabs.TryRemove(tabId, out var tab)) return;

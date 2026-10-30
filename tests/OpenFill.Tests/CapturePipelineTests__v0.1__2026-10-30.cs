@@ -1,4 +1,4 @@
-﻿// SOURCE capture-filter-recipe-terminal tests, 2026-10-30
+// SOURCE capture-filter-recipe-terminal tests, 2026-10-30
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.Core.Agent;
@@ -41,6 +41,18 @@ public static class CapturePipelineTests
                 T.Eq("element count included", 1, manifest["items"]!.GetValue<int>());
             }
             finally { Directory.Delete(temp, true); }
+        });
+        // BROWSER_NOTIFICATION_TEST_20261030
+        await T.Section("WebView2 notice routing: per-tab, drain after read", () =>
+        {
+            OpenFill.Core.Browser.BrowserNotificationBus.Post("qa-tab", "MultipleAutomaticDownloads allowed");
+            OpenFill.Core.Browser.BrowserNotificationBus.Post("other-tab", "Unrelated notice");
+            var found = OpenFill.Core.Browser.BrowserNotificationBus.Take("qa-tab");
+            T.Eq("permission delivered to matching tab", 1, found.Count);
+            T.Contains("permission details preserved", found[0], "MultipleAutomaticDownloads");
+            T.Eq("permission is not repeated", 0, OpenFill.Core.Browser.BrowserNotificationBus.Take("qa-tab").Count);
+            T.Eq("other tab remains isolated", 1, OpenFill.Core.Browser.BrowserNotificationBus.Take("other-tab").Count);
+            return Task.CompletedTask;
         });
         await T.Section("Capture recipes: verified methods, scope and reuse", () =>
         {
@@ -122,6 +134,31 @@ public static class CapturePipelineTests
                 T.Check("CDP capture file exists", File.Exists(result["files"]![0]!["path"]!.ToString()));
                 T.Check("CDP selector recipe persisted", store.Get(new Uri(result["url"]!.ToString()).Host).Count > 0);
                 T.Check("CDP model preview bounded", result["preview"]!.ToString().Length <= 400);
+                // Luna's actual tool handler uses the same service and stays compact.
+                var paths = new AppPaths("capture-test", root);
+                paths.EnsureCreated();
+                var registry = new ToolRegistry(browser, log, new AppConfig(), new OutputLimiter(paths.Overflow, 1000),
+                    new SiteNotesStore(paths.Notes, log), new HeadlessInteraction(), new GapRecorder(paths.GapsFile, log),
+                    files: new SharedFiles(Path.Combine(root, "shared"), Path.Combine(root, "downloads")));
+                var toolList = registry.Build();
+                T.Check("Luna page_capture exists", toolList.Any(t => t.Name == "page_capture"));
+                T.Check("Luna terminal_exec exists", toolList.Any(t => t.Name == "terminal_exec"));
+                var captureTool = toolList.Single(t => t.Name == "page_capture");
+                var compact = await captureTool.Handler(new JsonObject {
+                    ["mode"] = "text", ["selector"] = "body", ["regex"] = "password|email", ["max_matches"] = 10,
+                    ["use_best"] = false
+                }, CancellationToken.None);
+                T.Check("Luna handler captures successfully", compact.Ok);
+                T.Check("Luna handler response compact", compact.Output.Length < 2500);
+                var runJsTool = toolList.Single(t => t.Name == "run_js");
+                var js = await runJsTool.Handler(new JsonObject {
+                    ["code"] = "const amount=2+5; return amount*3;", ["mode"] = "statements", ["save_to"] = "qa_js_result.txt"
+                }, CancellationToken.None);
+                T.Check("run_js statements returns success", js.Ok);
+                T.Eq("run_js save_to exact value", "21", File.ReadAllText(Path.Combine(root,"shared","qa_js_result.txt")));
+                T.Check("run_js value not returned in full", js.Output.Length < 500);
+                var raw = await runJsTool.Handler(new JsonObject { ["code"] = "'legacy expression ok'" }, CancellationToken.None);
+                T.Contains("run_js legacy expression preserved", raw.Output, "legacy expression ok");
             }
             finally { await conn.DisposeAsync(); try { Directory.Delete(root, true); } catch { } }
         });

@@ -1,3 +1,4 @@
+// WEBVIEW2_PERMISSIONS_20261030
 // OpenFill - Metadata: wersja 0.10, data 2026-10-29 23:14
 using System.Text.Json.Nodes;
 using OpenFill.Core.Assets;
@@ -69,6 +70,7 @@ public sealed class BrowserController
     {
         var list = new List<string>();
         while (_dialogs.TryDequeue(out var d)) list.Add(d);
+        list.AddRange(BrowserNotificationBus.Take(TargetKey));
         return list;
     }
 

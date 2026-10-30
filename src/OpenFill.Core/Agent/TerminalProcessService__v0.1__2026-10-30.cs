@@ -1,4 +1,4 @@
-// OpenFill SOURCE only: terminal utilities with bounded output returned to Luna, 2026-10-30
+﻿// OpenFill SOURCE only: terminal utilities with bounded output returned to Luna, 2026-10-30
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -55,8 +55,8 @@ public static class TerminalProcessService
         await Task.WhenAll(outTask, errTask);
         ct.ThrowIfCancellationRequested();
         sw.Stop();
-        var stdout = await File.ReadAllTextAsync(outFile, ct);
-        var stderr = await File.ReadAllTextAsync(errFile, ct);
+        var stdout = await PreviewAsync(outFile, ct);
+        var stderr = await PreviewAsync(errFile, ct);
         var result = new JsonObject {
             ["status"] = timedOut ? "timeout" : proc.ExitCode == 0 ? "ok" : "error",
             ["exit_code"] = proc.ExitCode, ["timeout"] = timedOut,
@@ -69,13 +69,30 @@ public static class TerminalProcessService
         return result;
     }
 
+    private static async Task<string> PreviewAsync(string path, CancellationToken ct)
+    {
+        using var reader = new StreamReader(path, Encoding.UTF8);
+        var head = new char[400];
+        var count = await reader.ReadAsync(head.AsMemory(), ct);
+        return new string(head, 0, count);
+    }
+
     private static async Task CopyStreamAsync(StreamReader reader, string path)
     {
         await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 32768, useAsync:true);
         using var writer = new StreamWriter(output, new UTF8Encoding(false));
         var chars = new char[16384];
         int count;
-        while ((count = await reader.ReadAsync(chars)) > 0) await writer.WriteAsync(chars.AsMemory(0, count));
+        long written = 0;
+        const long maxChars = 16_000_000;
+        while ((count = await reader.ReadAsync(chars)) > 0)
+        {
+            var keep = (int)Math.Min(count, Math.Max(0, maxChars - written));
+            if (keep > 0) await writer.WriteAsync(chars.AsMemory(0, keep));
+            written += count;
+        }
         await writer.FlushAsync();
     }
 }
+
+

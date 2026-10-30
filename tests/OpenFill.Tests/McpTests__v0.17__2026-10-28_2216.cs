@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.17, data 2026-10-28 22:16
+﻿// OpenFill - Metadata: wersja 0.17, data 2026-10-28 22:16
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -712,7 +712,7 @@ public static class McpTests
             var list = await Rpc("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
             var tools = list["result"]!["tools"]!.AsArray();
             var names = tools.Select(t => t!["name"]!.GetValue<string>()).ToList();
-            T.Check("eight tools", names.Count == 8 && names.Contains("openfill_info") && names.Contains("openfill_start_task") && names.Contains("openfill_reply") && names.Contains("openfill_screenshot") && names.Contains("openfill_file_transfer"));
+            T.Check("nine tools with direct capture", names.Count == 9 && names.Contains("openfill_info") && names.Contains("openfill_start_task") && names.Contains("openfill_reply") && names.Contains("openfill_screenshot") && names.Contains("openfill_file_transfer"));
             T.Check("every schema is strict and has no $schema", tools.All(t =>
                 t!["inputSchema"]!["additionalProperties"]!.GetValue<bool>() == false && t["inputSchema"]!["$schema"] is null));
             T.Check("every tool has annotations", tools.All(t => t!["annotations"]?["readOnlyHint"] is not null));
@@ -780,6 +780,7 @@ public sealed class RecordingInteraction : IUserInteraction
     public Task<string> AskHumanAsync(string question, IReadOnlyList<string>? options, CancellationToken ct) { HumanOnly.Add(question); return Task.FromResult("481516"); }
     public Task<bool> ConfirmAsync(string what, CancellationToken ct) => Task.FromResult(false);
 }
+
 
 
 
