@@ -42,6 +42,13 @@ public static class WhatsAppTests
                 T.Check("read receipt meaning appears",view?.ToJsonString().Contains("Odczytano")==true);
                 T.Check("two loaded messages only",view?["messages"]?.AsArray().Count==2);
                 T.Check("composer visible",view?["composer_visible"]?.GetValue<bool>()==true);
+                await browser.RunJsAsync("(() => { const p=document.querySelector('#pane-side'); p.style.display='none'; setTimeout(()=>p.style.display='',950); return true; })()");
+                var premature=await wa.ReadVisibleAsync(default);
+                T.Eq("premature list has zero rendered previews",0,premature?["preview_count"]?.GetValue<int>()??-1);
+                var waitTimer=System.Diagnostics.Stopwatch.StartNew();
+                var ready=await wa.ReadReadyAsync(default,3500);
+                T.Eq("delayed list becomes available for first model turn",4,ready?["preview_count"]?.GetValue<int>()??-1);
+                T.Check("readiness avoids the premature snapshot",waitTimer.ElapsedMilliseconds>=650);
                 var all=await wa.ReadAllPreviewsAsync(default);
                 T.Check("whole preview list read in one tool operation",all?["complete"]?.GetValue<bool>()==true);
                 T.Eq("all previews preserved",4,all?["preview_count"]?.GetValue<int>()??-1);

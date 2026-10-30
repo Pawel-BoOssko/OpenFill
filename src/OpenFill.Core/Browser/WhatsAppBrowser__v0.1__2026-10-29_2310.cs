@@ -149,6 +149,24 @@ public sealed class WhatsAppBrowser
     public async Task<JsonNode?> ReadVisibleAsync(CancellationToken ct) =>
         await EvaluateAsync(VisibleScript,ct);
 
+    // On the first model turn, wait for WhatsApp's asynchronously rendered sidebar.
+    // A loaded page with zero rendered rows is not yet a useful initial snapshot.
+    public async Task<JsonNode?> ReadReadyAsync(CancellationToken ct, int maxWaitMs = 12000)
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? view;
+        do
+        {
+            view = await ReadVisibleAsync(ct);
+            if (view?["ready"]?.GetValue<bool>() == true && (view?["preview_count"]?.GetValue<int>() ?? 0) > 0)
+                return view;
+            var remainingMs = maxWaitMs - (int)timer.ElapsedMilliseconds;
+            if (remainingMs <= 0) return view;
+            await Task.Delay(Math.Min(400, remainingMs), ct);
+        }
+        while (true);
+    }
+
     public async Task<JsonNode?> ReadAllPreviewsAsync(CancellationToken ct) =>
         await EvaluateAsync(ScrollScript,ct);
 

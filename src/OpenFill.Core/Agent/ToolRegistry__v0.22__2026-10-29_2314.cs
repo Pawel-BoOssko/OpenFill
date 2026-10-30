@@ -111,7 +111,7 @@ public sealed class ToolRegistry
         {
             if (!WhatsAppBrowser.IsWhatsAppUrl(url))
                 await _browser.NavigateAsync("https://web.whatsapp.com/", ct);
-            var view = await new WhatsAppBrowser(_browser).ReadVisibleAsync(ct);
+            var view = await new WhatsAppBrowser(_browser).ReadReadyAsync(ct);
             return "WHATSAPP INITIAL DOM VIEW (automatically loaded; no conversations opened):\n"
                    + (view?.ToJsonString() ?? "{\"error\":\"empty_view\"}");
         }
