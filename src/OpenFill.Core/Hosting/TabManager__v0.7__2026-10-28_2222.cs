@@ -65,17 +65,23 @@ public sealed class TabManager
     private readonly object _lock = new();
     private readonly List<Rec> _recs = new();
     private readonly bool _releaseFinishedTabs;
+    private readonly Action<string>? _lifecycleLog;
+    private void LogLifecycle(string kind, string? id, string? taskKey, string reason)
+    {
+        try { _lifecycleLog?.Invoke($"action={kind} tab_id={id ?? "none"} task_id={taskKey ?? "none"} reason={reason}"); } catch { }
+    }
     private string? _activeTabId;
 
     /// <summary>Maximum number of open tabs (the oldest finished one is closed to make room). At least 1.</summary>
     public int Limit { get => _limit; set => _limit = Math.Max(1, value); }
     private int _limit = 5;
 
-    public TabManager(IBrowserTabs ui, string storeFile, int limit, bool releaseFinishedTabs = false)
+    public TabManager(IBrowserTabs ui, string storeFile, int limit, bool releaseFinishedTabs = false, Action<string>? lifecycleLog = null)
     {
         _ui = ui;
         _store = storeFile;
         _releaseFinishedTabs = releaseFinishedTabs;
+        _lifecycleLog = lifecycleLog;
         Limit = limit;
         Load();
     }
@@ -163,15 +169,22 @@ public sealed class TabManager
 
     // An explicit continuation wins. Otherwise reuse only a finished tab of the same
     // requester/chat and a confidently identified domain, never another chat's tab.
-    private Rec? FindPrevious(string? continueKey, string? requester, string? preferredDomain)
+    private Rec? FindPrevious(string? continueKey, string? requester, string? preferredDomain, bool automaticContinuation)
     {
-        if (continueKey is not null) return _recs.FirstOrDefault(r => r.TaskKey == continueKey);
-        if (string.IsNullOrWhiteSpace(requester) || string.IsNullOrWhiteSpace(preferredDomain)) return null;
-        return _recs.Where(r => r.State == "finished" && r.Requester == requester &&
+        // An explicit continue_task_id wins. Semantic matching in MCP is different:
+        // a similar but older task must not steal the physical tab from the newest task.
+        if (!automaticContinuation && continueKey is not null)
+            return _recs.FirstOrDefault(r => r.TaskKey == continueKey);
+        if (string.IsNullOrWhiteSpace(requester) || string.IsNullOrWhiteSpace(preferredDomain))
+            return automaticContinuation ? _recs.FirstOrDefault(r => r.TaskKey == continueKey && r.Requester == requester) : null;
+        var matches = _recs.Where(r => r.State == "finished" && r.Requester == requester &&
             !string.IsNullOrWhiteSpace(r.LastUrl) && CostGuard.DomainOf(r.LastUrl) == preferredDomain)
-            .OrderByDescending(r => r.LastUsedUtc).FirstOrDefault();
+            .OrderByDescending(r => r.LastUsedUtc).ToArray();
+        // Prefer a recent still-present tab over reopening an older saved URL.
+        return matches.FirstOrDefault(r => r.TabId is { } id && _ui.Exists(id))
+            ?? matches.FirstOrDefault();
     }
-    public async Task<TabStart> BeginAsync(string taskKey, string label, string? continueKey, CancellationToken ct, string? shortLabel = null, string? requester = null, string? preferredDomain = null)
+    public async Task<TabStart> BeginAsync(string taskKey, string label, string? continueKey, CancellationToken ct, string? shortLabel = null, string? requester = null, string? preferredDomain = null, bool automaticContinuation = false)
     {
         while (true)
         {
@@ -192,7 +205,7 @@ public sealed class TabManager
         try
         {
             Rec? prev;
-            lock (_lock) prev = FindPrevious(continueKey, requester, preferredDomain);
+            lock (_lock) prev = FindPrevious(continueKey, requester, preferredDomain, automaticContinuation);
 
             string tabId;
             bool reopened = false;
@@ -205,12 +218,16 @@ public sealed class TabManager
                 tabId = own;
                 reusedPhysical = true;
                 await _ui.SelectTabAsync(tabId, ct);
+                LogLifecycle("reuse", tabId, taskKey, automaticContinuation ? "latest_same_chat_domain" : "explicit_or_same_chat_domain");
                 lock (_lock) prev.TabId = null;
             }
             else
             {
                 url = prev?.LastUrl;
                 reopened = prev is not null && !string.IsNullOrWhiteSpace(url);
+                LogLifecycle(reopened ? "reopen_saved_url" : "new_tab", prev?.TabId, taskKey,
+                    prev?.TabId is { } missing && !_ui.Exists(missing) ? "missing_physical_tab" :
+                    prev is not null ? "no_physical_binding" : "no_matching_prior");
                 Rec? free;
                 lock (_lock) free = _recs.FirstOrDefault(r => r.State == "free" && r.TabId is not null && _ui.Exists(r.TabId));
                 if (free?.TabId is { } freeId)
@@ -281,6 +298,7 @@ public sealed class TabManager
                     if (!string.IsNullOrWhiteSpace(url) && url != "about:blank") r.LastUrl = url;
                 }
                 Save();
+                LogLifecycle("retain_finished", tabId, taskKey, "keep_until_limit_or_manual_close");
                 Refresh();
                 return;
             }
@@ -405,6 +423,7 @@ public sealed class TabManager
             string? url = null;
             try { url = await _ui.UrlAsync(tabId); } catch { }
             await _ui.CloseTabAsync(tabId);
+            LogLifecycle("close", tabId, r.TaskKey, "manual_user_close");
             lock (_lock)
             {
                 if (!string.IsNullOrWhiteSpace(url) && url != "about:blank") r.LastUrl = url;
@@ -445,8 +464,10 @@ public sealed class TabManager
             }
             bool closed = false;
             try { await _ui.CloseTabAsync(id); closed = !_ui.Exists(id); } catch { }
+            if (closed) LogLifecycle("close", id, victim.TaskKey, "capacity_limit_" + Limit);
             if (!closed)
             {
+                LogLifecycle("close_failed", id, victim.TaskKey, "capacity_limit_" + Limit);
                 lock (_lock) victim.TabId = id; // Do not orphan the still-open renderer.
                 throw new IOException("Cannot free a browser tab without losing its session. New tab was not opened.");
             }

@@ -296,7 +296,7 @@ public sealed class MainForm : Form
         _host.Attention += OnAttention;
         // Keep completed browser tabs alive for checkout, payment, and other manual handoffs.
         // The existing tab-count limit can still evict the oldest finished tab if all slots are occupied.
-        _tabMgr = new TabManager(new TabsAdapter(this), Path.Combine(_paths.Root, "tabs.json"), _config.MaxTabs, releaseFinishedTabs: false);
+        _tabMgr = new TabManager(new TabsAdapter(this), Path.Combine(_paths.Root, "tabs.json"), _config.MaxTabs, releaseFinishedTabs: false, lifecycleLog: s => _host!.Session.Log.Write("browser", "tab_lifecycle", s));
         _host.Tabs = _tabMgr;
         _tabMgr.RegisterFree(firstTab.Id, "Start");
         await _host.InitAsync();

@@ -883,7 +883,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             if (tabs is not null)
             {
                 var shortLabel = ShortLabel(task, options?.Title);
-                start = await tabs.BeginAsync(st.Key, FullLabel(st.Site, shortLabel), options?.ContinueFromKey, ct, shortLabel, st.Who, st.Site);
+                start = await tabs.BeginAsync(st.Key, FullLabel(st.Site, shortLabel), options?.ContinueFromKey, ct, shortLabel, st.Who, st.Site, automaticContinuation: options?.AutomaticContinuation == true);
                 tabBegun = true;
                 if (tabs.ConnectionOf(start.TabId) is { } conn) cdp = new CdpSession(conn);
             }

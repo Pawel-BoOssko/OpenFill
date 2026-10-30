@@ -19,7 +19,8 @@ public delegate Task<string> AskHandler(string question, IReadOnlyList<string>? 
 public sealed record VerifiedAction(string Recipient, int Total, string Evidence, string Url, DateTime ConfirmedUtc);
 
 public sealed record RunOptions(string? TaskKey = null, string? ContinueFromKey = null, string? PriorContext = null,
-    AskHandler? Ask = null, Action<string>? Activity = null, Action<string?>? UserWaiting = null, string? Title = null, string? Requester = null, Func<VerifiedAction, int>? Verified = null);
+    AskHandler? Ask = null, Action<string>? Activity = null, Action<string?>? UserWaiting = null, string? Title = null, string? Requester = null, Func<VerifiedAction, int>? Verified = null,
+    bool AutomaticContinuation = false);
 
 /// <summary>Why a task was not started. Kind: limit (too many tasks at once), domain_busy (another task works on the site), no_key, empty, other.</summary>
 public sealed record RunRefusal(string Kind, string Message);

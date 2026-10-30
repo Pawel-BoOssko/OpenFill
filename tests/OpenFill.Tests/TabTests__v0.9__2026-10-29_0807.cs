@@ -487,11 +487,37 @@ public static class TabTests
                 requester: "ChatGPT / Chat A", preferredDomain: "example.org");
             T.Check("same chat does not reuse unrelated domain", otherDomain.TabId != second.TabId);
             await tm.EndAsync("other-domain");
-        });        await T.Section("TabManager: failed eviction preserves live tab and strict limit", async () =>
+        });
+        await T.Section("TabManager: auto match uses newest tab even when MCP picks older task", async () =>
+        {
+            var ui = new FakeTabs();
+            var logs = new List<string>();
+            var dir = Path.Combine(Path.GetTempPath(), "reuse_" + Guid.NewGuid().ToString("N"));
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 5, lifecycleLog: logs.Add);
+            var a = await tm.BeginAsync("old", "A", null, default, requester: "Chat A", preferredDomain: "whatsapp.com");
+            ui.Open[a.TabId] = "https://web.whatsapp.com/";
+            await tm.EndAsync("old");
+            var b = await tm.BeginAsync("new", "B", null, default, requester: "Chat A", preferredDomain: "whatsapp.com");
+            await tm.EndAsync("new");
+            var c = await tm.BeginAsync("auto", "C", "old", default, requester: "Chat A", preferredDomain: "whatsapp.com", automaticContinuation: true);
+            T.Eq("automatic match selects latest physical card", b.TabId, c.TabId);
+            T.Check("reason logged", logs.Exists(x => x.Contains("latest_same_chat_domain")));
+            await tm.EndAsync("auto");
+            var explicitOld = await tm.BeginAsync("explicit", "D", "old", default, requester: "Chat A", preferredDomain: "whatsapp.com");
+            T.Check("explicit continuation uses old saved page", explicitOld.TabId != c.TabId && ui.Open[explicitOld.TabId] == "https://web.whatsapp.com/");
+            await tm.EndAsync("explicit");
+            var foreign = await tm.BeginAsync("foreign", "E", "old", default, requester: "Chat B", preferredDomain: "whatsapp.com", automaticContinuation: true);
+            T.Check("implicit matching stays within original chat", foreign.TabId != c.TabId && foreign.TabId != explicitOld.TabId);
+            await tm.EndAsync("foreign");
+            T.Check("manual close succeeds", await tm.UserCloseAsync(foreign.TabId));
+            T.Check("manual close has concrete reason", logs.Exists(x => x.Contains("manual_user_close")));
+        });
+        await T.Section("TabManager: failed eviction preserves live tab and strict limit", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_eviction_" + Guid.NewGuid().ToString("N")[..8]);
             var ui = new FakeTabs();
-            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 1);
+            var events = new List<string>();
+            var tm = new TabManager(ui, Path.Combine(dir, "tabs.json"), 1, lifecycleLog: events.Add);
             var a = await tm.BeginAsync("eviction-a", "first", null, default);
             ui.Open[a.TabId] = "https://example.org/session";
             await tm.EndAsync("eviction-a");
@@ -502,6 +528,7 @@ public static class TabTests
             T.Check("eviction failure refuses extra tab", rejected && ui.Open.Count == 1);
             T.Eq("failed eviction still tracks live browser", a.TabId, tm.Find("eviction-a")?.TabId);
             T.Eq("saved session URL survives failed eviction", "https://example.org/session", tm.Find("eviction-a")?.LastUrl);
+            T.Check("failed eviction logged with reason", events.Exists(x => x.Contains("close_failed") && x.Contains("capacity_limit_1")));
             ui.FailClose = false;
             var b = await tm.BeginAsync("eviction-b", "second", null, default);
             T.Check("later retry can free capacity", b.TabId != a.TabId && ui.Open.Count == 1);
@@ -698,9 +725,11 @@ public static class TabTests
             T.Contains("explicit continue: earlier task described", host.Runs[1].Options?.PriorContext ?? "", "Malt profile headline");
             T.Contains("explicit continue: earlier result handed on", host.Runs[1].Options?.PriorContext ?? "", "result of: Update the Malt");
             T.Eq("snapshot says what it continues", id1, r2["continued_from"]?.GetValue<string>());
+            T.Check("explicit ID is not semantic matching", host.Runs[1].Options?.AutomaticContinuation == false);
 
             var r3 = await m.StartAsync("Update the Malt profile headline to Senior Engineer", 5, default, requester: "Test", chat: "Chat");
             T.Eq("the very same job again: found by content", id1, host.Runs[2].Options?.ContinueFromKey);
+            T.Check("semantic prior tagged for latest-card selection", host.Runs[2].Options?.AutomaticContinuation == true);
 
             var r4 = await m.StartAsync("Book a table for four at a Lisbon restaurant on Friday", 5, default, requester: "Test", chat: "Chat");
             T.Check("unrelated task continues nothing", host.Runs[3].Options?.ContinueFromKey is null);

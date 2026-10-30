@@ -229,7 +229,8 @@ public sealed class McpTaskManager
             UserWaiting: q => OnUserWaiting(live, q),
             Title: string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
             Requester: who,
-            Verified: item => OnVerifiedAction(live, item));
+            Verified: item => OnVerifiedAction(live, item),
+            AutomaticContinuation: prior is not null && string.IsNullOrWhiteSpace(continueTaskId));
 
         StartResult started;
         try { started = _host.TryStart(task, options); }
