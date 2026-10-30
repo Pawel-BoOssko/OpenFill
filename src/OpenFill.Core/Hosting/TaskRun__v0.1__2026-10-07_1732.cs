@@ -1,3 +1,4 @@
+// CAPTURE_TASK_OUTCOME_20261030
 // OpenFill - Metadata: wersja 0.1, data 2026-10-07 17:32
 using OpenFill.Core.Agent;
 using OpenFill.Core.Browser;
@@ -53,6 +54,7 @@ public sealed class TaskRun
                 new SharedFiles(paths.SharedFor(config.SharedFolder), paths.Downloads), _gate, verified);
             runner = new AgentRunner(_model, registry, config, Log, _s.Costs, Meter, _gate);
             var conclusion = await runner.RunAsync(task, ct);
+            registry.RecordCaptureTaskOutcome(conclusion.Status);
 
             string host = "";
             try { host = new Uri(await Browser.CurrentUrlAsync(ct)).Host; } catch { }

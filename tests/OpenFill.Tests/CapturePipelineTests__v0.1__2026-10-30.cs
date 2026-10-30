@@ -1,4 +1,5 @@
-﻿// SOURCE capture-filter-recipe-terminal tests, 2026-10-30
+﻿// CAPTURE_TASK_OUTCOME_20261030
+// SOURCE capture-filter-recipe-terminal tests, 2026-10-30
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.Core.Agent;
@@ -67,8 +68,18 @@ public static class CapturePipelineTests
                 T.Eq("reused recipe count", 2, best!.Successes);
                 T.Eq("reused correct selector", "main", best.Selector);
                 T.Eq("reused correct filter", "speaker|invite", best.Pattern);
+                store.Record("www.example.org","/feed","text","article","hidden",80);
+                store.Record("www.example.org","/feed","text","article","hidden",80);
+                store.Record("www.example.org","/feed","text","article","hidden",80);
+                store.RecordTaskOutcome("www.example.org","/feed","text","main","speaker|invite","success");
+                store.RecordTaskOutcome("www.example.org","/feed","text","article","hidden","failed");
+                store.RecordTaskOutcome("www.example.org","/feed","text","article","hidden","partial");
+                var verdictBest = new CaptureRecipeStore(temp).Best("www.example.org", "/feed");
+                T.Eq("whole-task success outranks more technical captures", "main", verdictBest!.Selector);
+                T.Eq("whole-task success persisted", 1, verdictBest.TaskSuccesses);
+                T.Contains("recipe exposes actual task outcomes", store.Context("www.example.org","/feed"), "task_ok=1");
                 T.Check("different host isolated", store.Best("other.example.org", "/feed") is null);
-                T.Contains("model recipe context compact", store.Context("www.example.org", "/feed"), "validated=2");
+                T.Contains("model recipe context compact", store.Context("www.example.org", "/feed"), "technical_ok=2");
             }
             finally { try { Directory.Delete(temp, true); } catch { } }
             return Task.CompletedTask;
@@ -153,6 +164,10 @@ public static class CapturePipelineTests
                     ["use_best"] = false
                 }, CancellationToken.None);
                 T.Check("Luna handler captures successfully", compact.Ok);
+                registry.RecordCaptureTaskOutcome("success");
+                var lastUri = new Uri(result["url"]!.ToString());
+                var savedBest = new CaptureRecipeStore(Path.Combine(paths.Notes,"recipes")).Best(lastUri.Host,lastUri.AbsolutePath);
+                T.Eq("real ToolRegistry records full task verdict", 1, savedBest!.TaskSuccesses);
                 T.Check("Luna handler response compact", compact.Output.Length < 2500);
                 var runJsTool = toolList.Single(t => t.Name == "run_js");
                 var js = await runJsTool.Handler(new JsonObject {
@@ -168,5 +183,6 @@ public static class CapturePipelineTests
         });
     }
 }
+
 
 

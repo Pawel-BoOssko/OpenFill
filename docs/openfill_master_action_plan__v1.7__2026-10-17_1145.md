@@ -454,3 +454,13 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - Staging app QA physical process PID 940 launched in separate Windows session/profile and closed cleanly. QA data removed after test. LIVE PBOX1 PID 21012 unchanged throughout; no production file changes or production restarts.
 - PENDING PRE-LIVE: actual WebView2 MultipleAutomaticDownloads flow, real LinkedIn three-file export on authenticated staging tab, direct MCP against physical staging task tab. Current capture recipe ranking counts successful technical snapshots only, not end-to-end task outcome; report documents this limitation.
 - Wersja gotowa do następnego etapu odbioru STAGING, NIE gotowa do automatycznego wdrożenia LIVE. Networking Radar wyłączony. Bez git commit/push/reset.
+
+## 2026-10-30 ok. 17:48 EAT: finalny odbiór SOURCE/STAGING po kontynuacji
+- DOKUMENT NADRZĘDNY dla tej tury: docs/OPENFILL_STAGING_ACCEPTANCE_ADDENDUM_20261030.md. Dane źródłowe: docs/OPENFILL_WEBVIEW2_PHYSICAL_QA_FINAL_20261030.json i OPENFILL_LINKEDIN_READONLY_QA_20261030.json.
+- Naprawiono ranking pamięci metod: oddzielnie sukces techniczny zrzutu i wynik całego zadania (success/partial/failed); zapis z TaskRun po zakończeniu rzeczywistego zadania. Test poprawnego rankingu.
+- Pełna SOURCE regresja po ostatnich zmianach: 1445 PASS, 0 FAIL, exit 0; log SOURCE_CAPTURE_QUALITY_FULL_REGRESSION_20261030.log.
+- Rebuild STAGING: exit 0, biblioteki SHA256 zgodne z nowym SOURCE i inne niż LIVE.
+- Faktyczne WebView2 w osobnej instancji MainForm: 4 pliki bez Luny przez MCP HTTP, 3/3 natywne pobrania ukończone, event MultipleAutomaticDownloads:Allow:True; odrzucono niezgodny requester/chat. Finalna powtórka PASS, 30 ms na lokalny snapshot DOM.
+- Próba rzeczywistego LinkedIn: qa /messaging/ przekierowano na /login/?session_redirect=... mimo odizolowanej kopii podstawowych plików profilu. Eksport 4 plików strony logowania działa, ale NIE jest to test uwierzytelnionej strony LinkedIn. Wyłącznie ten szczegółowy test pozostaje otwarty. Nie równoleglić QA z działającym LIVE profilem.
+- LIVE PBOX1 OpenFill PID 21012 nadal działa, produkcja bez zmian i restartu. Networking Radar poza zakresem.
+- QA profiles zostają usunięte po zapisaniu wyników w docs. Nie wdrażać LIVE do spełnienia brakującego warunku.

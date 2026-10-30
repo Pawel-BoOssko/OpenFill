@@ -1,4 +1,5 @@
-﻿// SOURCE_CAPTURE_PATCH_20261030
+// CAPTURE_TASK_OUTCOME_20261030
+// SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.22, data 2026-10-29 23:14
 using System.Text;
 using System.Text.Json;
@@ -24,6 +25,14 @@ public sealed class ToolRegistry
     private readonly SiteNotesStore _notes;
     private readonly CaptureRecipeStore _recipes;
     private readonly PageCaptureService _capture;
+    private readonly HashSet<(string Host,string Path,string Mode,string Selector,string Pattern)> _usedCaptures = new();
+
+    /// <summary>Record one whole-task verdict per actually used capture method (not per successful snapshot).</summary>
+    public void RecordCaptureTaskOutcome(string status)
+    {
+        foreach (var x in _usedCaptures)
+            _recipes.RecordTaskOutcome(x.Host,x.Path,x.Mode,x.Selector,x.Pattern,status);
+    }
     private readonly IUserInteraction _ui;
     private readonly GapRecorder _gaps;
 
@@ -200,6 +209,8 @@ public sealed class ToolRegistry
                 {
                     var value = await _capture.CaptureAsync(mode, selector, regex, args["output_folder"]?.GetValue<string>(),
                         args["max_matches"]?.GetValue<int>() ?? 50, ct);
+                    if (Uri.TryCreate(value["url"]?.ToString(), UriKind.Absolute, out var captured))
+                        _usedCaptures.Add((captured.Host,captured.AbsolutePath,mode,selector,regex));
                     return ToolResult.Text(value.ToJsonString());
                 }
                 catch (Exception ex) { return ToolResult.Error("Page capture failed: " + ex.Message); }
