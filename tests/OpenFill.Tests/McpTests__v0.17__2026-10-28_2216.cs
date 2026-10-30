@@ -483,8 +483,8 @@ public static class McpTests
             var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(30));
             var a = await m.StartAsync("SLOW upgrade task A", 0, default, requester: "Client-A", chat: "Chat-A");
             var b = await m.StartAsync("SLOW upgrade task B", 0, default, requester: "Client-B", chat: "Chat-B");
-            var c = await m.StartAsync("ASKME upgrade task C", 0, default, requester: "Client-C", chat: "Chat-C");
-            var d = await m.StartAsync("NEEDCODE upgrade task D", 0, default, requester: "Client-D", chat: "Chat-D");
+            var c = await m.StartAsync("ASKME upgrade task C", 5, default, requester: "Client-C", chat: "Chat-C");
+            var d = await m.StartAsync("NEEDCODE upgrade task D", 5, default, requester: "Client-D", chat: "Chat-D");
             T.Eq("upgrade fixture C initially needs_input", "needs_input", S(c, "status"));
             T.Eq("upgrade fixture D initially waiting_for_user", "waiting_for_user", S(d, "status"));
             await Task.Delay(350);
@@ -596,7 +596,7 @@ public static class McpTests
         await T.Section("MCP: concurrent HTTP waiting clients receive upgrade notices", async () =>
         {
             var dir = Path.Combine(Path.GetTempPath(), "openfill_upgrade_http_" + Guid.NewGuid().ToString("N")[..8]);
-            var host = new FakeRunHost { Max = 3 };
+            var host = new FakeRunHost { Max = 4 };
             var mgr = new McpTaskManager(host, dir, TimeSpan.FromSeconds(10));
             const string secret = "local-upgrade-test-secret";
             await using var server = new McpServer(mgr, secret, 0, null);
@@ -605,6 +605,10 @@ public static class McpTests
             var url = $"http://127.0.0.1:{server.Port}/mcp/{secret}";
             var a = await mgr.StartAsync("SLOW task for client one", 0, default, requester: "A", chat: "One");
             var b = await mgr.StartAsync("SLOW task for client two", 0, default, requester: "B", chat: "Two");
+            var c = await mgr.StartAsync("ASKME user input is missing", 5, default, requester: "C", chat: "Three");
+            var d = await mgr.StartAsync("NEEDCODE human verification code required", 5, default, requester: "D", chat: "Four");
+            T.Eq("HTTP state before upgrade needs_input", "needs_input", S(c, "status"));
+            T.Eq("HTTP state before upgrade waiting_for_user", "waiting_for_user", S(d, "status"));
             async Task<JsonObject> LongPoll(string taskId, int rpcId)
             {
                 var body = new JsonObject
@@ -623,12 +627,18 @@ public static class McpTests
             }
             var first = LongPoll(S(a, "task_id"), 71);
             var second = LongPoll(S(b, "task_id"), 72);
+            var third = LongPoll(S(d, "task_id"), 73);
             await Task.Delay(250);
             var interrupted = mgr.PrepareShutdown("upgrade authorized by local operator", 12);
-            T.Eq("HTTP upgrade interrupted both models", 2, interrupted);
-            var answers = await Task.WhenAll(first, second);
+            T.Eq("HTTP upgrade interrupts all four task states", 4, interrupted);
+            var answers = await Task.WhenAll(first, second, third);
             T.Eq("HTTP client one receives interrupted", "interrupted", S(answers[0], "status"));
             T.Eq("HTTP client two receives interrupted", "interrupted", S(answers[1], "status"));
+            T.Eq("HTTP waiting_for_user receives interrupted", "interrupted", S(answers[2], "status"));
+            var awaitingAnswer = await mgr.StatusAsync(S(c, "task_id"), 0, default);
+            T.Eq("HTTP needs_input transitions to interrupted", "interrupted", S(awaitingAnswer, "status"));
+            var reloaded = new McpTaskManager(new FakeRunHost(), dir, TimeSpan.FromSeconds(2));
+            T.Eq("HTTP waiting_for_user persists interrupted", "interrupted", S(await reloaded.StatusAsync(S(d, "task_id"), 0, default), "status"));
             T.Contains("HTTP client one receives exact notice", S(answers[0], "summary"), McpTaskManager.UpgradeNotice);
             T.Contains("HTTP client two receives recovery instructions", S(answers[1], "next_step"), "continue_task_id=");
         });
@@ -724,4 +734,6 @@ public sealed class RecordingInteraction : IUserInteraction
     public Task<string> AskHumanAsync(string question, IReadOnlyList<string>? options, CancellationToken ct) { HumanOnly.Add(question); return Task.FromResult("481516"); }
     public Task<bool> ConfirmAsync(string what, CancellationToken ct) => Task.FromResult(false);
 }
+
+
 
