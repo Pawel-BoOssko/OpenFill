@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.17, data 2026-10-28 22:16
+﻿// OpenFill - Metadata: wersja 0.17, data 2026-10-28 22:16
 using System.Text;
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -484,14 +484,17 @@ public static class McpTests
             var a = await m.StartAsync("SLOW upgrade task A", 0, default, requester: "Client-A", chat: "Chat-A");
             var b = await m.StartAsync("SLOW upgrade task B", 0, default, requester: "Client-B", chat: "Chat-B");
             var c = await m.StartAsync("ASKME upgrade task C", 0, default, requester: "Client-C", chat: "Chat-C");
+            var d = await m.StartAsync("NEEDCODE upgrade task D", 0, default, requester: "Client-D", chat: "Chat-D");
+            T.Eq("upgrade fixture C initially needs_input", "needs_input", S(c, "status"));
+            T.Eq("upgrade fixture D initially waiting_for_user", "waiting_for_user", S(d, "status"));
             await Task.Delay(350);
             var pendingA = m.StatusAsync(S(a, "task_id"), 20, default);
             var pendingB = m.StatusAsync(S(b, "task_id"), 20, default);
             var affected = m.PrepareShutdown("maintenance for upgrade", 7);
-            T.Eq("upgrade interrupts three separate clients", 3, affected);
+            T.Eq("upgrade interrupts four separate clients", 4, affected);
             var late = await m.StartAsync("SLOW should not start during upgrade", 0, default, requester: "Late", chat: "Chat");
             T.Eq("upgrade blocks new tasks", "maintenance", S(late, "status"));
-            T.Eq("upgrade did not start extra task", 3, host.Started);
+            T.Eq("upgrade did not start extra task", 4, host.Started);
             var resultA = await pendingA;
             var resultB = await pendingB;
             T.Eq("upgrade wakes long poll A", "interrupted", S(resultA, "status"));
@@ -504,6 +507,15 @@ public static class McpTests
             T.Check("upgrade stopped task A", host.Stopped.Contains(S(a, "task_id")));
             T.Check("upgrade stopped task B", host.Stopped.Contains(S(b, "task_id")));
             T.Check("upgrade stopped task C", host.Stopped.Contains(S(c, "task_id")));
+            T.Check("upgrade stopped task D", host.Stopped.Contains(S(d, "task_id")));
+            foreach (var pendingQuestion in new[] { c, d })
+            {
+                var fromDisk = new McpTaskManager(new FakeRunHost(), dir, TimeSpan.FromSeconds(3));
+                var state = await fromDisk.StatusAsync(S(pendingQuestion, "task_id"), 0, default);
+                T.Eq("upgrade persists waiting state as interrupted", "interrupted", S(state, "status"));
+                T.Eq("upgrade preserves partial outcome", "partial", S(state, "outcome"));
+                T.Contains("upgrade preserves resume ID", S(state, "summary"), S(pendingQuestion, "task_id"));
+            }
             var reloaded = new McpTaskManager(new FakeRunHost(), dir, TimeSpan.FromSeconds(3));
             var diskA = await reloaded.StatusAsync(S(a, "task_id"), 0, default);
             T.Eq("upgrade persisted interrupted status", "interrupted", S(diskA, "status"));
@@ -712,3 +724,4 @@ public sealed class RecordingInteraction : IUserInteraction
     public Task<string> AskHumanAsync(string question, IReadOnlyList<string>? options, CancellationToken ct) { HumanOnly.Add(question); return Task.FromResult("481516"); }
     public Task<bool> ConfirmAsync(string what, CancellationToken ct) => Task.FromResult(false);
 }
+
