@@ -491,3 +491,10 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - LinkedIn authenticated QA: ROZPOCZETE, niezaliczone; pojedynczy submit danych z Firefox, nadal /login/. Przyczyna odmowy nieustalona. Nie ponawiac w ciemno.
 - Upgrade przy realnym waiting_for_user: nadal DO ZROBIENIA. Regresja fake HTTP/MCP juz PASS, nie powtarzac bez potrzeby.
 - STAGING aktualny hash Core C5BFC83FE579E2550EA1DA3D3717BC1C33362B0D57D87B20DAE963EABC43FBC8, LIVE 1.57 bez zmian.
+
+## 2026-10-30: decyzja i wydanie OpenFill 1.58
+- LIVE 1.58: WDROZONE, DEPLOY_OK PID11732, SOURCE 1461/0, LIVE_SMOKE PASS/0.
+- page_capture LIVE, filtrowanie przed Luna, zapis plikow i SHA256: TEST PRODUKCYJNY PASS, matches=1, filtered 156B. Zadania OF-20261030-2324-5835, OF-20261030-2325-bddc.
+- Poprzednia wersja 1.57 zachowana w app__rollback__v1.57__20261030_232309.
+- Raport: docs/OPENFILL_RELEASE_1_58_PRODUCTION_ACCEPTANCE_20261030.md.
+- Otwarte testy LinkedIn authenticated real oraz human waiting upgrade nie blokowaly wdrozenia po zgodzie uzytkownika; nie oznaczac ich DONE.

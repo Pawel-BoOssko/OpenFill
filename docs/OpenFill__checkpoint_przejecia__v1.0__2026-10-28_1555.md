@@ -427,3 +427,11 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - LINKEDIN QA PENDING: osobny WebView2 uzywajacy jednego zapisanego Firefox loginu; submit wykonany, strona pozostala /login/. Dokladny powod odmowy logowania nieustalony; nie powtarzac bez diagnostyki.
 - STAGING po koncowym republish SOURCE=STAGING SHA256 Core C5BFC83FE579E2550EA1DA3D3717BC1C33362B0D57D87B20DAE963EABC43FBC8.
 - LIVE 1.57 PID21012, release_smoke PASS, 0 FAIL. Produkcja i Networking Radar bez zmian.
+
+## 2026-10-30 23:26 EAT: OpenFill 1.58 LIVE wdrozony
+- Uzytkownik zatwierdzil produkcje. Wydanie 1.58 (SOURCE 1461 PASS, 0 FAIL). Szczegoly: docs/OPENFILL_RELEASE_1_58_PRODUCTION_ACCEPTANCE_20261030.md.
+- Maintenance 0 running, controlled shutdown starego PID21012, kopia rollback C:\Users\pboru\OpenFill\app__rollback__v1.57__20261030_232309.
+- DEPLOY_OK v1.58 PID11732, SessionId1, OpenFill Core hash DFF8CA82F165D33A8152390E376B366E0503B6F9390F12E7357946943A6E18A1; rollback niewykorzystany.
+- LIVE_SMOKE=PASS, failed 0, MCP OK, JEV transport OK.
+- Realna produkcyjna QA page_capture: OF-20261030-2324-5835 i kontynuacja OF-20261030-2325-bddc na tej samej karcie t97f6f22e; 4 pliki, SHA256 poprawne, filtered 156 B, matches=1, preview=156 znakow. Test zaliczony.
+- Pozostaja osobno otwarte LinkedIn real signed-in QA i human waiting_for_user actual upgrade. Networking Radar nietkniety.
