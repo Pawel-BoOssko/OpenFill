@@ -43,6 +43,31 @@ public static class CapturePipelineTests
             }
             finally { Directory.Delete(temp, true); }
         });
+        await T.Section("Capture publication: failure cannot leave partial files", async () =>
+        {
+            var temp = Path.Combine(Path.GetTempPath(), "of_capture_atomic_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(temp);
+            try
+            {
+                var tooLargeHtml = new JsonObject {
+                    ["text"] = "valid first file", ["html"] = new string('X', 10_000_001),
+                    ["elements"] = new JsonArray(), ["capturedUtc"] = DateTime.UtcNow.ToString("O")
+                };
+                var rejected = false;
+                try { await PageCaptureService.SaveSnapshotForTestAsync(tooLargeHtml, "all", "", temp, 5); }
+                catch (InvalidOperationException ex) { rejected = ex.Message.Contains("exceeds max capture size", StringComparison.Ordinal); }
+                T.Check("oversized final artifact rejected", rejected);
+                T.Eq("failure leaves no partial export or pending file", 0, Directory.GetFiles(temp).Length);
+                var valid = new JsonObject {
+                    ["text"] = "ready", ["html"] = "<main>ready</main>", ["elements"] = new JsonArray()
+                };
+                var accepted = await PageCaptureService.SaveSnapshotForTestAsync(valid, "all", "", temp, 5);
+                T.Eq("successful publication has three files", 3, accepted["files"]!.AsArray().Count);
+                T.Check("published files exist without pending files", accepted["files"]!.AsArray().All(x=>File.Exists(x!["path"]!.ToString()))
+                    && Directory.GetFiles(temp, "*.pending").Length == 0);
+            }
+            finally { try { Directory.Delete(temp, true); } catch { } }
+        });
         // BROWSER_NOTIFICATION_TEST_20261030
         await T.Section("WebView2 notice routing: per-tab, drain after read", () =>
         {

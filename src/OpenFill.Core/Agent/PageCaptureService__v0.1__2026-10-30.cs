@@ -97,17 +97,23 @@ public sealed class PageCaptureService(BrowserController browser, string sharedD
     {
         var prefix = "capture_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + "_" + Guid.NewGuid().ToString("N")[..6];
         var files = new JsonArray();
+        // Stage every artifact before publishing. Any failure leaves no partial capture.
+        var stagedFiles = new List<(string Temporary, string Final)>();
         string? preview = null;
         int count = 0;
         async Task Save(string extension, string contents, string kind)
         {
             if (contents.Length > MaxDocumentChars) throw new InvalidOperationException(kind + " exceeds max capture size " + MaxDocumentChars + " characters; use a narrower selector.");
             var path = Path.Combine(folder, prefix + extension);
-            await File.WriteAllTextAsync(path, contents, new UTF8Encoding(false), ct);
-            var hash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(path, ct))).ToLowerInvariant();
-            files.Add(new JsonObject { ["kind"] = kind, ["path"] = path, ["bytes"] = new FileInfo(path).Length, ["sha256"] = hash });
+            var temporary = path + ".pending";
+            stagedFiles.Add((temporary, path));
+            await File.WriteAllTextAsync(temporary, contents, new UTF8Encoding(false), ct);
+            var hash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(temporary, ct))).ToLowerInvariant();
+            files.Add(new JsonObject { ["kind"] = kind, ["path"] = path, ["bytes"] = new FileInfo(temporary).Length, ["sha256"] = hash });
         }
 
+        try
+        {
         if (mode is "text" or "all")
         {
             var text = data["text"]?.GetValue<string>() ?? "";
@@ -147,7 +153,19 @@ public sealed class PageCaptureService(BrowserController browser, string sharedD
             ["captured_utc"] = data["capturedUtc"]?.ToString(),
             ["filtered_truncated"] = pattern.Length > 0 && count > maxMatches
         };
+        // Publish completed files only after every artifact and hash succeeded.
+        foreach (var staged in stagedFiles) File.Move(staged.Temporary, staged.Final);
         return manifest;
+        }
+        catch
+        {
+            foreach (var staged in stagedFiles)
+            {
+                try { File.Delete(staged.Temporary); } catch { }
+                try { File.Delete(staged.Final); } catch { }
+            }
+            throw;
+        }
     }
 
     // Pure data-path for tests. Source payload is never passed to the model.
