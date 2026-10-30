@@ -1,3 +1,4 @@
+// AUTH_BEFORE_CAPTURE_20261030
 // CAPTURE_TASK_OUTCOME_20261030
 // SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.22, data 2026-10-29 23:14
@@ -178,14 +179,17 @@ public sealed class ToolRegistry
         tools.Add(new Tool
         {
             Name = "page_capture",
-            Description = "Preferred for full-page exports, DOM snapshots and large data. Captures currently loaded DOM to files with C# (never browser downloads), optionally filters text using regex; returns ONLY paths, sizes, hashes and a short preview. Can reuse last successful profile with use_best=true. For navigation use navigate first.",
+            Description = "Preferred for bulk DOM exports. Sign in FIRST using existing browser UI if required, verify authenticated session, THEN capture and filter. Never count a login page as a completed export. LinkedIn account pages are checked automatically. require_authenticated=true and authenticated_selector allow explicit verification for other sites. Full data to files only. use_best reuses a verified technical profile.",
             Parameters = Schema(Obj(
                 ("mode", Str("text, elements, html, all; default all")),
                 ("selector", Str("CSS root selector; default body")),
                 ("regex", Str("Optional text pattern, regex, case-insensitive")),
                 ("output_folder", Str("Optional relative shared subdirectory or explicit Windows folder")),
                 ("max_matches", Obj(("type","integer"))),
-                ("use_best", Obj(("type","boolean"))))),
+                ("use_best", Obj(("type","boolean"))),
+                ("require_authenticated", Obj(("type","boolean"))),
+                ("authenticated_selector", Str("Positive CSS selector visible only in a logged-in session")),
+                ("allow_login_page", Obj(("type","boolean"))))),
             Handler = async (args, ct) =>
             {
                 var mode = args["mode"]?.GetValue<string>() ?? "all";
@@ -208,7 +212,11 @@ public sealed class ToolRegistry
                 try
                 {
                     var value = await _capture.CaptureAsync(mode, selector, regex, args["output_folder"]?.GetValue<string>(),
-                        args["max_matches"]?.GetValue<int>() ?? 50, ct);
+                        args["max_matches"]?.GetValue<int>() ?? 50, ct,
+                        requireAuthenticated: args["require_authenticated"]?.GetValue<bool>() ?? false,
+                        authenticatedSelector: args["authenticated_selector"]?.GetValue<string>(),
+                        allowLoginPage: args["allow_login_page"]?.GetValue<bool>() ?? false);
+                    if (value["status"]?.ToString() != "saved") return new ToolResult(value.ToJsonString(), false);
                     if (Uri.TryCreate(value["url"]?.ToString(), UriKind.Absolute, out var captured))
                         _usedCaptures.Add((captured.Host,captured.AbsolutePath,mode,selector,regex));
                     return ToolResult.Text(value.ToJsonString());

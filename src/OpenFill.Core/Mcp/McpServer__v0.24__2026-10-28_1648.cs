@@ -1,3 +1,4 @@
+// AUTH_BEFORE_CAPTURE_20261030
 // SOURCE_MCP_CAPTURE_20261030
 // OpenFill - Metadata: wersja 0.24, data 2026-10-28 16:48
 using System.Net;
@@ -494,6 +495,7 @@ The invoking environment needs an HTTP client capable of GET/PUT; do not paste f
             ToolDef("openfill_page_snapshot",
 """
 Captures the currently loaded DOM of one existing OpenFill task tab without invoking Luna and without navigating.
+Sign in FIRST on a protected page, then verify the authenticated state before capture. Login pages return authentication_required and no files. A copied browser profile is not proof of a live session.
 Uses the exact task_id and caller identity (requester + chat) from the original task.
 The task tab must still be physically open. Optional url must match the current URL or nothing is read.
 The full text/element list/HTML is written directly by C# to files, never through WebView2 downloads.

@@ -1,3 +1,4 @@
+// AUTH_BEFORE_CAPTURE_20261030
 // SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.29, data 2026-10-29 23:14
 using System.Diagnostics;
@@ -196,7 +197,9 @@ Work as independently and quickly as possible: the fewer rounds, the better.
 - Never work on a wrong account. Always name the account you worked as in your finish summary.
 
 ### Files and page operations
+- For protected page exports, log in first with existing browser UI/autofill, verify authenticated session, THEN capture. A copied profile or reopened tab does NOT guarantee a login.
 - For bulk page exports, prefer page_capture: it writes raw DOM/text/elements to files, applies deterministic filters, and returns ONLY a compact manifest. Never create JavaScript Blob downloads for DOM exports.
+- If page_capture returns authentication_required / authentication_unverified: no export occurred. Inspect login via get_page, use normal browser controls to log in, confirm protected page, then retry. If login needs human verification, request it through the existing interaction. Never report success using a login-page snapshot.
 - For file queries and transformation, prefer terminal_exec with installed CLI (PowerShell/Python/rg/jq). Output stays in files, only summaries enter your context.
 - Before repeated export on a known site, inspect capture_recipes; page_capture use_best=true applies a successfully recorded filter profile.
 - run_js is for unusual page interactions; use mode=statements for sequential JS. For large values use save_to, never paste megabytes into the model.

@@ -1,4 +1,4 @@
-﻿// CAPTURE_TASK_OUTCOME_20261030
+// CAPTURE_TASK_OUTCOME_20261030
 // SOURCE capture-filter-recipe-terminal tests, 2026-10-30
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
@@ -53,6 +53,26 @@ public static class CapturePipelineTests
             T.Contains("permission details preserved", found[0], "MultipleAutomaticDownloads");
             T.Eq("permission is not repeated", 0, OpenFill.Core.Browser.BrowserNotificationBus.Take("qa-tab").Count);
             T.Eq("other tab remains isolated", 1, OpenFill.Core.Browser.BrowserNotificationBus.Take("other-tab").Count);
+            return Task.CompletedTask;
+        });
+        await T.Section("Authentication-first: signed-out LinkedIn never counts as export", () =>
+        {
+            var redirect = new JsonObject { ["url"]="https://www.linkedin.com/login/?session_redirect=https%3A%2F%2Fwww.linkedin.com%2Fmessaging%2F",
+                ["loginForm"]=true, ["authenticatedMarker"]=false, ["captureError"]="SELECTOR_NOT_FOUND" };
+            var refusal = PageAuthenticationGate.Check(redirect, expectedUrl:"https://www.linkedin.com/messaging/");
+            T.Eq("login redirect reports LOGIN_FIRST", "authentication_required", refusal["status"]!.ToString());
+            T.Eq("login redirect exact code", "LOGIN_FIRST", refusal["code"]!.ToString());
+            T.Check("login screen not a successful export", refusal["files"] is null);
+            var accepted = new JsonObject { ["url"]="https://www.linkedin.com/messaging/",
+                ["loginForm"]=false, ["authenticatedMarker"]=true };
+            var ready = PageAuthenticationGate.Check(accepted, expectedUrl:"https://www.linkedin.com/messaging/");
+            T.Eq("verified authenticated LinkedIn permits capture", "ready", ready["status"]!.ToString());
+            var unverified = PageAuthenticationGate.Check(new JsonObject { ["url"]="https://www.linkedin.com/messaging/",
+                ["loginForm"]=false, ["authenticatedMarker"]=false });
+            T.Eq("missing proof is not success", "authentication_unverified", unverified["status"]!.ToString());
+            var unrelated = PageAuthenticationGate.Check(new JsonObject { ["url"]="https://example.org/landing",
+                ["loginForm"]=false, ["authenticatedMarker"]=false });
+            T.Eq("public page does not require login", "ready", unrelated["status"]!.ToString());
             return Task.CompletedTask;
         });
         await T.Section("Capture recipes: verified methods, scope and reuse", () =>
@@ -144,6 +164,19 @@ public static class CapturePipelineTests
                 var store = new CaptureRecipeStore(Path.Combine(root, "notes", "recipes"));
                 var capture = new PageCaptureService(browser, Path.Combine(root, "shared"), store);
                 var result = await capture.CaptureAsync("all", "body", "password|email|signup", null, 25, CancellationToken.None);
+                // The same actual CDP page is rejected without positive login evidence,
+                // then accepted after a verified session marker appears.
+                var protectedFolder = Path.Combine(root,"after-login");
+                var refused = await capture.CaptureAsync("all", "main", "email", protectedFolder, 20,
+                    CancellationToken.None, requireAuthenticated:true, authenticatedSelector:"html[data-qa-auth='yes']");
+                T.Eq("unverified login blocks physical DOM export", "authentication_unverified", refused["status"]!.ToString());
+                T.Check("no output directory created before authentication", !Directory.Exists(protectedFolder));
+                var loggedIn = await browser.RunJsAsync("(document.documentElement.setAttribute('data-qa-auth','yes'), true)");
+                T.Check("test page simulated successful login", loggedIn?["ok"]?.GetValue<bool>() == true);
+                var afterLogin = await capture.CaptureAsync("all", "body", "email", protectedFolder, 20,
+                    CancellationToken.None, requireAuthenticated:true, authenticatedSelector:"html[data-qa-auth='yes']");
+                T.Eq("verified login allows physical capture", "saved", afterLogin["status"]!.ToString());
+                T.Eq("verified physical capture four files", 4, afterLogin["files"]!.AsArray().Count);
                 T.Eq("CDP capture status saved", "saved", result["status"]!.ToString());
                 T.Eq("CDP three sources and filter", 4, result["files"]!.AsArray().Count);
                 T.Check("CDP capture file exists", File.Exists(result["files"]![0]!["path"]!.ToString()));

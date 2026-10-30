@@ -1,3 +1,4 @@
+// AUTH_BEFORE_CAPTURE_20261030
 // SOURCE_MCP_CAPTURE_20261030
 // OpenFill - Metadata: wersja 0.23, data 2026-10-29 08:07
 using System.Collections.Concurrent;
@@ -700,7 +701,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     {
         if (options?.ContinueFromKey is null && options?.PriorContext is null) return task;
         var note = start.Reopened
-            ? $"The earlier tab had been closed, so a new tab was opened at {start.Url}; anything typed into forms there is gone, but you are still logged in."
+            ? $"The earlier tab had been closed, so a new tab was opened at {start.Url}; anything typed into forms there is gone, authentication may have expired; verify the logged-in session before accessing protected data."
             : start.Continued
                 ? "The browser tab of that task is still open, exactly as it was left."
                 : "The earlier tab is no longer known; this is a new tab.";
@@ -1010,12 +1011,10 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         {
             await browser.InitAsync(ct);
             var actual = await browser.CurrentUrlAsync(ct);
-            if (!string.IsNullOrWhiteSpace(expectedUrl) &&
-                !string.Equals(actual.TrimEnd('/'), expectedUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-                return new JsonObject { ["status"] = "error", ["message"] = "URL_MISMATCH. Page was not changed.", ["current_url"] = actual };
+            // The capture service classifies auth redirects before URL mismatch.
             var service = new PageCaptureService(browser, Paths.SharedFor(Config.SharedFolder),
                 new CaptureRecipeStore(Path.Combine(Paths.Notes, "recipes")));
-            return await service.CaptureAsync(mode, selector, regex, directory, maxMatches, ct);
+            return await service.CaptureAsync(mode, selector, regex, directory, maxMatches, ct, expectedUrl: expectedUrl);
         }
         catch (Exception ex) { return new JsonObject { ["status"] = "error", ["message"] = "Direct capture failed: " + ex.Message }; }
         finally { browser.Detach(); }

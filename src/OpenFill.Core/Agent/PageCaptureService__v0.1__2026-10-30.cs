@@ -1,3 +1,4 @@
+// AUTH_BEFORE_CAPTURE_20261030
 // OpenFill SOURCE only - DOM -> files -> filters -> compact Luna result, 2026-10-30
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -12,7 +13,8 @@ namespace OpenFill.Core.Agent;
 public sealed class PageCaptureService(BrowserController browser, string sharedDirectory, CaptureRecipeStore recipes)
 {
     private const int MaxDocumentChars = 10_000_000;
-    public async Task<JsonObject> CaptureAsync(string mode, string selector, string pattern, string? outputFolder, int maxMatches, CancellationToken ct)
+    public async Task<JsonObject> CaptureAsync(string mode, string selector, string pattern, string? outputFolder, int maxMatches, CancellationToken ct,
+        string? expectedUrl = null, bool requireAuthenticated = false, string? authenticatedSelector = null, bool allowLoginPage = false)
     {
         mode = string.IsNullOrWhiteSpace(mode) ? "all" : mode.ToLowerInvariant();
         if (mode is not ("text" or "elements" or "html" or "all")) throw new ArgumentException("mode must be text, elements, html or all");
@@ -23,14 +25,25 @@ public sealed class PageCaptureService(BrowserController browser, string sharedD
         // Validate a filter before invoking the browser.
         if (pattern.Length > 0) _ = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(300));
         var sw = Stopwatch.StartNew();
+        if (!string.IsNullOrWhiteSpace(authenticatedSelector) && authenticatedSelector.Length > 400)
+            throw new ArgumentException("authenticatedSelector too long.");
         var css = JsonSerializer.Serialize(selector);
+        var authCss = JsonSerializer.Serialize(authenticatedSelector ?? "");
         var js = """
         (() => {
           const sel = __SELECTOR__;
           const root = document.querySelector(sel);
-          if (!root) return { captureError: "SELECTOR_NOT_FOUND", selector: sel };
+          // Root check is AFTER authentication metadata; login pages may not have the requested selector.
           const mode = "__MODE__";
-          const data = { url: location.href, title: document.title, capturedUtc: new Date().toISOString(), selector: sel };
+          const authSel = __AUTH_SELECTOR__;
+          const isLinkedIn = location.hostname === "linkedin.com" || location.hostname.endsWith(".linkedin.com");
+          const defaultAuthSel = isLinkedIn ? "nav.global-nav,header.global-nav,#global-nav,[data-test-global-nav],.global-nav__me" : "";
+          const markerSelector = authSel || defaultAuthSel;
+          const authMarker = markerSelector ? !!document.querySelector(markerSelector) : false;
+          const signInForm = !!document.querySelector('form[action*="/login"],input[type="password"],input[name="session_key"]');
+          const data = { url: location.href, title: document.title, capturedUtc: new Date().toISOString(),
+            selector: sel, authenticatedMarker: authMarker, loginForm: signInForm };
+          if (!root) return { ...data, captureError: "SELECTOR_NOT_FOUND" };
           if (mode === "all" || mode === "text") data.text = root.innerText || root.textContent || "";
           if (mode === "all" || mode === "html") data.html = root.outerHTML || "";
           if (mode === "all" || mode === "elements") {
@@ -46,11 +59,14 @@ public sealed class PageCaptureService(BrowserController browser, string sharedD
           }
           return data;
         })()
-        """.Replace("__SELECTOR__", css).Replace("__MODE__", mode);
+        """.Replace("__SELECTOR__", css).Replace("__MODE__", mode).Replace("__AUTH_SELECTOR__", authCss);
         var result = await browser.RunJsAsync(js, ct);
         if (result?["ok"]?.GetValue<bool>() != true)
             throw new InvalidOperationException("WebView2 capture failed: " + result?["error"]?.ToString());
         var payload = result["value"] as JsonObject ?? throw new InvalidOperationException("DOM capture returned no object.");
+        // Authentication is checked before selector failure and before writing even one file.
+        var auth = PageAuthenticationGate.Check(payload, expectedUrl, requireAuthenticated, allowLoginPage);
+        if (auth["status"]?.ToString() != "ready") return auth;
         if (payload["captureError"] is not null) throw new InvalidOperationException(payload["captureError"]!.ToString() + ": " + selector);
         var folder = ResolveOutputFolder(outputFolder);
         var saved = await SaveSnapshotAsync(payload, mode, pattern, folder, maxMatches, ct);
@@ -63,6 +79,7 @@ public sealed class PageCaptureService(BrowserController browser, string sharedD
         saved["selector"] = selector;
         saved["mode"] = mode;
         saved["status"] = "saved";
+        saved["authentication_verified"] = auth["auth_verified"]?.DeepClone();
         return saved;
     }
 
