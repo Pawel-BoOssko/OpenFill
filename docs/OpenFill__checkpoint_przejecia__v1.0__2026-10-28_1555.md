@@ -409,3 +409,13 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Otwarty warunek: autentycznie zalogowany LinkedIn w izolowanym QA; automatyczne zalogowanie do rzeczywistego konta nie zostało wykonane.
 - STAGING biblioteki zgodne z SOURCE, różne od LIVE; produkcja PID21012 bez zmian.
 - Komplet dowodów i hashe: docs/OPENFILL_AUTH_FIRST_ACCEPTANCE_20261030.md.
+
+## 2026-10-30: przejecie i zamkniecie etapu atomic capture SOURCE/STAGING
+- Raport z dowodami: docs/OPENFILL_CAPTURE_ATOMIC_ACCEPTANCE_20261030.md.
+- Przyczyna poprawki: zapis bezposredni zostawial czesciowe pliki przy bledzie pozniejszego artefaktu. Zmieniono SaveSnapshotAsync na staging *.pending z cleanup przy bledzie; nie zmieniono docelowych nazw.
+- SOURCE pelna regresja: 1461 PASS, 0 FAIL, exit 0; docs/SOURCE_CAPTURE_ATOMIC_FULL_20261030.log.
+- Fizyczny izolowany WebView2: PASS; 4 pliki MCP, 3/3 downloads Completed, auth przed i po formularzu PASS; docs/OPENFILL_CAPTURE_ATOMIC_PHYSICAL_QA_20261030.json.
+- STAGING publish exit0, SHA256 Core SOURCE=STAGING 9B3B539262C65B4B4CF55CC7CD3673470DED2D7F9DE9CCA5A61573963F683FE3. STAGING: C:\Users\pboru\OpenFill\staging\capture-atomic-20261030.
+- LIVE OpenFill 1.57 PID21012 niezmieniony. Finalny read-only smoke PASS, failed 0, MCP OK, active 0, JEV direct reachable. Brak restartu/wdrozen LIVE.
+- Otwarte nadal REAL-LINKEDIN-AUTHENTICATED-E2E w oddzielnej sesji QA; pierwotna przyczyna: brak uwierzytelnienia w QA, redirect /messaging/ -> /login/. Nie nadpisywac tego statusu jako PASS. Upgrade human-wait i wielogodzinna retencja bez presji limitu pozostaja osobno otwarte.
+- Networking Radar nietkniety. Bez git commit/push/reset.

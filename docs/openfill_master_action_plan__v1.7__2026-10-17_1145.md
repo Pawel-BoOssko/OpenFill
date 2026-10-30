@@ -476,3 +476,12 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - Otwarty warunek: autentycznie zalogowany LinkedIn w izolowanym QA; automatyczne zalogowanie do rzeczywistego konta nie zostało wykonane.
 - STAGING biblioteki zgodne z SOURCE, różne od LIVE; produkcja PID21012 bez zmian.
 - Komplet dowodów i hashe: docs/OPENFILL_AUTH_FIRST_ACCEPTANCE_20261030.md.
+
+## 2026-10-30: atomic capture, poprawka SOURCE/STAGING
+- Raport: docs/OPENFILL_CAPTURE_ATOMIC_ACCEPTANCE_20261030.md.
+- Regresja: 1461 PASS, 0 FAIL, exit 0. Fizyczny WebView2 i MCP: PASS.
+- Zapis zrzutow: *.pending, kompletne pliki i SHA256, usuwanie czesciowych wynikow po bledzie.
+- SOURCE=STAGING Core DLL SHA256 9B3B539262C65B4B4CF55CC7CD3673470DED2D7F9DE9CCA5A61573963F683FE3.
+- LIVE 1.57 PID 21012 bez zmian; smoke PASS, 0 FAIL.
+- Otwarte: LinkedIn authenticated real QA, human waiting upgrade, dluga retencja karty bez limitu.
+- Diagnostyka komunikacji MCP: preferowac pojedyncze, krotkie komendy zamiast wielu sklejonych w jedno wywolanie (ustalenie uzytkownika).
