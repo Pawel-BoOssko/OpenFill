@@ -22,7 +22,7 @@ public sealed class FailedCallGuard
     public void After(string name, JsonObject args, bool success, string output)
     {
         // Successful page movement or a new verified capture may change file/download state.
-        if (success && name is "navigate" or "page_capture") _failures.Clear();
+        if (success && name is "navigate" or "page_capture" or "act" or "act_many") _failures.Clear();
         var key = Key(name, args);
         if (success) { _failures.Remove(key); return; }
         var reason = output.Length > 500 ? output[..500] : output;

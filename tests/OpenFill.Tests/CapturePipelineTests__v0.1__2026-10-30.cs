@@ -113,6 +113,8 @@ public static class CapturePipelineTests
             T.Check("second attempt allowed", g.Before("shared_save", args) is null);
             g.After("shared_save", args, false, "There is no such file in the downloads folder.");
             T.Contains("third attempt blocked", g.Before("shared_save", args)!, "BLOCKED_REPEAT");
+            g.After("act_many", new JsonObject { ["steps"] = new JsonArray() }, true, "login form submitted");
+            T.Check("successful form action resets loop guard for login retry", g.Before("shared_save", args) is null);
             T.Check("different args allowed", g.Before("shared_save", new JsonObject { ["name"] = "other.txt" }) is null);
             g.After("page_capture", new JsonObject(), true, "saved");
             T.Check("fresh capture resets failure", g.Before("shared_save", args) is null);

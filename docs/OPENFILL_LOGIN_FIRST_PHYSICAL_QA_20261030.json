@@ -1,0 +1,78 @@
+{
+  "started_utc": "2026-10-30T15:39:23.6352622Z",
+  "status": "pass",
+  "qa_tab_id": "t755c2222",
+  "page_url": "http://127.0.0.1:56945/",
+  "task_state": "running",
+  "foreign_status": "error",
+  "foreign_refused": true,
+  "direct_mcp_result": {
+    "files": [
+      {
+        "kind": "text",
+        "path": "C:\\Users\\pboru\\OpenFill\\data\\qa_login_first_20261030\\shared\\captures\\capture_20261030_153927_343_890cce.txt",
+        "bytes": 87,
+        "sha256": "e34619ba443002dd728743dd8d2c42263836b35292c2c59e9bca7d1dead7e468"
+      },
+      {
+        "kind": "filtered_matches",
+        "path": "C:\\Users\\pboru\\OpenFill\\data\\qa_login_first_20261030\\shared\\captures\\capture_20261030_153927_343_890cce.filtered.txt",
+        "bytes": 87,
+        "sha256": "e34619ba443002dd728743dd8d2c42263836b35292c2c59e9bca7d1dead7e468"
+      },
+      {
+        "kind": "elements",
+        "path": "C:\\Users\\pboru\\OpenFill\\data\\qa_login_first_20261030\\shared\\captures\\capture_20261030_153927_343_890cce.elements.json",
+        "bytes": 521,
+        "sha256": "04ee7e78fc5e67110bb45df7f95cb1a1e5f600ffbd059bfea18917ae761f3857"
+      },
+      {
+        "kind": "html",
+        "path": "C:\\Users\\pboru\\OpenFill\\data\\qa_login_first_20261030\\shared\\captures\\capture_20261030_153927_343_890cce.html",
+        "bytes": 209,
+        "sha256": "8d028947a1c2460ee88d23b5b6c07927dad45e1c5dc0f860571821f18acc7d66"
+      }
+    ],
+    "preview": "Conference invitation\nSpeaker: Alice Example\nSpeaker: Bob Example\nContact speakerExport",
+    "matches": 4,
+    "items": 3,
+    "elements_complete": true,
+    "captured_utc": "2026-10-30T15:39:27.331Z",
+    "filtered_truncated": false,
+    "elapsed_ms": 36,
+    "url": "http://127.0.0.1:56945/",
+    "title": "QA LinkedIn-like fixture",
+    "selector": "main",
+    "mode": "all",
+    "status": "saved",
+    "authentication_verified": null
+  },
+  "direct_mcp_files": 4,
+  "direct_mcp_success": true,
+  "permissions": [
+    "MultipleAutomaticDownloads:Allow:True"
+  ],
+  "downloads_events": [
+    "qa-one.txt",
+    "qa-two.txt",
+    "qa-three.txt",
+    "qa-one.txt:Completed",
+    "qa-two.txt:Completed",
+    "qa-three.txt:Completed"
+  ],
+  "download_files": [
+    "qa-one.txt",
+    "qa-three.txt",
+    "qa-two.txt"
+  ],
+  "three_downloads": true,
+  "permission_event_observed": true,
+  "permission_auto_approved": true,
+  "before_login_status": "authentication_required",
+  "before_login_files": 0,
+  "after_login_status": "saved",
+  "after_login_files": 4,
+  "auth_pipeline_pass": true,
+  "elapsed_ms": 12991,
+  "finished_utc": "2026-10-30T15:39:37.2490194Z"
+}

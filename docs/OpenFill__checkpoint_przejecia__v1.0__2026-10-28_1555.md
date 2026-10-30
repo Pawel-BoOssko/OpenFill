@@ -397,3 +397,15 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Próba rzeczywistego LinkedIn: qa /messaging/ przekierowano na /login/?session_redirect=... mimo odizolowanej kopii podstawowych plików profilu. Eksport 4 plików strony logowania działa, ale NIE jest to test uwierzytelnionej strony LinkedIn. Wyłącznie ten szczegółowy test pozostaje otwarty. Nie równoleglić QA z działającym LIVE profilem.
 - LIVE PBOX1 OpenFill PID 21012 nadal działa, produkcja bez zmian i restartu. Networking Radar poza zakresem.
 - QA profiles zostają usunięte po zapisaniu wyników w docs. Nie wdrażać LIVE do spełnienia brakującego warunku.
+
+## 2026-10-30: Login first -> verified session -> capture -> filter -> Luna
+- Użytkownik: "Czyli do poprawy - najpierw logowanie, potem zrzut." Wdrożono w SOURCE/STAGING, LIVE niezmienione.
+- Nowy PageAuthenticationGate; PageCaptureService odmawia zapisu przy login/checkpoint/niezweryfikowanym markerze. Sprawdza auth przed selektorem i URL mismatch; odpowiedzi authentication_required / authentication_unverified, 0 plików.
+- ToolRegistry page_capture oferuje require_authenticated/authenticated_selector/allow_login_page. MCP w razie redirect login zwraca właściwy status. Luna przez get_page + act/act_many realizuje logowanie i sprawdza wynik, dopiero potem capture. AppHost.BuildPrompt nie zakłada logowania po ponownym otwarciu karty.
+- Hamulec pętli odblokowuje retry po udanym formularzu act/act_many.
+- Szybkie testy: 121 PASS/0 FAIL. Pełna regresja po ostatniej zmianie: **1457 PASS, 0 FAIL, exit=0**.
+- Fizyczny WebView2 lokalny HTTP: przed loginem authentication_required i 0 plików, po loginie przez formularz i sesyjnym cookie saved i 4 pliki; PASS.
+- Rzeczywisty LinkedIn bez sesji w QA: /messaging/ -> /login, status authentication_required i 0 plików, zatem wcześniejszy fałszywy sukces wyeliminowany.
+- Otwarty warunek: autentycznie zalogowany LinkedIn w izolowanym QA; automatyczne zalogowanie do rzeczywistego konta nie zostało wykonane.
+- STAGING biblioteki zgodne z SOURCE, różne od LIVE; produkcja PID21012 bez zmian.
+- Komplet dowodów i hashe: docs/OPENFILL_AUTH_FIRST_ACCEPTANCE_20261030.md.
