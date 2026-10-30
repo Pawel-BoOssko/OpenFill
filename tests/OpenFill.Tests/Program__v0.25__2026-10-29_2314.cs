@@ -492,6 +492,11 @@ await T.Section("Model loop: Responses API request format (reasoning, tool resul
     var r3 = await new AgentRunner(bad, registry2, config, log).RunAsync("x");
     T.Eq("error 400 -> failed", "failed", r3.Status);
     T.Contains("API message in summary", r3.Summary, "Unsupported value");
+    T.Check("429 exhausted credits has no retry", !AgentRunner.ShouldRetryModelError(429, "credit_balance_exhausted"));
+    T.Check("429 insufficient quota has no retry", !AgentRunner.ShouldRetryModelError(429, "insufficient_quota"));
+    T.Check("429 temporary rate limit is retried", AgentRunner.ShouldRetryModelError(429, "rate_limit_exceeded"));
+    T.Check("500 is retried", AgentRunner.ShouldRetryModelError(500, "server error"));
+    T.Check("400 is not retried", !AgentRunner.ShouldRetryModelError(400, "bad request"));
 });
 
 // ---------------------------------------------------------------------------- Integration test (Chromium)

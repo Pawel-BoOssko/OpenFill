@@ -32,6 +32,15 @@ public sealed class UsageTotals
 /// </summary>
 public sealed class AgentRunner
 {
+    // Quota exhaustion is permanent until billing changes; ordinary 429 can be transient.
+    public static bool ShouldRetryModelError(int status, string? body)
+    {
+        if (status >= 500) return true;
+        if (status != 429) return false;
+        return !(body?.Contains("credit_balance_exhausted", StringComparison.OrdinalIgnoreCase) == true
+              || body?.Contains("insufficient_quota", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
     private readonly string _cacheKey = "openfill-agent-" + Guid.NewGuid().ToString("N")[..12];
     private readonly IModelClient _model;
     private readonly ToolRegistry _registry;
@@ -316,7 +325,7 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                 catch (ModelException mex)
                 {
                     _log.Write("model", "error", "Model error", new { mex.Status, body = OutputLimiter.Head(mex.Body, 1000) }, status: "error");
-                    if ((mex.Status is 429 or >= 500) && ++transientErrors <= 4)
+                    if (ShouldRetryModelError(mex.Status, mex.Body) && ++transientErrors <= 4)
                     {
                         // Transient errors: retry the same step with increasing backoff (does not consume the step limit).
                         await Task.Delay(1500 * transientErrors, ct);
