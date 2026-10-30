@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.25, data 2026-10-29 23:14
+﻿// OpenFill - Metadata: wersja 0.25, data 2026-10-29 23:14
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.App;
@@ -31,6 +31,7 @@ var panelShotOut = args.Length >= 2 && args[0] == "panelshot" ? args[1] : null;
 
 if (args.Contains("tabs-only", StringComparer.OrdinalIgnoreCase)) { await TabTests.RunAsync(); return T.Report(); }
 
+await CapturePipelineTests.RunAsync();
 // ---------------------------------------------------------------------------- Unit tests
 await T.Section("Redactor: secret removal", () =>
 {
@@ -1105,9 +1106,11 @@ await PromptHistoryTests.RunAsync();
 await AddressHistoryTests.RunAsync();
 await DefaultsTests.RunAsync();
 await SharedTests.RunAsync();
+await CapturePipelineTests.RunBrowserAsync(testsite, Page);
 if (args.Contains("mcp-only", StringComparer.OrdinalIgnoreCase)) { await JevGateTests.RunAsync(); await McpTests.RunAsync(); return T.Report(); }
 await JevGateTests.RunAsync();
 await McpTests.RunAsync();
 await FileTransferTests.RunAsync();
 await ParallelTests.RunAsync(testsite, Page);
 return T.Report();
+

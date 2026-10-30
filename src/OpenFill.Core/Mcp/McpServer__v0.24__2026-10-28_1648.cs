@@ -1,3 +1,4 @@
+// SOURCE_MCP_CAPTURE_20261030
 // OpenFill - Metadata: wersja 0.24, data 2026-10-28 16:48
 using System.Net;
 using System.Net.Sockets;
@@ -490,6 +491,28 @@ The invoking environment needs an HTTP client capable of GET/PUT; do not paste f
 """,
                 new JsonObject { ["mode"] = Prop("string", "upload or download"), ["file"] = Prop("string", "Simple file name, not a path") },
                 new[] { "mode", "file" }, idempotent: false),
+            ToolDef("openfill_page_snapshot",
+"""
+Captures the currently loaded DOM of one existing OpenFill task tab without invoking Luna and without navigating.
+Uses the exact task_id and caller identity (requester + chat) from the original task.
+The task tab must still be physically open. Optional url must match the current URL or nothing is read.
+The full text/element list/HTML is written directly by C# to files, never through WebView2 downloads.
+Returns compact file paths, byte counts, SHA-256, regex-match count and short preview.
+Supported modes: text, elements, html, all. Optional CSS selector and case-insensitive regex.
+This is a current loaded-DOM snapshot, not a complete remote-site crawl.
+""",
+                new JsonObject {
+                    ["task_id"] = Prop("string","Exact original task id with physically open tab"),
+                    ["requester"] = Prop("string","Same requester as original OpenFill task"),
+                    ["chat"] = Prop("string","Same chat as original OpenFill task"),
+                    ["url"] = Prop("string","Optional current URL assertion; mismatch aborts"),
+                    ["mode"] = Prop("string","text, elements, html, all; default all"),
+                    ["selector"] = Prop("string","CSS selector; default body"),
+                    ["regex"] = Prop("string","Optional line filter for text; source retained"),
+                    ["output_folder"] = Prop("string","Optional shared-relative or absolute Windows directory"),
+                    ["max_matches"] = Prop("integer","Maximum filtered matches stored; default 50")
+                },
+                new[] { "task_id","requester","chat" }, idempotent:false, readOnly:true),
             ToolDef("openfill_screenshot",
 """
 Takes a screenshot of the current OpenFill browser page and returns the JPEG image itself (an image in the tool result) plus a private URL as a fallback.
@@ -581,6 +604,10 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
                 "openfill_info" => _tasks.ShortInfo(),
                 "openfill_full_status" => InfoResult(),
                 "openfill_maintenance" => _tasks.Maintenance(args?["minutes"] is null ? null : Int(args, "minutes", 0), Str(args, "reason"), Str(args, "requester")),
+                "openfill_page_snapshot" => await _tasks.PageSnapshotAsync(
+                    Str(args, "task_id"), Str(args, "requester"), Str(args, "chat"), Str(args, "url"),
+                    Str(args, "mode"), Str(args, "selector"), Str(args, "regex"),
+                    Str(args, "output_folder"), Int(args, "max_matches", 50), _cts.Token),
                 "openfill_screenshot" => await ScreenshotResultAsync(Str(args, "task_id")),
                 "openfill_file_transfer" => _files is null
                     ? new JsonObject { ["status"] = "error", ["message"] = "No shared directory configured" }

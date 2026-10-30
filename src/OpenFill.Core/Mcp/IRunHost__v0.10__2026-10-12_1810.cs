@@ -1,3 +1,4 @@
+// SOURCE_MCP_CAPTURE_20261030
 // OpenFill - Metadata: wersja 0.10, data 2026-10-12 18:10
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
@@ -71,6 +72,11 @@ public interface IRunHost
 
     /// <summary>Details of this task's own browser tab, without exposing another chat's context.</summary>
     JsonObject? TabDetailsOf(string taskKey) => null;
+
+    /// <summary>Captures one existing, physically open tab without model inference or navigation.</summary>
+    Task<JsonObject> CapturePageAsync(string taskKey, string? expectedUrl, string mode,
+        string selector, string regex, string? directory, int maxMatches, CancellationToken ct)
+        => Task.FromResult(new JsonObject { ["status"] = "error", ["message"] = "Direct page capture not supported by this host." });
 
     /// <summary>Stops one task (or every task when the key is null).</summary>
     void Stop(string? taskKey);

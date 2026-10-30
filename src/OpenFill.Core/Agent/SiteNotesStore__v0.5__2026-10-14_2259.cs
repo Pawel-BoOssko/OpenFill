@@ -1,3 +1,4 @@
+// SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.5, data 2026-10-14 22:59
 using System.Text;
 using System.Text.Json;
@@ -23,6 +24,7 @@ public sealed class SiteNote
 
 public sealed class SiteNotesStore(string dir, EventLog log)
 {
+    public string NotesDirectory => dir;
     private static readonly JsonSerializerOptions Json = new()
     {
         WriteIndented = true,

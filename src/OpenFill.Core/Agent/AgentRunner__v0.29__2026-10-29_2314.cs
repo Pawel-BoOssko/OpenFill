@@ -1,3 +1,4 @@
+// SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.29, data 2026-10-29 23:14
 using System.Diagnostics;
 using System.Text;
@@ -195,6 +196,11 @@ Work as independently and quickly as possible: the fewer rounds, the better.
 - Never work on a wrong account. Always name the account you worked as in your finish summary.
 
 ### Files and page operations
+- For bulk page exports, prefer page_capture: it writes raw DOM/text/elements to files, applies deterministic filters, and returns ONLY a compact manifest. Never create JavaScript Blob downloads for DOM exports.
+- For file queries and transformation, prefer terminal_exec with installed CLI (PowerShell/Python/rg/jq). Output stays in files, only summaries enter your context.
+- Before repeated export on a known site, inspect capture_recipes; page_capture use_best=true applies a successfully recorded filter profile.
+- run_js is for unusual page interactions; use mode=statements for sequential JS. For large values use save_to, never paste megabytes into the model.
+- After the same error twice with unchanged arguments, choose a different method. The runtime will refuse a third identical attempt.
 
 - If you need a file from the user (e.g. a document to upload) and do not know its path, use ask_user: the question card has a "Choose file..." button, so the user can answer with the full path of a file picked in a dialog.
 
@@ -379,7 +385,9 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                 _log.Write("tool", "call", $"{name} {CompactArgs(argObj)}", new { name, args = argObj }, status: "info");
 
                 ToolResult result;
-                if (!byName.TryGetValue(name, out var tool))
+                var repeatBlock = _failedCallGuard.Before(name, argObj);
+                if (repeatBlock is not null) result = ToolResult.Error(repeatBlock);
+                else if (!byName.TryGetValue(name, out var tool))
                     result = ToolResult.Error($"Unknown tool: {name}");
                 else
                 {
@@ -393,6 +401,7 @@ Work as independently and quickly as possible: the fewer rounds, the better.
                     { result = ToolResult.Error($"Tool {name} failed: {ex.Message}"); }
                 }
 
+                _failedCallGuard.After(name, argObj, result.Ok, result.Output);
                 _log.Write("tool", "result", $"{name} -> {(result.Ok ? "ok" : "error")}",
                     new { name, preview = OutputLimiter.Head(result.Output, 500) },
                     status: result.Ok ? "ok" : "error");
@@ -448,6 +457,7 @@ Work as independently and quickly as possible: the fewer rounds, the better.
     private bool _infoRaised;
     private int _loopStrikes;
     private readonly Queue<string> _recentActions = new();
+    private readonly FailedCallGuard _failedCallGuard = new();
     private static readonly HashSet<string> ActionTools = new() { "act", "act_many", "navigate", "run_js", "upload_file" };
 
     private RunConclusion? BlockedConclusion(string domain, int step)

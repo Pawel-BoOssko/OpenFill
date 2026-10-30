@@ -1,3 +1,4 @@
+// SOURCE_MCP_CAPTURE_20261030
 // OpenFill - Metadata: wersja 0.23, data 2026-10-29 08:07
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -997,6 +998,29 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     public void Stop() => Stop((string?)null);
 
     /// <summary>Screenshot of a task's browser tab (the newest running task's, or the open tab) saved under screenshots\ (MCP serves it as a private link). Keeps the newest 60 files.</summary>
+    /// <summary>Direct model-free snapshot of an existing tab: no new task, no navigation.</summary>
+    public async Task<JsonObject> CapturePageAsync(string taskKey, string? expectedUrl, string mode,
+        string selector, string regex, string? directory, int maxMatches, CancellationToken ct)
+    {
+        var tab = Tabs?.Find(taskKey);
+        if (tab is null || Tabs?.IsTabPresent(taskKey) != true || Tabs.ConnectionOf(tab.TabId) is not { } conn)
+            return new JsonObject { ["status"] = "error", ["message"] = "The requested physical task tab is not open." };
+        var browser = new Browser.BrowserController(new CdpSession(conn), Session.Log);
+        try
+        {
+            await browser.InitAsync(ct);
+            var actual = await browser.CurrentUrlAsync(ct);
+            if (!string.IsNullOrWhiteSpace(expectedUrl) &&
+                !string.Equals(actual.TrimEnd('/'), expectedUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                return new JsonObject { ["status"] = "error", ["message"] = "URL_MISMATCH. Page was not changed.", ["current_url"] = actual };
+            var service = new PageCaptureService(browser, Paths.SharedFor(Config.SharedFolder),
+                new CaptureRecipeStore(Path.Combine(Paths.Notes, "recipes")));
+            return await service.CaptureAsync(mode, selector, regex, directory, maxMatches, ct);
+        }
+        catch (Exception ex) { return new JsonObject { ["status"] = "error", ["message"] = "Direct capture failed: " + ex.Message }; }
+        finally { browser.Detach(); }
+    }
+
     public async Task<string?> CaptureScreenshotAsync(string? taskKey, CancellationToken ct)
     {
         Browser.BrowserController? b = null;

@@ -1,3 +1,4 @@
+// SOURCE_MCP_CAPTURE_20261030
 // OpenFill - Metadata: wersja 0.21, data 2026-10-28 22:16
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -86,6 +87,22 @@ public sealed class McpTaskManager
     }
 
     // ------------------------------------------------------------------ public operations
+
+    /// <summary>Direct C# snapshot. Reuses a known task card and verifies both caller identity fields.</summary>
+    public async Task<JsonObject> PageSnapshotAsync(string? taskId, string? requester, string? chat,
+        string? expectedUrl, string? mode, string? selector, string? regex, string? directory, int maxMatches, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(taskId)) return Error("task_id is required for direct page capture.");
+        var who = CleanWho(requester);
+        var chatName = CleanWho(chat);
+        if (who is null || chatName is null) return Error("requester and chat are required.");
+        var rec = Find(taskId, out _);
+        if (rec is null) return Error("No such task.");
+        if (!string.Equals(rec.Requester, who + " · " + chatName, StringComparison.Ordinal))
+            return Error("Requester/chat identity does not match the owner of this task.");
+        return await _host.CapturePageAsync(rec.Id, expectedUrl, mode ?? "all",
+            selector ?? "body", regex ?? "", directory, Math.Clamp(maxMatches, 1, 500), ct);
+    }
 
     /// <summary>Screenshot of the browser tab of one task (the newest task's tab when no id is given). Returns the saved file name in "file".</summary>
     public async Task<JsonObject> ScreenshotAsync(string? taskId, CancellationToken ct)

@@ -1,3 +1,4 @@
+// SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.22, data 2026-10-29 23:14
 using System.Text;
 using System.Text.Json;
@@ -21,6 +22,8 @@ public sealed class ToolRegistry
     private readonly AppConfig _config;
     private readonly OutputLimiter _limiter;
     private readonly SiteNotesStore _notes;
+    private readonly CaptureRecipeStore _recipes;
+    private readonly PageCaptureService _capture;
     private readonly IUserInteraction _ui;
     private readonly GapRecorder _gaps;
 
@@ -60,7 +63,7 @@ public sealed class ToolRegistry
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(5));
             var url = await _browser.CurrentUrlAsync(cts.Token);
-            return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? _notes.ContextFor(uri.Host) : "";
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? _notes.ContextFor(uri.Host) + "\n" + _recipes.Context(uri.Host, uri.AbsolutePath) : "";
         }
         catch { return ""; }
     }
@@ -68,6 +71,8 @@ public sealed class ToolRegistry
         SiteNotesStore notes, IUserInteraction ui, GapRecorder gaps, CostGuard? costs = null, SharedFiles? files = null, IDomainGate? gate = null, Func<VerifiedAction, int>? verified = null)
     {
         _browser = browser; _log = log; _config = config; _limiter = limiter; _notes = notes; _ui = ui; _gaps = gaps; _costs = costs; _files = files; _gate = gate; _verified = verified;
+        _recipes = new CaptureRecipeStore(Path.Combine(notes.NotesDirectory, "recipes"));
+        _capture = new PageCaptureService(browser, files?.SharedDir ?? Path.GetTempPath(), _recipes);
     }
 
     private readonly IDomainGate? _gate;
@@ -157,6 +162,82 @@ public sealed class ToolRegistry
             Handler = async (args, ct) => ToolResult.Text((await whatsapp.SendAsync(
                 args["target"]?.GetValue<string>() ?? "",
                 args["message"]?.GetValue<string>() ?? "", ct))?.ToJsonString() ?? "{}")
+        });
+
+
+        // A single C# service: WebView2 DOM -> unfiltered source files -> deterministic filters -> compact model result.
+        tools.Add(new Tool
+        {
+            Name = "page_capture",
+            Description = "Preferred for full-page exports, DOM snapshots and large data. Captures currently loaded DOM to files with C# (never browser downloads), optionally filters text using regex; returns ONLY paths, sizes, hashes and a short preview. Can reuse last successful profile with use_best=true. For navigation use navigate first.",
+            Parameters = Schema(Obj(
+                ("mode", Str("text, elements, html, all; default all")),
+                ("selector", Str("CSS root selector; default body")),
+                ("regex", Str("Optional text pattern, regex, case-insensitive")),
+                ("output_folder", Str("Optional relative shared subdirectory or explicit Windows folder")),
+                ("max_matches", Obj(("type","integer"))),
+                ("use_best", Obj(("type","boolean"))))),
+            Handler = async (args, ct) =>
+            {
+                var mode = args["mode"]?.GetValue<string>() ?? "all";
+                var selector = args["selector"]?.GetValue<string>() ?? "body";
+                var regex = args["regex"]?.GetValue<string>() ?? "";
+                if (args["use_best"]?.GetValue<bool>() == true)
+                {
+                    var now = await _browser.CurrentUrlAsync(ct);
+                    if (Uri.TryCreate(now, UriKind.Absolute, out var uri))
+                    {
+                        var best = _recipes.Best(uri.Host, uri.AbsolutePath);
+                        if (best != null)
+                        {
+                            if (args["mode"] == null) mode = best.Mode;
+                            if (args["selector"] == null) selector = best.Selector;
+                            if (args["regex"] == null) regex = best.Pattern;
+                        }
+                    }
+                }
+                try
+                {
+                    var value = await _capture.CaptureAsync(mode, selector, regex, args["output_folder"]?.GetValue<string>(),
+                        args["max_matches"]?.GetValue<int>() ?? 50, ct);
+                    return ToolResult.Text(value.ToJsonString());
+                }
+                catch (Exception ex) { return ToolResult.Error("Page capture failed: " + ex.Message); }
+            }
+        });
+        tools.Add(new Tool
+        {
+            Name = "terminal_exec",
+            Description = "Run installed CLI tools on PBOX1 to filter or transform saved files. Supports powershell, python, rg, jq. Full stdout/stderr go to files; only status, exit code and previews reach Luna. Prefer this over writing JS for file analysis.",
+            Parameters = Schema(Obj(
+                ("shell", Str("powershell, python, rg, jq; default powershell")),
+                ("command", Str("PowerShell command, Python code or CLI argument string")),
+                ("cwd", Str("Optional absolute working directory")),
+                ("timeout_seconds", Obj(("type", "integer")))), "command"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var result = await TerminalProcessService.ExecuteAsync(
+                        args["shell"]?.GetValue<string>() ?? "powershell", args["command"]?.GetValue<string>() ?? "",
+                        args["cwd"]?.GetValue<string>(), Path.Combine(_files?.SharedDir ?? Path.GetTempPath(), "terminal"),
+                        args["timeout_seconds"]?.GetValue<int>() ?? 30, ct);
+                    return new ToolResult(result.ToJsonString(), result["status"]?.ToString() == "ok");
+                }
+                catch (Exception ex) { return ToolResult.Error("Terminal execution failed: " + ex.Message); }
+            }
+        });
+        tools.Add(new Tool
+        {
+            Name = "capture_recipes",
+            Description = "List previously verified capture modes, selectors and regex profiles for the current URL; no full DOM is returned.",
+            Parameters = Schema(Obj()),
+            Handler = async (args, ct) =>
+            {
+                var now = await _browser.CurrentUrlAsync(ct);
+                return ToolResult.Text(Uri.TryCreate(now, UriKind.Absolute, out var uri)
+                    ? _recipes.Context(uri.Host, uri.AbsolutePath, 8) : "(no current web host)");
+            }
         });
 
         tools.Add(new Tool
@@ -251,7 +332,7 @@ public sealed class ToolRegistry
                 {
                     var liveUrl = page.Raw["url"]?.GetValue<string>() ?? url;
                     if (Uri.TryCreate(liveUrl, UriKind.Absolute, out var uri))
-                        memory = _notes.ContextFor(uri.Host);
+                        memory = _notes.ContextFor(uri.Host) + "\n" + _recipes.Context(uri.Host, uri.AbsolutePath);
                 }
                 catch { }
 
@@ -386,11 +467,30 @@ public sealed class ToolRegistry
         {
             Name = "run_js",
             Description = "Runs a JavaScript expression in the page context and returns the result. Use it for unusual cases the other tools do not cover (your own element lookup, reading state, calling a page function). window.__openfill.resolve(id) is available.",
-            Parameters = Schema(Obj(("code", Str("JS expression, may be async/Promise"))), "code"),
+            Parameters = Schema(Obj(
+                ("code", Str("JS expression or statement body (use mode=statements for semicolon-separated statements)")),
+                ("mode", Str("expression (default) or statements")),
+                ("save_to", Str("Optional relative shared path or absolute Windows path: write full value directly to file"))), "code"),
             Handler = async (args, ct) =>
             {
                 var code = args["code"]?.GetValue<string>() ?? "";
+                var mode = args["mode"]?.GetValue<string>() ?? "expression";
+                if (mode == "statements") code = "(async()=>{ " + code + " })()";
+                else if (mode != "expression") return ToolResult.Error("run_js mode must be expression or statements.");
                 var res = await _browser.RunJsAsync(code, ct);
+                if (res?["ok"]?.GetValue<bool>() == false) return ToolResult.Error(res["error"]?.ToString() ?? "run_js failed");
+                var dest = args["save_to"]?.GetValue<string>();
+                if (!string.IsNullOrWhiteSpace(dest))
+                {
+                    var path = Path.IsPathFullyQualified(dest) ? Path.GetFullPath(dest) : SharedPath(dest, out _);
+                    if (path == null) return ToolResult.Error("Invalid save_to path.");
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    var value = res?["value"];
+                    var full = value is JsonValue jv && jv.TryGetValue<string>(out var str) ? str : value?.ToJsonString() ?? "null";
+                    await File.WriteAllTextAsync(path, full, new UTF8Encoding(false), ct);
+                    var size = new FileInfo(path).Length;
+                    return ToolResult.Text(new JsonObject { ["path"]=path, ["bytes"]=size, ["preview"]=full[..Math.Min(300,full.Length)] }.ToJsonString());
+                }
                 var (lim, _) = _limiter.Apply(res?.ToJsonString() ?? "null", "run_js");
                 return new ToolResult(lim, res?["ok"]?.GetValue<bool>() != false);
             }
@@ -574,6 +674,7 @@ public sealed class ToolRegistry
                 ("name", Str("file name or relative path in the shared folder, e.g. offers.csv")),
                 ("text", Str("the text to write")),
                 ("from_download", Str("name of a downloaded file to copy instead of giving text")),
+                ("from_overflow", Str("path returned by OutputLimiter for an oversized result")),
                 ("overwrite", Obj(("type", "boolean"), ("description", "replace an existing file (default: no)")))),
                 "name"),
             Handler = async (args, ct) =>
@@ -584,7 +685,9 @@ public sealed class ToolRegistry
                 if (string.Equals(path, Path.GetFullPath(_files!.SharedDir).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)) return ToolResult.Error("Give a file name.");
                 var text = args["text"]?.GetValue<string>();
                 var fromDl = args["from_download"]?.GetValue<string>();
-                if ((text is null) == string.IsNullOrWhiteSpace(fromDl)) return ToolResult.Error("Give exactly one of text or from_download.");
+                var fromOverflow = args["from_overflow"]?.GetValue<string>();
+                if ((text is not null ? 1 : 0) + (!string.IsNullOrWhiteSpace(fromDl) ? 1 : 0) + (!string.IsNullOrWhiteSpace(fromOverflow) ? 1 : 0) != 1)
+                    return ToolResult.Error("Give exactly one of text, from_download or from_overflow.");
                 if (File.Exists(path) && args["overwrite"]?.GetValue<bool>() != true) return ToolResult.Error("A file with this name already exists. Choose another name, or set overwrite=true to replace it.");
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 if (text is not null)
@@ -594,8 +697,15 @@ public sealed class ToolRegistry
                 }
                 else
                 {
-                    var src = Path.GetFullPath(Path.Combine(_files.DownloadsDir, Path.GetFileName(fromDl!)));
-                    if (!File.Exists(src)) return ToolResult.Error("There is no such file in the downloads folder.");
+                    var overflow = !string.IsNullOrWhiteSpace(fromOverflow);
+                    var src = overflow ? Path.GetFullPath(fromOverflow!) : Path.GetFullPath(Path.Combine(_files.DownloadsDir, Path.GetFileName(fromDl!)));
+                    if (overflow)
+                    {
+                        var root = Path.GetFullPath(_limiter.OverflowDirectory).TrimEnd(Path.DirectorySeparatorChar);
+                        if (!src.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                            return ToolResult.Error("from_overflow must point to the actual OutputLimiter overflow folder.");
+                    }
+                    if (!File.Exists(src)) return ToolResult.Error(overflow ? "There is no such overflow file." : "There is no such file in the downloads folder.");
                     File.Copy(src, path, true);
                 }
                 _log.Write("tool", "shared-save", $"Saved {name} in the shared folder", status: "ok");
