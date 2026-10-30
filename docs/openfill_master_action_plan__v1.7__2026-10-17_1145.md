@@ -485,3 +485,9 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - LIVE 1.57 PID 21012 bez zmian; smoke PASS, 0 FAIL.
 - Otwarte: LinkedIn authenticated real QA, human waiting upgrade, dluga retencja karty bez limitu.
 - Diagnostyka komunikacji MCP: preferowac pojedyncze, krotkie komendy zamiast wielu sklejonych w jedno wywolanie (ustalenie uzytkownika).
+
+## 2026-10-30: zakonczenie audytu retencji
+- Wielogodzinna retencja kart LIVE bez nowych taskow: ZROBIONE, 5 kart fizycznych utrzymywanych 4.88-5.87 h; 75 zdarzen tab_lifecycle, ostatnie 12:34 UTC. Raport: docs/OPENFILL_CONTINUATION_RETENTION_LINKEDIN_20261030.md.
+- LinkedIn authenticated QA: ROZPOCZETE, niezaliczone; pojedynczy submit danych z Firefox, nadal /login/. Przyczyna odmowy nieustalona. Nie ponawiac w ciemno.
+- Upgrade przy realnym waiting_for_user: nadal DO ZROBIENIA. Regresja fake HTTP/MCP juz PASS, nie powtarzac bez potrzeby.
+- STAGING aktualny hash Core C5BFC83FE579E2550EA1DA3D3717BC1C33362B0D57D87B20DAE963EABC43FBC8, LIVE 1.57 bez zmian.

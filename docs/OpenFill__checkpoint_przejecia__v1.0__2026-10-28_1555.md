@@ -419,3 +419,11 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - LIVE OpenFill 1.57 PID21012 niezmieniony. Finalny read-only smoke PASS, failed 0, MCP OK, active 0, JEV direct reachable. Brak restartu/wdrozen LIVE.
 - Otwarte nadal REAL-LINKEDIN-AUTHENTICATED-E2E w oddzielnej sesji QA; pierwotna przyczyna: brak uwierzytelnienia w QA, redirect /messaging/ -> /login/. Nie nadpisywac tego statusu jako PASS. Upgrade human-wait i wielogodzinna retencja bez presji limitu pozostaja osobno otwarte.
 - Networking Radar nietkniety. Bez git commit/push/reset.
+
+## 2026-10-30, dalszy odbior po przejeciu
+- Wlasciwy raport: docs/OPENFILL_CONTINUATION_RETENTION_LINKEDIN_20261030.md.
+- Glowny plan uzupelniony pojedynczym wywolaniem MCP. Unikac laczenia wielu komend w jedno polecenie.
+- RETENCJA WIELOGODZINNA PASS: 5 fizycznych kart LIVE utrzymuje sie 4.88-5.87 h, od 12:34 UTC brak zdarzen tab_lifecycle. Odczyt MCP open=5/limit=5, finished=5.
+- LINKEDIN QA PENDING: osobny WebView2 uzywajacy jednego zapisanego Firefox loginu; submit wykonany, strona pozostala /login/. Dokladny powod odmowy logowania nieustalony; nie powtarzac bez diagnostyki.
+- STAGING po koncowym republish SOURCE=STAGING SHA256 Core C5BFC83FE579E2550EA1DA3D3717BC1C33362B0D57D87B20DAE963EABC43FBC8.
+- LIVE 1.57 PID21012, release_smoke PASS, 0 FAIL. Produkcja i Networking Radar bez zmian.
