@@ -24,6 +24,11 @@ public static class JevOutputGuard
         Action<string>? log, CancellationToken ct)
     {
         if (inspector is null || !ShouldInspect(tool, result)) return result;
+        // A generated upgrade notice is trusted OpenFill status metadata, not page content.
+        // Inspect other interrupted results as usual unless they start with this exact notice.
+        if (result["status"]?.GetValue<string>() == "interrupted" &&
+            (result["summary"]?.GetValue<string>() ?? "").StartsWith(
+                McpTaskManager.UpgradeNotice, StringComparison.Ordinal)) return result;
         // Full task content (summary, question and options); preserve original JSON in response.
         // Assess complete content fields, not trusted MCP next_step metadata.
         string originalMessage = (result["summary"]?.GetValue<string>() ?? "") + "\n" +

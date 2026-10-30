@@ -448,6 +448,9 @@ public static class TabTests
             T.Eq("English Open URL", "linkedin.com", AppHost.InitialTaskDomain("Open https://www.linkedin.com/in/example"));
             T.Eq("Polish open URL", "linkedin.com", AppHost.InitialTaskDomain("Otworz https://www.linkedin.com/in/example"));
             T.Eq("Polish go to URL", "linkedin.com", AppHost.InitialTaskDomain("Przejdz do https://www.linkedin.com/mynetwork/"));
+            T.Eq("Polish Na URL", "whatsapp.com", AppHost.InitialTaskDomain("Na https://web.whatsapp.com/ odczytaj podglądy rozmów"));
+            T.Eq("English On URL", "whatsapp.com", AppHost.InitialTaskDomain("On https://web.whatsapp.com/ read sidebar"));
+            T.Eq("English At URL", "example.com", AppHost.InitialTaskDomain("At https://example.com/ count links"));
             T.Eq("legacy panel start URL", "linkedin.com", AppHost.InitialTaskDomain("Start from this page: https://www.linkedin.com/mynetwork/"));
             T.Check("URL merely to enter in a form does not lock the site", AppHost.InitialTaskDomain("Type https://linkedin.com into the website field") is null);
             T.Check("URL mentioned in task body is not automatically a browser target", AppHost.InitialTaskDomain("Send a note containing https://linkedin.com/in/example") is null);

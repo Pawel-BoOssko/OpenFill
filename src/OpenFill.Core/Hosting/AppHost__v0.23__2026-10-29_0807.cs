@@ -778,6 +778,10 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!match.Success)
             match = System.Text.RegularExpressions.Regex.Match(task,
+                @"^\s*(?:Na|On|At)\s+(https?://\S+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!match.Success)
+            match = System.Text.RegularExpressions.Regex.Match(task,
                 @"^\s*(?:(?:Na\s+(?:stronie|witrynie))|(?:On\s+(?:the\s+)?(?:page|site))|(?:(?:Otw[o\u00F3]rz|Przejd[z\u017A]\s+do|Wejd[z\u017A]\s+na|Open|Visit|Go\s+to)(?:\s+(?:stron\u0119|strone|page))?))\s+((?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/\?#]\S*)?)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (!match.Success) return null;
