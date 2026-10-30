@@ -20,6 +20,15 @@ public static class WhatsAppTests
             T.Eq("whatsapp.net phone JID maps to direct route","https://web.whatsapp.com/send?phone=48123456789",WhatsAppBrowser.DirectUrl("48123456789@s.whatsapp.net"));
             T.Check("name never triggers list search", WhatsAppBrowser.DirectUrl("Anna Test") is null);
             T.Check("opaque unsupported identifier not guessed", WhatsAppBrowser.DirectUrl("12345@g.us") is null);
+            var oldView = System.Text.Json.Nodes.JsonNode.Parse("""{"messages":[{"id":"a","text":"Earlier message","direction":"out"}]}""");
+            var newView = System.Text.Json.Nodes.JsonNode.Parse("""{"messages":[{"id":"a","text":"Earlier message","direction":"out"},{"id":"b","text":"Diagnostic test  sent 08:04","direction":"out"}]}""");
+            T.Check("new outgoing bubble is confirmed by text and identity", WhatsAppBrowser.HasNewOutgoingMessage(oldView,newView,"Diagnostic test sent"));
+            T.Check("previous bubble never confirms a new send", !WhatsAppBrowser.HasNewOutgoingMessage(oldView,oldView,"Earlier message"));
+            T.Check("missing bubble never confirms a send", !WhatsAppBrowser.HasNewOutgoingMessage(oldView,newView,"Unseen message"));
+            var sameTextOld = System.Text.Json.Nodes.JsonNode.Parse("""{"messages":[{"id":"a","text":"Repeated test","direction":"out"}]}""");
+            var sameTextNew = System.Text.Json.Nodes.JsonNode.Parse("""{"messages":[{"id":"b","text":"Repeated test","direction":"out"}]}""");
+            T.Check("new identity confirms identical repeat in virtualized list", WhatsAppBrowser.HasNewOutgoingMessage(sameTextOld,sameTextNew,"Repeated test"));
+            T.Check("same identity does not falsely confirm repeat", !WhatsAppBrowser.HasNewOutgoingMessage(sameTextOld,sameTextOld,"Repeated test"));
             using var site=new StaticSite(siteDir);
             using var chromium=new ChromiumLauncher();
             var ws=await chromium.LaunchAsync(Path.Combine(Path.GetTempPath(),"openfill_wa_test_"+Guid.NewGuid().ToString("N")[..6]),headless:true);

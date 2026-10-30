@@ -64,7 +64,7 @@ public sealed class WhatsAppBrowser
    if(!text&&!labels.length) continue;
    const sig=id||text+'|'+labels.join('|');
    if(used.has(sig)) continue;used.add(sig);
-   messages.push({text,attributes:labels,direction:node.classList.contains('message-out')?'out':node.classList.contains('message-in')?'in':'unknown'});
+   messages.push({id,text,attributes:labels,direction:node.classList.contains('message-out')?'out':node.classList.contains('message-in')?'in':'unknown'});
  }
  const editor=main?.querySelector('[contenteditable="true"][data-tab],[contenteditable="true"][role="textbox"]');
  return {
@@ -170,13 +170,60 @@ public sealed class WhatsAppBrowser
     public async Task<JsonNode?> ReadAllPreviewsAsync(CancellationToken ct) =>
         await EvaluateAsync(ScrollScript,ct);
 
+    // WhatsApp's direct phone route resolves asynchronously after browser navigation.
+    private async Task<JsonNode?> WaitForConversationAsync(CancellationToken ct, int maxWaitMs = 12000)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? view;
+        do
+        {
+            view = await ReadVisibleAsync(ct);
+            if (view?["conversation_open"]?.GetValue<bool>() == true &&
+                view?["composer_visible"]?.GetValue<bool>() == true) return view;
+            var remaining = maxWaitMs - (int)clock.ElapsedMilliseconds;
+            if (remaining <= 0) return view;
+            await Task.Delay(Math.Min(400, remaining), ct);
+        }
+        while (true);
+    }
+
     public async Task<JsonNode?> OpenAsync(string target, CancellationToken ct)
     {
         var url=DirectUrl(target);
         if(url is null)return new JsonObject{["ok"]=false,["error"]="unsupported_identifier_for_direct_open"};
         await _browser.NavigateAsync(url,ct);
-        var visible=await ReadVisibleAsync(ct);
-        return new JsonObject{["ok"]=true,["method"]="direct_whatsapp_phone_route",["view"]=visible?.DeepClone()};
+        var visible=await WaitForConversationAsync(ct);
+        var ready = visible?["conversation_open"]?.GetValue<bool>() == true &&
+                    visible?["composer_visible"]?.GetValue<bool>() == true;
+        return new JsonObject{["ok"]=ready,["method"]="direct_whatsapp_phone_route",
+            ["error"]=ready?null:"conversation_not_ready_after_navigation",["view"]=visible?.DeepClone()};
+    }
+
+    // Only a newly visible outgoing message with the requested exact text confirms the UI send.
+    // Comparison uses DOM message identity (when available), not the total count of virtualized bubbles.
+    public static bool HasNewOutgoingMessage(JsonNode? before, JsonNode? after, string message)
+    {
+        static string Clean(string s) => string.Join(" ", s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        static List<string> Matches(JsonNode? view, string needle)
+        {
+            var found = new List<string>();
+            if (view?["messages"] is not JsonArray messages) return found;
+            foreach (var node in messages)
+            {
+                if (node?["direction"]?.GetValue<string>() != "out") continue;
+                var text = Clean(node?["text"]?.GetValue<string>() ?? "");
+                if (text.Contains(needle, StringComparison.Ordinal))
+                    found.Add(node?["id"]?.GetValue<string>() ?? "");
+            }
+            return found;
+        }
+        var needle = Clean(message);
+        if (needle.Length == 0) return false;
+        var oldMatches = Matches(before, needle);
+        var newMatches = Matches(after, needle);
+        if (newMatches.Count == 0) return false;
+        if (newMatches.Count > oldMatches.Count) return true;
+        return newMatches.Any(id => id.Length > 0 && !oldMatches.Contains(id));
     }
 
     public async Task<JsonNode?> SendAsync(string target,string message,CancellationToken ct)
@@ -185,26 +232,28 @@ public sealed class WhatsAppBrowser
         var url=DirectUrl(target);
         if (url is null) return new JsonObject{["status"]="error",["error"]="unsupported_identifier_for_direct_open"};
         await _browser.NavigateAsync(url,ct);
-        JsonNode? focus=null;
-        for(int i=0;i<12;i++){
-            focus=await EvaluateAsync(FocusEditorScript,ct);
-            if(focus is JsonValue v && v.TryGetValue<bool>(out var ready)&&ready)break;
-            await Task.Delay(300,ct);
-        }
-        if(focus is not JsonValue f || !f.TryGetValue<bool>(out var focused)||!focused)
+        var before = await WaitForConversationAsync(ct);
+        if (before?["conversation_open"]?.GetValue<bool>() != true ||
+            before?["composer_visible"]?.GetValue<bool>() != true)
+            return new JsonObject{["status"]="error",["error"]="conversation_not_ready_for_send"};
+        var focus = await EvaluateAsync(FocusEditorScript,ct);
+        if (focus is not JsonValue f || !f.TryGetValue<bool>(out var focused)||!focused)
             return new JsonObject{["status"]="error",["error"]="composer_not_available"};
-        var before=await EvaluateAsync(OutgoingScript,ct);
-        var previous=before?["count"]?.GetValue<int>()??0;
         await _browser.InsertTextAsync(message,ct);
         var sent=await _browser.PressKeyAsync("Enter",ct);
         if(sent?["ok"]?.GetValue<bool>()!=true)
             return new JsonObject{["status"]="error",["error"]="send_key_failed"};
-        await Task.Delay(550,ct);
-        var after=await EvaluateAsync(OutgoingScript,ct);
-        var visible=await ReadVisibleAsync(ct);
-        var next=after?["count"]?.GetValue<int>()??0;
-        var last=after?["last"]?.GetValue<string>()??"";
-        var matched=next>previous&&last.Contains(message,StringComparison.Ordinal);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? visible;
+        bool matched;
+        do
+        {
+            visible = await ReadVisibleAsync(ct);
+            matched = HasNewOutgoingMessage(before, visible, message);
+            if (matched || clock.ElapsedMilliseconds >= 9000) break;
+            await Task.Delay(350,ct);
+        }
+        while (true);
         return new JsonObject
         {
             ["status"]=matched?"sent_ui":"unconfirmed",
