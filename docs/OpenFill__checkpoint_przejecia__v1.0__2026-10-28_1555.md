@@ -355,3 +355,12 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Wdrożenie 10:41 EAT PBOX1: instalator v0.14 exit0, OpenFill PID21012; release_smoke PASS, MCP OK.
 - LIVE E2E: 3 zadania odczytowe WhatsApp OF-20261030-1042-cfa6, OF-20261030-1043-2744, OF-20261030-1043-eae8 w tym samym czacie i domenie zakończone done/success i użyły dokładnie tab_id ta8d07117. Log tab_lifecycle potwierdza reason=latest_same_chat_domain i retain_finished keep_until_limit_or_manual_close. Bez wysyłania wiadomości.
 - Networking Radar poza zakresem. Bez git commit/push/reset. Pozostawić zdrowy LIVE, ewentualną przyszłą utratę fizycznej karty analizować z logów tab_lifecycle, nie wykonywać kolejnych przypadkowych testów.
+
+
+## 2026-10-30: przejęcie po awarii interfejsu
+- Szczegółowy audyt i aktualne wyniki: docs/OPENFILL_RECOVERY_AUDIT_20261030.md.
+- LIVE na PBOX1: PID 21012 od 10:41:55 EAT, release_smoke v0.3: PASS, exit 0, MCP działa, zero aktywnych zadań, JEV direct osiągalny.
+- Najnowszy odbiór: 1369 PASS / 0 FAIL; trzy zadania WhatsApp 10:42-10:43 korzystały z karty ta8d07117.
+- Audyt 156 próbek telemetrii z 78 minut: 1 karta, WorkingSet średnio 463,889 MB i trend spadkowy, PrivateBytes po rozgrzaniu około 870 MB; nadal otwarte wielogodzinne testy.
+- Wykryto niezależne problemy sieci: wifi_flaps i błędy WhatsApp ERR_NAME_NOT_RESOLVED oraz ERR_TIMED_OUT. Przyczyna warstwy sieciowej nieustalona.
+- Bez modyfikacji LIVE i konfiguracji sieci; Networking Radar poza zakresem. Nie wykonywano git commit/push/reset.
