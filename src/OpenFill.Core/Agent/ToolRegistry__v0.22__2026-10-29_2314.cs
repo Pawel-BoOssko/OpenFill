@@ -1,4 +1,4 @@
-// SOURCE_CAPTURE_PATCH_20261030
+﻿// SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.22, data 2026-10-29 23:14
 using System.Text;
 using System.Text.Json;
@@ -208,7 +208,7 @@ public sealed class ToolRegistry
         tools.Add(new Tool
         {
             Name = "terminal_exec",
-            Description = "Run installed CLI tools on PBOX1 to filter or transform saved files. Supports powershell, python, rg, jq. Full stdout/stderr go to files; only status, exit code and previews reach Luna. Prefer this over writing JS for file analysis.",
+            Description = "Run installed CLI tools on PBOX1 to filter or transform saved files. Supports powershell, python, bash, grep, sed, awk, rg, jq. Full stdout/stderr go to files; only status, exit code and previews reach Luna. Prefer this over writing JS for file analysis.",
             Parameters = Schema(Obj(
                 ("shell", Str("powershell, python, rg, jq; default powershell")),
                 ("command", Str("PowerShell command, Python code or CLI argument string")),
@@ -908,3 +908,4 @@ public sealed record RunConclusion(string Status, string Summary, string? SiteKn
 
 /// <summary>Where files are exchanged with the calling model (the shared folder) and where the browser saves downloads.</summary>
 public sealed record SharedFiles(string SharedDir, string DownloadsDir);
+

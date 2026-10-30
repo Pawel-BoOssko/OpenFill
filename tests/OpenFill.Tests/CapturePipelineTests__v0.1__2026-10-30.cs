@@ -1,4 +1,4 @@
-// SOURCE capture-filter-recipe-terminal tests, 2026-10-30
+﻿// SOURCE capture-filter-recipe-terminal tests, 2026-10-30
 using System.Text.Json.Nodes;
 using OpenFill.Cli;
 using OpenFill.Core.Agent;
@@ -102,6 +102,10 @@ public static class CapturePipelineTests
                 T.Contains("stderr accessible", File.ReadAllText(bad["stderr_path"]!.ToString()), "expected-diagnostic");
                 var py = await TerminalProcessService.ExecuteAsync("python", "print('python-ok')", null, dir, 15);
                 T.Contains("python CLI works", py["stdout_preview"]!.ToString(), "python-ok");
+                var bash = await TerminalProcessService.ExecuteAsync("bash", "printf 'alpha\\nbeta\\n' | grep beta", null, dir, 15);
+                T.Eq("Git Bash pipeline exit 0", 0, bash["exit_code"]!.GetValue<int>());
+                T.Contains("GNU grep via Git Bash", bash["stdout_preview"]!.ToString(), "beta");
+                T.Eq("stdout truncation is explicitly reported", false, bash["stdout_truncated"]!.GetValue<bool>());
             }
             finally { try { Directory.Delete(dir, true); } catch { } }
         });
@@ -164,4 +168,5 @@ public static class CapturePipelineTests
         });
     }
 }
+
 

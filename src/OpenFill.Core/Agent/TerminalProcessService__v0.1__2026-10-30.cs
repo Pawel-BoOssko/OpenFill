@@ -15,9 +15,13 @@ public static class TerminalProcessService
         var executable = shell switch {
             "powershell" => "powershell.exe",
             "python" => "python.exe",
+            "bash" => @"C:\Program Files\Git\bin\bash.exe",
+            "grep" => @"C:\Program Files\Git\usr\bin\grep.exe",
+            "sed" => @"C:\Program Files\Git\usr\bin\sed.exe",
+            "awk" => @"C:\Program Files\Git\usr\bin\awk.exe",
             "rg" => "rg.exe",
             "jq" => "jq.exe",
-            _ => throw new ArgumentException("Unsupported shell. Use powershell/python/rg/jq.")
+            _ => throw new ArgumentException("Unsupported shell. Use powershell/python/bash/grep/sed/awk/rg/jq.")
         };
         timeoutSeconds = Math.Clamp(timeoutSeconds, 1, 120);
         Directory.CreateDirectory(outputDirectory);
@@ -33,6 +37,8 @@ public static class TerminalProcessService
             psi.ArgumentList.Add("-NoProfile"); psi.ArgumentList.Add("-NonInteractive"); psi.ArgumentList.Add("-Command"); psi.ArgumentList.Add(command);
         } else if (shell == "python") {
             psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(command);
+        } else if (shell == "bash") {
+            psi.ArgumentList.Add("-lc"); psi.ArgumentList.Add(command);
         } else {
             // Native CLI arguments are handled as a complete command-line fragment.
             psi.Arguments = command;
@@ -60,6 +66,7 @@ public static class TerminalProcessService
         var result = new JsonObject {
             ["status"] = timedOut ? "timeout" : proc.ExitCode == 0 ? "ok" : "error",
             ["exit_code"] = proc.ExitCode, ["timeout"] = timedOut,
+            ["stdout_truncated"] = outTask.Result, ["stderr_truncated"] = errTask.Result,
             ["stdout_path"] = outFile, ["stdout_bytes"] = new FileInfo(outFile).Length,
             ["stderr_path"] = errFile, ["stderr_bytes"] = new FileInfo(errFile).Length,
             ["stdout_preview"] = stdout.Length > 400 ? stdout[..400] : stdout,
@@ -77,22 +84,26 @@ public static class TerminalProcessService
         return new string(head, 0, count);
     }
 
-    private static async Task CopyStreamAsync(StreamReader reader, string path)
+    private static async Task<bool> CopyStreamAsync(StreamReader reader, string path)
     {
         await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read, 32768, useAsync:true);
         using var writer = new StreamWriter(output, new UTF8Encoding(false));
         var chars = new char[16384];
         int count;
+        bool truncated = false;
         long written = 0;
         const long maxChars = 16_000_000;
         while ((count = await reader.ReadAsync(chars)) > 0)
         {
             var keep = (int)Math.Min(count, Math.Max(0, maxChars - written));
             if (keep > 0) await writer.WriteAsync(chars.AsMemory(0, keep));
+            if (keep < count) truncated = true;
             written += count;
         }
         await writer.FlushAsync();
+        return truncated;
     }
 }
+
 
 

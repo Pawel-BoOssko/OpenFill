@@ -376,3 +376,14 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - Oddzielny test QA OpenFill --instance qa_upgrade_20261030 faktycznie uruchomiony na PID28256, porcie 48742; próba QA RPC została odrzucona dokładnym komunikatem "This tool call was blocked by OpenAI's safety checks. Please double check what you are sending." Nie uzyskano QA MCP response. QA graceful closed, fixture stopped, QA folder usunięty, stable nietknięte.
 - Pozostaje do rzeczywistego odbioru: human waiting_on_user podczas faktycznego QA/LIVE upgrade (test HTML/MCP uruchomiony tylko na fake host); oddzielna wielogodzinna retencja tej samej karty bez presji limitu. Nie deklarować pełnej realizacji obu.
 - Networking Radar wyłączony. Bez ręcznych Git commit/push/reset.
+
+## 2026-10-30: nowa architektura odczytu i filtracji, wyłącznie SOURCE/STAGING
+- Ustalenia użytkownika: Widok -> plik -> filtr -> Luna; PageCaptureService jako podstawowy mechanizm; CLI PowerShell/Python/Git Bash zamiast przepisywania grep; trwałe per-site receptury; unikanie pętli i dużego kontekstu. Produkcję wolno wdrożyć dopiero po rzeczywistych testach.
+- Dokument: docs/OPENFILL_SOURCE_FILTER_CAPTURE_ARCHITECTURE_20261030.md.
+- Raport faktycznej implementacji i testów: docs/OPENFILL_CAPTURE_FILTER_STAGING_ACCEPTANCE_20261030.md.
+- SOURCE: PageCaptureService, CaptureRecipeStore, TerminalProcessService, FailedCallGuard, BrowserNotificationBus; modyfikacje ToolRegistry, AgentRunner, BrowserController, SiteNotesStore, OutputLimiter, MainForm; bezpośredni openfill_page_snapshot przez MCP z kontrolą task_id/requester/chat/URL. Pliki źródłowe mają backup w backups/source_capture_20261030.
+- Final full SOURCE regression: 1441 PASS, 0 FAIL, exit 0; docs/SOURCE_CAPTURE_RELEASE_CANDIDATE_FULL_20261030.log. Latest quick 111 PASS / 0 FAIL.
+- Publikacja do backups/STAGING_CAPTURE_CANDIDATE_20261030: exit 0; OpenFill.Core.dll SHA256 FF17D148F44056C6B56BFA9C2A2A79C04EFE52615A10B971609E64E223115EA0; OpenFill.dll SHA256 E61E1A35AAF2B28A3153FE9A615B1039ABE6F065C4C31289C428DF1373371F1E; matching SOURCE built outputs.
+- Staging app QA physical process PID 940 launched in separate Windows session/profile and closed cleanly. QA data removed after test. LIVE PBOX1 PID 21012 unchanged throughout; no production file changes or production restarts.
+- PENDING PRE-LIVE: actual WebView2 MultipleAutomaticDownloads flow, real LinkedIn three-file export on authenticated staging tab, direct MCP against physical staging task tab. Current capture recipe ranking counts successful technical snapshots only, not end-to-end task outcome; report documents this limitation.
+- Wersja gotowa do następnego etapu odbioru STAGING, NIE gotowa do automatycznego wdrożenia LIVE. Networking Radar wyłączony. Bez git commit/push/reset.
