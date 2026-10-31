@@ -1,3 +1,4 @@
+// SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.2, data 2026-10-05 12:00
 using System.Text;
 
@@ -10,6 +11,7 @@ namespace OpenFill.Core.Logging;
 public sealed class OutputLimiter
 {
     private readonly string _overflowDir;
+    public string OverflowDirectory => _overflowDir;
     private readonly int _limit;
 
     public OutputLimiter(string overflowDir, int limit)

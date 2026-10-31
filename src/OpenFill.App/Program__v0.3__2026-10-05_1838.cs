@@ -1,6 +1,7 @@
 ﻿// OpenFill - Metadata: wersja 0.3, data 2026-10-05 18:38
 using System.Windows.Forms;
 using OpenFill.Core.Config;
+using OpenFill.Core.Agent;
 
 namespace OpenFill.App;
 
@@ -36,6 +37,7 @@ public static class Program
 
         var paths = new AppPaths(instance);
         paths.EnsureCreated();
+        PublicSuffixResolver.EnableAutoRefresh(paths.Runtime);
         var config = AppConfig.Load(paths.ConfigFile);
         if (!File.Exists(paths.ConfigFile)) config.Save(paths.ConfigFile); // a visible settings file with the defaults
         var secrets = new SecretStore(paths.SecretFile, new DpapiSecretProtector());

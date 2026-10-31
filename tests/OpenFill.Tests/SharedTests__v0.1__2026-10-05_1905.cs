@@ -1,4 +1,4 @@
-// OpenFill - Metadata: wersja 0.1, data 2026-10-05 19:05
+﻿// OpenFill - Metadata: wersja 0.1, data 2026-10-05 19:05
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Browser;
@@ -69,6 +69,34 @@ public static class SharedTests
             T.Contains("list shows the subfolder file", Out(model, "c8"), "cv-copy.txt");
             T.Contains("read outside refused", Out(model, "c9"), "outside the shared folder");
             T.Contains("text or download required", Out(model, "c10"), "exactly one");
+            // SHARED_OVERFLOW_REPEAT_TEST_20261030
+            var smallLimiter = new OutputLimiter(paths.Overflow, 80);
+            var (limited, overflowPath) = smallLimiter.Apply(new string('Q', 2500), "qa_run_js");
+            T.Check("overflow file created", overflowPath != null && File.Exists(overflowPath));
+            var saver = registry.Build().Single(t => t.Name == "shared_save");
+            var restored = await saver.Handler(new JsonObject {
+                ["name"] = "overflow_copied.txt", ["from_overflow"] = overflowPath
+            }, CancellationToken.None);
+            T.Check("from_overflow saved", restored.Ok);
+            T.Eq("from_overflow data identical", 2500, File.ReadAllText(Path.Combine(shared,"overflow_copied.txt")).Length);
+            var rejected = await saver.Handler(new JsonObject {
+                ["name"] = "not_allowed.txt", ["from_overflow"] = Path.Combine(downloads,"cv.txt")
+            }, CancellationToken.None);
+            T.Check("from_overflow path outside correct folder refused", !rejected.Ok);
+            var loopModel = new ScriptedModel(
+                Resp(
+                    Call("a", "shared_save", new JsonObject { ["name"]="ghost.txt", ["from_download"]="does-not-exist.txt" }),
+                    Call("b", "shared_save", new JsonObject { ["name"]="ghost.txt", ["from_download"]="does-not-exist.txt" }),
+                    Call("c", "shared_save", new JsonObject { ["name"]="ghost.txt", ["from_download"]="does-not-exist.txt" })
+                ),
+                Resp(Call("d", "finish", new JsonObject { ["status"]="partial", ["summary"]="blocked" }))
+            );
+            var loopRegistry = new ToolRegistry(browser,log,config,new OutputLimiter(paths.Overflow,1000),
+                new SiteNotesStore(paths.Notes,log),new HeadlessInteraction(),new GapRecorder(paths.GapsFile,log),
+                files:new SharedFiles(shared,downloads));
+            await new AgentRunner(loopModel,loopRegistry,config,log).RunAsync("test duplicate file failure");
+            T.Contains("third identical tool error refused inside agent", Out(loopModel,"cc"), "BLOCKED_REPEAT");
         });
     }
 }
+

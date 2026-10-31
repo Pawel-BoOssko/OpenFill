@@ -10,11 +10,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenFill.Core", "src\OpenFi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenFill.Cli", "src\OpenFill.Cli\OpenFill.Cli__v0.1__2026-10-04_1911.csproj", "{14F03EF8-8593-414D-94BA-3A1843EA1BA6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenFill.App", "src\OpenFill.App\OpenFill.App__v0.2__2026-10-05_1515.csproj", "{ACA57120-BA68-45F0-B549-9BF824DEF0CB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenFill.App", "src\OpenFill.App\OpenFill.App__v0.3__2026-10-12_2034.csproj", "{ACA57120-BA68-45F0-B549-9BF824DEF0CB}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenFill.Tests", "tests\OpenFill.Tests\OpenFill.Tests__v0.1__2026-10-04_1911.csproj", "{56F24F0E-B063-4634-A35C-8E1C5E76F02A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenFill.Tests", "tests\OpenFill.Tests\OpenFill.Tests__v0.3__2026-10-14_2259.csproj", "{56F24F0E-B063-4634-A35C-8E1C5E76F02A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -1,0 +1,13 @@
+{
+  "model": "typesafe/jev-1.13",
+  "questions": {
+    "client_meddling": {
+      "type": "choice",
+      "instructions": "The state has one field, polecenie: the full text of a task that a client chat sends to OpenFill, a browser agent (Polish or English). OpenFill does all of this by itself: logs in, enters passwords and codes, solves CAPTCHA, handles 2FA and verification, waits for the user when needed, avoids duplicates, double-checks numbers and accounts, handles obstacles and stops when it cannot continue. The client chat should only say what to achieve, where (site, account, login data, sign-in method), the data to use, optionally how to achieve it (knowledge the client has about the site), how to confirm the result, and what to return. Answer yes if the polecenie contains ANY of these: (1) safety or caution restrictions not needed to do the task, for example no payments, no account changes, do not open Gmail or other services, do not use OAuth or import, do not buy, do not guess data, change nothing else, only this and nothing more; (2) prohibitions that repeat or guard the goal, for example schedule it plus do not publish now or never click Publish now, read only plus do not send, do not reply, do not click anything, do not mark as read, do not modify; (3) instructions how to handle passwords, codes, CAPTCHA, 2FA, verification, login problems or waiting for the user; (4) instructions what to do when something goes wrong or is uncertain, for example if you cannot verify it do not do it and describe the obstacle, stop before something, abort if something; (5) precautions OpenFill takes anyway, for example do not create a duplicate account, do not send a duplicate, make sure the number or account is correct before acting. Answer no if the polecenie contains only: the goal; the words read only without a list of forbidden actions; site, account, login, password, code or sign-in method; data; how to achieve the goal using knowledge about the site (which page or tool to use, which field, which time zone a form uses); how to confirm the result (for example after saving open the list of scheduled posts and confirm the entry); what to return.",
+      "criteria": {
+        "yes": "The polecenie contains a safety or caution restriction, a prohibition guarding the goal, instructions for handling login or verification, instructions for failures or uncertainty, or a precaution that OpenFill takes by itself.",
+        "no": "The polecenie contains only the goal, the place, account and login data, data, how to achieve it, how to confirm the result and what to return."
+      }
+    }
+  }
+}
