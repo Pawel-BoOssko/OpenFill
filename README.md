@@ -200,6 +200,10 @@ The model has no terminal and attaches only files whose path you gave it, or tha
 - Run OpenFill on a separate always-on machine.
 - A stable tunnel on your own domain.
 
+## Built with AI assistance
+
+This project was written with AI coding assistants and directed, tested and accepted by its author, who owns the design and the acceptance criteria.
+
 ## License
 
 MIT. See the LICENSE file.
