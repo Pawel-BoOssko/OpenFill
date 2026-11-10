@@ -23,6 +23,25 @@ public sealed class TaskRun
     public BrowserController Browser { get; }
     public RunMeter Meter { get; } = new();
 
+    // A18: connect usage metrics to the real cross-task conversation chain.
+    // The task ID and parent ID are stable; chronological proximity is not.
+    private string? _usageTaskKey;
+    private string? _usageParentTaskKey;
+    private string? _usageWho;
+    private string? _businessGoalId;
+    private string? _businessGoalText;
+    private Func<string?>? _stopReasonAccessor;
+    public void SetStopReasonAccessor(Func<string?> accessor) => _stopReasonAccessor = accessor;
+    public void SetUsageScope(string taskKey, string? parentTaskKey, string? who,
+        string? businessGoalId = null, string? businessGoalText = null)
+    {
+        _usageTaskKey = taskKey;
+        _usageParentTaskKey = parentTaskKey;
+        _usageWho = who;
+        _businessGoalId = businessGoalId;
+        _businessGoalText = businessGoalText;
+    }
+
     /// <summary>The run id of this task's log files (known from <see cref="Begin"/> on).</summary>
     public string? RunId => Log.CurrentRunId;
 
@@ -38,11 +57,26 @@ public sealed class TaskRun
     public void Detach() => Browser.Detach();
 
     /// <summary>Runs the task: the model loop until it finishes, is stopped or hits a limit.</summary>
-    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Func<VerifiedAction, int>? verified = null)
+    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Func<VerifiedAction, int>? verified = null, string? executionMode = null)
     {
         var runId = Begin();
         Log.Write("session", "start", "New task", new { runId, preview = OutputLimiter.Head(task, 200) });
+        BusinessGoalMeter? goalMeter = null;
+        try
+        {
+            goalMeter = new BusinessGoalMeter(Log, _businessGoalId ?? _usageTaskKey ?? runId,
+                _usageTaskKey ?? runId, _usageParentTaskKey, _businessGoalText ?? task);
+            goalMeter.Start(runId, _businessGoalText ?? task);
+        }
+        catch (Exception ex)
+        {
+            Log.Write("business_goal", "meter_error", ex.GetType().Name, status: "warn");
+        }
         AgentRunner? runner = null;
+        // E03: attach the actual task verdict to its final usage record.
+        // Tool errors alone never imply an externally verified failed effect.
+        string finalOutcome = "failed";
+        string? finalStopReason = null;
         var config = _s.Config;
         var paths = _s.Paths;
         try
@@ -50,10 +84,29 @@ public sealed class TaskRun
             var notes = new SiteNotesStore(paths.Notes, Log);
             var gaps = new GapRecorder(paths.GapsFile, Log);
             var limiter = new OutputLimiter(paths.Overflow, config.ToolOutputLimitChars);
+            Func<VerifiedAction, int>? trackedVerification = verified is null ? null : action =>
+            {
+                var total = verified(action);
+                try { goalMeter?.RecordVerified(action); }
+                catch (Exception ex) { Log.Write("business_goal", "effect_error", ex.GetType().Name, status: "warn"); }
+                return total;
+            };
             var registry = new ToolRegistry(Browser, Log, config, limiter, notes, _ui, gaps, _s.Costs,
-                new SharedFiles(paths.SharedFor(config.SharedFolder), paths.Downloads), _gate, verified);
+                new SharedFiles(paths.SharedFor(config.SharedFolder), paths.Downloads), _gate, trackedVerification);
             runner = new AgentRunner(_model, registry, config, Log, _s.Costs, Meter, _gate);
-            var conclusion = await runner.RunAsync(task, ct);
+            runner.ToolResultObserver = (name, ok, output) => goalMeter?.RecordToolResult(name, ok, output);
+            var conclusion = executionMode == "local_plan_v1_draft"
+                ? await runner.RunPlannedDraftAsync(task,
+                    new LocalPlanCdpBrowser(Browser.LocalPlanSession),
+                    _usageTaskKey ?? runId, runId, ct)
+                : await runner.RunAsync(task, ct);
+            finalOutcome = conclusion.Status;
+            finalStopReason = conclusion.FinishReason
+                ?? (conclusion.Status == "success" ? "model_finish"
+                    : conclusion.Status == "partial" ? "model_partial"
+                    : conclusion.Status == "blocked" ? "model_blocked" : "model_non_success");
+            try { goalMeter?.ReportAgentConclusion(conclusion.Summary, conclusion.Status); }
+            catch (Exception ex) { Log.Write("business_goal", "summary_error", ex.GetType().Name, status: "warn"); }
             registry.RecordCaptureTaskOutcome(conclusion.Status);
 
             string host = "";
@@ -61,26 +114,71 @@ public sealed class TaskRun
             if (!string.IsNullOrEmpty(host))
                 notes.RecordOutcome(host, conclusion.Status == "success", conclusion.SiteKnowledge);
 
-            Log.Write("session", "end", $"Finished: {conclusion.Status}", new { conclusion.Status, conclusion.Summary },
+            Log.Write("session", "end", $"Finished: {conclusion.Status}",
+                new { conclusion.Status, conclusion.Summary, stopReason = finalStopReason },
                 status: conclusion.Status == "success" ? "ok" : conclusion.Status == "failed" ? "error" : "warn");
             return conclusion;
         }
         catch (OperationCanceledException)
         {
-            Log.Write("session", "cancel", "Task stopped / timed out", status: "error");
-            return new RunConclusion("failed", "The task was stopped or exceeded the time limit.", null);
+            finalStopReason = _stopReasonAccessor?.Invoke()
+                ?? (ct.IsCancellationRequested ? "external_cancel_unknown" : "timeout");
+            finalOutcome = finalStopReason switch
+            {
+                "user_stop" => "stopped",
+                "requester_cancel" => "cancelled",
+                "upgrade_interrupted" => "interrupted",
+                _ => "failed"
+            };
+            Log.Write("session", "cancel", "Task cancelled or timed out",
+                new { stopReason = finalStopReason, taskKey = _usageTaskKey },
+                status: finalStopReason == "timeout" ? "error" : "warn");
+            return new RunConclusion(finalOutcome, "Task ended: " + finalStopReason + ".", null);
+        }
+        catch (Exception ex)
+        {
+            // Distinguish a model transport exception from an application exception.
+            // Do not change propagation: AppHost remains responsible for the user result.
+            finalOutcome = "failed";
+            finalStopReason = ex is ModelException ? "model_exception" : "runtime_exception";
+            Log.Write("session", "exception", "Task failed with an exception",
+                new { taskKey = _usageTaskKey, stopReason = finalStopReason,
+                      exceptionType = ex.GetType().Name, error = ex.Message },
+                status: "error");
+            throw;
         }
         finally
         {
-            if (runner is { Usage.Calls: > 0 })
+            // Always emit a task verdict, including 0-call results and early failures.
+            if (runner is not null)
             {
                 var u = runner.Usage;
                 var cost = u.CostUsd is { } c ? $", ~${c:0.####}" : "";
+                try { goalMeter?.Finish(runId, finalOutcome, finalStopReason, u); }
+                catch (Exception ex) { Log.Write("business_goal", "finish_error", ex.GetType().Name, status: "warn"); }
                 Log.WriteUsage(new
                 {
                     ts = DateTime.UtcNow,
                     runId,
+                    taskKey = _usageTaskKey,
+                    continuedFrom = _usageParentTaskKey,
+                    requesterChat = _usageWho,
                     kind = "task",
+                    businessGoalId = goalMeter?.GoalId,
+                    goalType = goalMeter?.Spec.Category,
+                    requestedUnits = goalMeter?.Spec.RequestedUnits,
+                    outcome = finalOutcome,
+                    stopReason = finalStopReason,
+                    toolCalls = runner.ToolCalls,
+                    toolErrors = runner.ToolErrors,
+                    toolElapsedMs = runner.ToolElapsedMs,
+                    pageReadRequests = runner.PageReadRequests,
+                    repeatedPageReadRequests = runner.RepeatedPageReadRequests,
+                    maxReadStreak = runner.MaxReadStreak,
+                    planDomReads = runner.PlanDomReads,
+                    planActionAttempts = runner.PlanActionAttempts,
+                    executionMode,
+                    cdpReadCalls = runner.CdpReadCalls,
                     model = config.Model,
                     effort = config.ReasoningEffort,
                     calls = u.Calls,
@@ -94,7 +192,79 @@ public sealed class TaskRun
                 });
                 Log.Write("session", "usage",
                     $"Model usage: {u.Calls} calls, {u.InputTokens} in ({u.CachedTokens} cached) / {u.OutputTokens} out, {u.ModelMs / 1000.0:0.0} s{cost}",
-                    new { totals = u }, status: "info");
+                    new { outcome = finalOutcome, stopReason = finalStopReason, toolCalls = runner.ToolCalls,
+                        toolErrors = runner.ToolErrors, toolElapsedMs = runner.ToolElapsedMs,
+                        pageReadRequests = runner.PageReadRequests,
+                        repeatedPageReadRequests = runner.RepeatedPageReadRequests,
+                        maxReadStreak = runner.MaxReadStreak,
+                        planDomReads = runner.PlanDomReads,
+                        planActionAttempts = runner.PlanActionAttempts,
+                        executionMode,
+                        cdpReadCalls = runner.CdpReadCalls,
+                        totals = u }, status: "info");
+
+                // One structured review event per finished run: no automatic stop/retry.
+                // High call count is a triage candidate, never proof of waste.
+                // A deliberate stop is not automatically an unsuccessful model run.
+                var intentionalStop = finalStopReason is "user_stop" or "requester_cancel" or "upgrade_interrupted";
+                var nonSuccess = finalOutcome != "success" && !intentionalStop;
+                var highCalls = u.Calls >= 60;
+                var readLoopCandidate = runner.MaxReadStreak >= 12;
+                if (nonSuccess || highCalls || readLoopCandidate)
+                {
+                    Log.Write("session", "task-review",
+                        $"Review candidate: outcome={finalOutcome}, modelCalls={u.Calls}, maxReadStreak={runner.MaxReadStreak}",
+                        new { taskKey = _usageTaskKey, outcome = finalOutcome,
+                            modelCalls = u.Calls, toolCalls = runner.ToolCalls,
+                            toolErrors = runner.ToolErrors, pageReadRequests = runner.PageReadRequests,
+                            repeatedPageReadRequests = runner.RepeatedPageReadRequests,
+                            maxReadStreak = runner.MaxReadStreak,
+                            costUsd = u.CostUsd, nonSuccess, highCalls, readLoopCandidate,
+                            intentionalStop, stopReason = finalStopReason, executionMode,
+                            planDomReads = runner.PlanDomReads,
+                            planActionAttempts = runner.PlanActionAttempts,
+                            classification = "review_candidate" },
+                        status: finalOutcome == "failed" ? "error" : "warn");
+                }
+            }
+            else
+            {
+                // A setup/cancellation failure before creating AgentRunner previously left
+                // no kind=task usage row. Preserve the factual 0 calls and cause if known.
+                var earlyReason = finalStopReason ?? "pre_runner_termination";
+                try { goalMeter?.Finish(runId, finalOutcome, earlyReason, new UsageTotals()); }
+                catch (Exception ex) { Log.Write("business_goal", "finish_error", ex.GetType().Name, status: "warn"); }
+                Log.WriteUsage(new
+                {
+                    ts = DateTime.UtcNow,
+                    runId,
+                    taskKey = _usageTaskKey,
+                    continuedFrom = _usageParentTaskKey,
+                    requesterChat = _usageWho,
+                    kind = "task",
+                    businessGoalId = goalMeter?.GoalId,
+                    goalType = goalMeter?.Spec.Category,
+                    requestedUnits = goalMeter?.Spec.RequestedUnits,
+                    outcome = finalOutcome,
+                    stopReason = earlyReason,
+                    executionMode,
+                    stage = "before_agent_runner",
+                    model = config.Model,
+                    effort = config.ReasoningEffort,
+                    calls = 0,
+                    inputTokens = 0,
+                    cachedTokens = 0,
+                    outputTokens = 0,
+                    reasoningTokens = 0,
+                    modelMs = 0,
+                    costUsd = (double?)null,
+                    task = OutputLimiter.Head(task.ReplaceLineEndings(" "), 120)
+                });
+                Log.Write("session", "early-termination",
+                    "Task terminated before AgentRunner initialization",
+                    new { taskKey = _usageTaskKey, outcome = finalOutcome,
+                          stopReason = earlyReason, modelCalls = 0, executionMode },
+                    status: finalOutcome == "failed" ? "error" : "warn");
             }
             Log.EndRun();
         }

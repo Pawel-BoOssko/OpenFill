@@ -39,7 +39,7 @@ public sealed class McpService : IAsyncDisposable
         IJevMessageInspector? jevInspector = jevClient;
         var tasks = new McpTaskManager(host, paths.Tasks,
             TimeSpan.FromMinutes(Math.Max(1, config.CallerAnswerTimeoutMinutes)), jevGate);
-        var server = new McpServer(tasks, secret, config.McpPort, msg => log.Write("mcp", "request", msg, status: "info"), paths.Screenshots, paths.SharedFor(config.SharedFolder), jevInspector);
+        var server = new McpServer(tasks, secret, config.McpPort, msg => log.Write("mcp", "request", msg, status: "info"), paths.Screenshots, paths.SharedFor(config.SharedFolder), jevInspector, paths.OperationalDatabase);
         server.Start();
         var path = "/mcp/" + secret;
         var localUrl = $"http://127.0.0.1:{server.Port}{path}";

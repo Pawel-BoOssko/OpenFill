@@ -14,6 +14,8 @@ namespace OpenFill.Core.Browser;
 public sealed class BrowserController
 {
     private readonly CdpSession _session;
+    // Shared CDP session for the explicit bounded local-plan executor.
+    internal CdpSession LocalPlanSession => _session;
     private readonly EventLog _log;
     private readonly string _extractorJs;
     private readonly string _actionsJs;
@@ -36,6 +38,7 @@ public sealed class BrowserController
     }
 
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _dialogs = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(int BackendNodeId, string? SessionId, DateTimeOffset SeenAt)> _fileChoosers = new();
 
     /// <summary>
     /// JS dialogs (alert/confirm/prompt/beforeunload) block the page - without handling, every CDP call hangs.
@@ -47,8 +50,20 @@ public sealed class BrowserController
         if (ev.Method.StartsWith("Target.", StringComparison.Ordinal)) { Frames.OnEvent(ev); return; }
         if (ev.Method == "Page.fileChooserOpened")
         {
-            _dialogs.Enqueue("file chooser: the page tried to open a file dialog; it was blocked (no window opened). To give the page a file, use upload_file with the id of its file field from get_page and the full path of the file.");
-            _log.Write("browser", "dialog", "The page tried to open a file dialog - blocked", status: "warn");
+            if (ev.SessionId is not null && _session.SessionId is not null &&
+                ev.SessionId != _session.SessionId) return;
+            var backendId = ev.Params["backendNodeId"]?.GetValue<int>() ?? 0;
+            if (backendId > 0)
+            {
+                _fileChoosers.Enqueue((backendId, ev.SessionId, DateTimeOffset.UtcNow));
+                _dialogs.Enqueue("file chooser intercepted: use upload_file with id @filechooser and a full local file path to attach the file directly, even if the input is absent from get_page.");
+                _log.Write("browser", "file_chooser_intercept", "CDP file input intercepted", status: "ok");
+            }
+            else
+            {
+                _dialogs.Enqueue("file chooser intercepted but the CDP event had no backendNodeId.");
+                _log.Write("browser", "file_chooser_intercept", "Missing backendNodeId", status: "warn");
+            }
             return;
         }
         if (ev.Method != "Page.javascriptDialogOpening") return;
@@ -298,6 +313,23 @@ public sealed class BrowserController
         return new JsonObject { ["ok"] = true, ["id"] = id };
     }
 
+    // Trusted mouse input at a DOM-verified viewport point. Used by virtualized
+    // WhatsApp rows that ignore synthetic element.click().
+    public async Task<JsonNode> RealClickPointAsync(double x, double y, CancellationToken ct = default)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || x < 0 || y < 0)
+            return new JsonObject { ["ok"]=false,["error"]="INVALID_CLICK_COORDINATES" };
+        await SyncTargetAsync(ct);
+        await _session.SendAsync("Input.dispatchMouseEvent", new JsonObject
+            { ["type"]="mouseMoved", ["x"]=x, ["y"]=y }, ct);
+        await _session.SendAsync("Input.dispatchMouseEvent", new JsonObject
+            { ["type"]="mousePressed", ["x"]=x, ["y"]=y, ["button"]="left", ["clickCount"]=1 }, ct);
+        await _session.SendAsync("Input.dispatchMouseEvent", new JsonObject
+            { ["type"]="mouseReleased", ["x"]=x, ["y"]=y, ["button"]="left", ["clickCount"]=1 }, ct);
+        await Task.Delay(150, ct);
+        return new JsonObject { ["ok"]=true };
+    }
+
     public async Task<JsonNode> RealTypeAsync(string id, string text, bool clearFirst = true, CancellationToken ct = default)
     {
         await SyncTargetAsync(ct);
@@ -436,6 +468,33 @@ public sealed class BrowserController
         await SyncTargetAsync(ct);
         foreach (var f in files)
             if (!File.Exists(f)) return new JsonObject { ["ok"] = false, ["error"] = "FILE_NOT_FOUND", ["file"] = f };
+        // D04: an intercepted native chooser may have no visible or persistent input.
+        // Consume the one-shot CDP backendNodeId captured by Page.fileChooserOpened.
+        if (id == "@filechooser")
+        {
+            (int BackendNodeId, string? SessionId, DateTimeOffset SeenAt)? last = null;
+            while (_fileChoosers.TryDequeue(out var observed))
+            {
+                if (DateTimeOffset.UtcNow - observed.SeenAt <= TimeSpan.FromMinutes(2) &&
+                    (observed.SessionId is null || _session.SessionId is null ||
+                     observed.SessionId == _session.SessionId))
+                    last = observed;
+            }
+            if (last is null)
+                return new JsonObject { ["ok"] = false, ["error"] = "FILE_CHOOSER_NOT_OBSERVED_OR_STALE" };
+            await _session.Connection.SendAsync("DOM.setFileInputFiles", new JsonObject
+            {
+                ["backendNodeId"] = last.Value.BackendNodeId,
+                ["files"] = new JsonArray(files.Select(f => (JsonNode)Path.GetFullPath(f)).ToArray())
+            }, last.Value.SessionId ?? _session.SessionId, ct);
+            _log.Write("browser", "upload", "Intercepted chooser received file", new
+            {
+                backendNodeId = last.Value.BackendNodeId,
+                files = files.Select(Path.GetFileName).ToArray()
+            });
+            return new JsonObject { ["ok"] = true, ["id"] = id, ["files"] = files.Count,
+                ["chooser_consumed"] = true };
+        }
         if (FrameLayer.TrySplit(id, out var uk, out var ui))
         {
             var (oid, osid) = await Frames.ResolveObjectAsync(uk, ui, ct);

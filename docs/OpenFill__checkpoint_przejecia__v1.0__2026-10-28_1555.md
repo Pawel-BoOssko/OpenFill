@@ -435,3 +435,11 @@ Użytkownik proponuje lekki model decyzyjny JEV (nazwa do zachowania w specyfika
 - LIVE_SMOKE=PASS, failed 0, MCP OK, JEV transport OK.
 - Realna produkcyjna QA page_capture: OF-20261030-2324-5835 i kontynuacja OF-20261030-2325-bddc na tej samej karcie t97f6f22e; 4 pliki, SHA256 poprawne, filtered 156 B, matches=1, preview=156 znakow. Test zaliczony.
 - Pozostaja osobno otwarte LinkedIn real signed-in QA i human waiting_for_user actual upgrade. Networking Radar nietkniety.
+
+## 2026-10-31: audyt kosztow i petli OpenFill
+- Raport i plan: docs/OPENFILL_TOKEN_WASTE_AUDIT_20261031.md. Dane: docs/OPENFILL_TOKEN_AUDIT_DATA_20261031.json; powtarzalny skrypt: tools/audit_token_waste__v0.1__2026-10-31.py.
+- 1477 przebiegow, 73329 model calls, 1.499 mld input tokens, 83.35% cached, zaraportowany koszt 40.709 USD.
+- Glowne grupy kosztow: LinkedIn 12.8548 USD, Google-szeroko 11.2818, Facebook/Meta 4.9177, WhatsApp 2.7457. Google to klasyfikacja po poleceniu, nie tylko host Google.
+- P0: wyeliminowac niezmienione DOM i petle get_page/act, WhatsApp ponowne otwieranie tego samego numeru, Airbnb diagnostyke sieci i logow bez postepu. P1: recepty semantyczne dla LinkedIn/Google/Meta, batch, ograniczanie danych wchodzacych do Luny.
+- Istniejaca kompresja PromptHistoryCompactor od 23.10 dziala i wyraznie ogranicza koszt kroku; nie pisac jej drugi raz.
+- LIVE 1.58 i konta bez zmian. Dotychczas wykonano analize i plan w SOURCE, nie implementacje adapterow.

@@ -783,7 +783,7 @@
     const c = document.createElement('div'); c.className = 'card'; c.dataset.card = o.id;
     c.innerHTML = '<h3>The model asks</h3><p></p><div class="opts"></div>' +
       '<div class="row" style="margin:0"><input type="text" placeholder="Your answer" class="grow"><button class="btn pick">Choose file...</button><button class="btn primary answer">Answer</button></div>' +
-      '<textarea class="note" rows="2" placeholder="Your own message to the model (optional): what you did, or what it should do instead. Ctrl+Enter sends."></textarea>';
+      '<textarea class="note" rows="2" placeholder="Your message to Luna (optional): Enter sends, Shift+Enter inserts a new line."></textarea>';
     c.querySelector('p').textContent = o.question;
     if (o.human) {
       // Only the person at the computer can answer this (e.g. a code from an e-mail): the calling model never sees the answer.
@@ -801,8 +801,16 @@
     (o.options || []).forEach(opt => { const b = document.createElement('button'); b.className = 'btn'; b.textContent = opt; b.onclick = () => reply(opt); c.querySelector('.opts').append(b); });
     c.querySelector('.answer').onclick = () => reply(input.value);
     c.querySelector('.pick').onclick = () => send({ kind:'pickFile', id:o.id });
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') reply(input.value); });
-    c.querySelector('.note').addEventListener('keydown', e => { if (e.key === 'Enter' && e.ctrlKey) reply(input.value); });
+    input.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      if (!e.repeat) reply(input.value);
+    });
+    c.querySelector('.note').addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      if (!e.repeat) reply(input.value);
+    });
     showTab('work');
     $('cards').append(c); input.focus(); focusCardTask(c, o);
     $('cards').scrollIntoView({ block:'nearest' });

@@ -7,12 +7,15 @@ $fail = New-Object System.Collections.Generic.List[string]
 $warn = New-Object System.Collections.Generic.List[string]
 try {
     if ($env:COMPUTERNAME -ne 'PBOX1') { throw "WRONG_HOST: $env:COMPUTERNAME" }
-    $process = @(Get-Process -Name OpenFill -ErrorAction SilentlyContinue)
-    if ($process.Count -ne 1) {
-        $fail.Add("OPENFILL_PROCESS_COUNT="+$process.Count)
+    # Count only stable app. A simultaneously running --instance dev is expected.
+    $liveExe = Join-Path $root 'app\OpenFill.exe'
+    $liveProcesses = @(Get-CimInstance Win32_Process -Filter "Name='OpenFill.exe'" |
+        Where-Object { $_.ExecutablePath -ieq $liveExe })
+    if ($liveProcesses.Count -ne 1) {
+        $fail.Add("LIVE_PROCESS_COUNT="+$liveProcesses.Count)
     } else {
-        "OPENFILL_PID="+$process[0].Id
-        "OPENFILL_STARTED="+$process[0].StartTime.ToString('o')
+        "OPENFILL_PID="+$liveProcesses[0].ProcessId
+        "OPENFILL_STARTED="+$liveProcesses[0].CreationDate.ToString('o')
     }
     $exe = Join-Path $root 'app\OpenFill.exe'
     if (!(Test-Path $exe)) { $fail.Add('LIVE_EXE_MISSING') }

@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"openfill_memory_query","arguments":{"mode":"identities","provider":"linkedin","account_id":"OFIMP-QA","search":"NOT_A_CONTACT"}}}

@@ -152,7 +152,19 @@ if ($running) {
     Info "Requesting controlled shutdown before replacing application files..."
     foreach ($process in $running) {
         if (-not $process.CloseMainWindow()) {
-            throw ("Controlled shutdown could not be requested for OpenFill PID " + $process.Id + ". Installation aborted; existing application left intact.")
+            # Headless Windows Task Scheduler launch: MainWindowHandle=0.
+            # Only stop a task that executes THIS instance's exact application path.
+            $scheduledName = if ($Instance -eq 'stable') { 'OpenFill' } else { 'OpenFill (' + $Instance + ')' }
+            $scheduled = Get-ScheduledTask -TaskName $scheduledName -ErrorAction SilentlyContinue
+            $expectedExe = if ($Instance -eq 'stable') { Join-Path $OpenFillHome 'app\OpenFill.exe' } else { Join-Path $OpenFillHome ('app-' + $Instance + '\OpenFill.exe') }
+            $matched = $scheduled -and $scheduled.State -eq 'Running' -and
+                @($scheduled.Actions | Where-Object { $_.Execute -ieq $expectedExe }).Count -eq 1
+            if (-not $matched) {
+                throw ("HEADLESS_SHUTDOWN_UNAVAILABLE: PID " + $process.Id + ", expected scheduled task " + $scheduledName + ". Existing app unchanged.")
+            }
+            # If a job is active it must be persisted/reconciled by the release coordinator first.
+            Info ("OpenFill PID " + $process.Id + " has no main window. Stopping exact scheduled task '" + $scheduledName + "'.")
+            Stop-ScheduledTask -TaskName $scheduledName -ErrorAction Stop
         }
     }
     # OnFormClosing persists interrupted MCP tasks, gives polling clients time to read them,

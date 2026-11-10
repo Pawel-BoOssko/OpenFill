@@ -19,8 +19,9 @@ public static class TerminalProcessService
             "grep" => @"C:\Program Files\Git\usr\bin\grep.exe",
             "sed" => @"C:\Program Files\Git\usr\bin\sed.exe",
             "awk" => @"C:\Program Files\Git\usr\bin\awk.exe",
-            "rg" => "rg.exe",
-            "jq" => "jq.exe",
+            "rg" => FileFilterService.Locate("rg") ?? "rg.exe",
+            "jq" => FileFilterService.Locate("jq") ?? "jq.exe",
+            "sqlite3" => FileFilterService.Locate("sqlite3") ?? "sqlite3.exe",
             _ => throw new ArgumentException("Unsupported shell. Use powershell/python/bash/grep/sed/awk/rg/jq.")
         };
         timeoutSeconds = Math.Clamp(timeoutSeconds, 1, 120);
@@ -90,18 +91,11 @@ public static class TerminalProcessService
         using var writer = new StreamWriter(output, new UTF8Encoding(false));
         var chars = new char[16384];
         int count;
-        bool truncated = false;
-        long written = 0;
-        const long maxChars = 16_000_000;
+        // The complete process output lives in a disk file; only PreviewAsync is context-bounded.
         while ((count = await reader.ReadAsync(chars)) > 0)
-        {
-            var keep = (int)Math.Min(count, Math.Max(0, maxChars - written));
-            if (keep > 0) await writer.WriteAsync(chars.AsMemory(0, keep));
-            if (keep < count) truncated = true;
-            written += count;
-        }
+            await writer.WriteAsync(chars.AsMemory(0, count));
         await writer.FlushAsync();
-        return truncated;
+        return false;
     }
 }
 

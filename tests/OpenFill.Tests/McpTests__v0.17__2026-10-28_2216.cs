@@ -11,6 +11,7 @@ internal sealed class FakeRunHost : IRunHost
 {
     private readonly Dictionary<string, CancellationTokenSource> _cts = new();
     public int Started;
+    public RunOptions? LastRunOptions;
     public Action<string>? EmitActivity;
     public Func<VerifiedAction, int>? EmitVerified;
     public Func<string, JsonObject?>? TabStatus;
@@ -31,6 +32,17 @@ internal sealed class FakeRunHost : IRunHost
     /// <summary>When set and it returns a refusal for the task text, the task is not started (like a site that is in use).</summary>
     public Func<string, RunRefusal?>? Refuse { get; set; }
     public readonly List<string?> Stopped = new();
+    public readonly List<(string? TaskKey, string Actor)> StopActors = new();
+    public void StopFromRequester(string? taskKey)
+    {
+        StopActors.Add((taskKey, "requesting_model"));
+        Stop(taskKey);
+    }
+    public void StopForMaintenance(string? taskKey)
+    {
+        StopActors.Add((taskKey, "maintenance"));
+        Stop(taskKey);
+    }
 
     public Task<RunConclusion>? StartRun(string task) => StartRun(task, null);
 
@@ -38,6 +50,7 @@ internal sealed class FakeRunHost : IRunHost
     {
         if (Refuse?.Invoke(task) is not null) return null;
         Started++;
+        LastRunOptions = options;
         EmitActivity = options?.Activity;
         EmitVerified = options?.Verified;
         var cts = new CancellationTokenSource();
@@ -475,6 +488,7 @@ public static class McpTests
             var m = new McpTaskManager(host, dir, TimeSpan.FromSeconds(5));
             var started = await m.StartAsync("SLOW send invitations", 0, default, requester: "Test", chat: "Progress");
             var id = S(started, "task_id");
+            T.Eq("initial business goal is a new root", id, host.LastRunOptions?.GoalId);
             T.Check("steps are not confirmed invitations", started["confirmed_progress"] is null);
             T.Eq("MCP response exposes own tab id", "tab-test", started["browser_tab"]?["tab_id"]?.GetValue<string>());
             T.Eq("MCP response exposes tab reuse reason", "existing_session_reused", started["browser_tab"]?["reason"]?.GetValue<string>());
@@ -498,6 +512,8 @@ public static class McpTests
             var next = await continued.StartAsync("SLOW finish remaining invitations", 0, default,
                 continueTaskId: id, requester: "Test", chat: "Progress");
             var nextId = S(next, "task_id");
+            T.Eq("explicit continuation inherits the same business goal", id, continuedHost.LastRunOptions?.GoalId);
+            T.Eq("original business goal text survives restart", "SLOW send invitations", continuedHost.LastRunOptions?.GoalText);
             T.Eq("confirmed recipients inherited by continuation", 1, next["confirmed_progress"]?["confirmed"]?.GetValue<int>() ?? -1);
             var repeated = continuedHost.EmitVerified!(new VerifiedAction("User A", 5, "Invitation sent", "https://example.test/a", DateTime.UtcNow));
             T.Eq("same recipient on continuation stays counted once", 1, repeated);
@@ -545,6 +561,9 @@ public static class McpTests
             var resultB = await pendingB;
             T.Eq("upgrade wakes long poll A", "interrupted", S(resultA, "status"));
             T.Eq("upgrade wakes long poll B", "interrupted", S(resultB, "status"));
+            T.Eq("upgrade reason persisted", "upgrade_interrupted", S(resultA, "stop_reason"));
+            T.Check("maintenance route used, not requester cancel",
+                host.StopActors.Contains((S(a, "task_id"), "maintenance")));
             T.Contains("upgrade notifies current poller", S(resultA, "summary"), McpTaskManager.UpgradeNotice);
             T.Check("upgrade avoids invented ETA", !S(resultA, "summary").Contains("7 minute(s)"));
             T.Contains("upgrade gives precise recovery ID", S(resultA, "summary"), "continue_task_id=" + S(a, "task_id"));
@@ -605,6 +624,10 @@ public static class McpTests
             T.Eq("status without id finds the open task", "running", S(st, "status"));
             var cancelled = m.Cancel(S(r3, "task_id"));
             T.Eq("cancel", "cancelled", S(cancelled, "status"));
+            T.Eq("cancel reason is requester", "requester_cancel", S(cancelled, "stop_reason"));
+            T.Eq("cancel actor is requesting model", "requesting_model", S(cancelled, "stop_actor"));
+            T.Check("MCP cancel calls requester stop channel",
+                host.StopActors.Contains((S(r3, "task_id"), "requesting_model")));
             await Task.Delay(300);
 
             var r4 = await m.StartAsync("A fresh job after the cancel", 5, default, requester: "Test", chat: "Chat");
@@ -712,7 +735,7 @@ public static class McpTests
             var list = await Rpc("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""");
             var tools = list["result"]!["tools"]!.AsArray();
             var names = tools.Select(t => t!["name"]!.GetValue<string>()).ToList();
-            T.Check("nine tools with direct capture", names.Count == 9 && names.Contains("openfill_info") && names.Contains("openfill_start_task") && names.Contains("openfill_reply") && names.Contains("openfill_screenshot") && names.Contains("openfill_file_transfer"));
+            T.Check("required MCP tools with direct capture", names.Count >= 9 && names.Contains("openfill_info") && names.Contains("openfill_start_task") && names.Contains("openfill_reply") && names.Contains("openfill_screenshot") && names.Contains("openfill_file_transfer"));
             T.Check("every schema is strict and has no $schema", tools.All(t =>
                 t!["inputSchema"]!["additionalProperties"]!.GetValue<bool>() == false && t["inputSchema"]!["$schema"] is null));
             T.Check("every tool has annotations", tools.All(t => t!["annotations"]?["readOnlyHint"] is not null));

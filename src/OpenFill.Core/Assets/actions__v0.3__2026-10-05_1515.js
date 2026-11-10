@@ -27,6 +27,10 @@
     el.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key: key || '', composed: true }));
   }
 
+  function isEditable(el) {
+    return !!el.isContentEditable || el.nodeName === 'INPUT' || el.nodeName === 'TEXTAREA';
+  }
+
   function setText(el, value) {
     el.dataset && (el.dataset.ofTouched = '1');
     el.focus();
@@ -121,11 +125,13 @@
       switch (arg.action) {
         case 'type': {
           if (tag === 'select' || type === 'checkbox' || type === 'radio') return root.act(Object.assign({}, arg, { action: 'set' }));
+          if (!isEditable(el)) return { ok: false, error: 'NOT_EDITABLE', id: arg.id };
           return typeText(el, String(arg.value ?? '')).then(() => ({ ok: true, id: arg.id, value: el.value !== undefined ? el.value : (el.textContent || '') }));
         }
         case 'set': {
           if (tag === 'select') return { ok: setSelect(el, arg.value), id: arg.id, value: el.value };
           if (type === 'checkbox' || type === 'radio') return { ok: setChecked(el, !!arg.value), id: arg.id, checked: el.checked };
+          if (!isEditable(el)) return { ok: false, error: 'NOT_EDITABLE', id: arg.id };
           setText(el, String(arg.value ?? ''));
           return { ok: true, id: arg.id, value: el.value !== undefined ? el.value : (el.textContent || '') };
         }
@@ -136,7 +142,11 @@
           pointerClick(el);
           return { ok: true, id: arg.id };
         }
-        case 'clear': { setText(el, ''); return { ok: true, id: arg.id }; }
+        case 'clear': {
+          if (!isEditable(el)) return { ok: false, error: 'NOT_EDITABLE', id: arg.id };
+          setText(el, '');
+          return { ok: true, id: arg.id };
+        }
         case 'focus': { el.focus(); return { ok: true, id: arg.id }; }
         case 'pressEnter': { fireKey(el, 'keydown', 'Enter'); fireKey(el, 'keypress', 'Enter'); fireKey(el, 'keyup', 'Enter'); return { ok: true, id: arg.id }; }
         default: return { ok: false, error: 'UNKNOWN_ACTION', action: arg.action };
@@ -150,10 +160,15 @@
   root.actMany = async function (arg) {
     const results = [];
     for (const step of (arg.steps || [])) {
-      results.push(await root.act(step));
+      const result = await root.act(step);
+      results.push(result);
+      // Stop at the first failure. Later steps may have external side effects.
+      if (!result || !result.ok) {
+        return { ok: false, results, stopped_at: results.length, repeat_action_automatically: false };
+      }
       await new Promise(r => setTimeout(r, 40));
     }
-    return { ok: results.every(r => r && r.ok), results };
+    return { ok: true, results };
   };
 
   return true;

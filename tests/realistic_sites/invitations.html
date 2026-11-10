@@ -1,0 +1,49 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Connections | Professional Network</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f2ef;font-family:Segoe UI,Arial;color:#222;font-size:14px}
+header{height:62px;background:white;display:flex;align-items:center;gap:28px;padding:0 calc((100% - 1120px)/2);box-shadow:0 1px 2px #999}
+.brand{font-weight:700;color:#0a66c2;font-size:24px}.shell{max-width:1080px;margin:35px auto;display:grid;grid-template-columns:2fr 1fr;gap:25px}
+.panel{background:white;border:1px solid #ddd;border-radius:9px;overflow:hidden}.cover{height:115px;background:linear-gradient(120deg,#cfe9fa,#aac5df)}
+.profile{padding:22px}h1{margin:10px 0 6px;font-size:24px}p{color:#57616b}
+button{background:#0a66c2;color:white;border:0;border-radius:22px;padding:11px 18px;font-weight:600;cursor:pointer}
+button:disabled{background:#aaa;cursor:default}textarea{width:100%;font:inherit;border:1px solid #8d9298;border-radius:5px;padding:10px;resize:vertical}
+small{color:#607080}#dialog{padding:22px;border-top:1px solid #ddd}#status{font-weight:600;color:#145d28;min-height:24px}
+.metric{font-size:30px;font-weight:700;color:#0a66c2}.hide{display:none}
+</style></head><body>
+<header><div class="brand">in</div><nav role="navigation" aria-label="Global"><span>Home</span>　<span>My Network</span>　<span>Jobs</span>　<span>Messaging</span></nav></header>
+<div class="shell"><main class="panel"><div class="cover"></div><section class="profile">
+<small>People you may know · 2nd connection</small><h1 id="recipient">Loading member…</h1>
+<p id="headline">Business Transformation · Leadership · AI</p>
+<p>Open to relevant business conversations</p>
+</section><section id="dialog" role="dialog" aria-label="Personalized invitation">
+<h2>Invite to connect</h2><p>Write an optional note to personalize this invitation.</p>
+<label for="note">Your note</label><textarea id="note" rows="4" maxlength="300" placeholder="Write your personalized note" disabled></textarea>
+<div style="display:flex;justify-content:space-between;margin-top:12px"><small>300 character limit</small><button id="send-invite" disabled>Send invitation</button></div>
+<p role="status" id="status"></p></section></main>
+<aside><div class="panel" style="padding:20px"><strong>Connection activity</strong>
+<p>Invitations sent in this local test</p><div id="invite-total" class="metric">0</div>
+<p id="warning">Local test environment. No messages go to external services.</p>
+</div></aside></div>
+<script>
+const roster={
+"contact-01":"Alex Morgan 1","contact-02":"Taylor Lee 2","contact-03":"Morgan Chen 3",
+"contact-04":"Sam Wilson 4","contact-05":"Jordan Fox 5","contact-06":"Casey Kim 6",
+"contact-07":"Jamie Reed 7","contact-08":"Riley Cruz 8"};
+const id=new URLSearchParams(location.search).get("vanityName")||"";
+const sent=JSON.parse(sessionStorage.getItem("ofimp-test-invitations")||"{}");
+const status=document.getElementById("status"),button=document.getElementById("send-invite"),note=document.getElementById("note");
+document.getElementById("invite-total").textContent=Object.keys(sent).length;
+setTimeout(()=>{
+const name=roster[id]||"Profile not found";document.getElementById("recipient").textContent=name;
+if(roster[id]){note.disabled=false;button.disabled=!!sent[id];if(sent[id])status.textContent="Invitation already sent";}
+else{status.textContent="Recipient not found";button.disabled=true;}
+},300);
+button.onclick=()=>{
+if(!roster[id]||sent[id]||!note.value.trim())return;
+sent[id]={person:roster[id],note:note.value,at:new Date().toISOString()};
+sessionStorage.setItem("ofimp-test-invitations",JSON.stringify(sent));
+document.getElementById("invite-total").textContent=Object.keys(sent).length;
+status.textContent="Invitation sent to "+roster[id];
+button.disabled=true;
+};
+</script></body></html>

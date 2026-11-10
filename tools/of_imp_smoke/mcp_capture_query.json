@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"openfill_query_capture","arguments":{"source_path":"C:\\Users\\pboru\\Downloads\\OpenFill__v0.1__2026-10-04_1911\\OpenFill\\tools\\of_imp_smoke\\mcp_capture_sample.txt","operation":"text_literal","query":"Alice","max_preview_rows":5}}}

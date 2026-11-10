@@ -29,7 +29,31 @@ string Page(string stem)
 // "panelshot <file>": after the tests, copy the panel screenshot to the given file (visual check).
 var panelShotOut = args.Length >= 2 && args[0] == "panelshot" ? args[1] : null;
 
+if (args.Contains("goal-units-only", StringComparer.OrdinalIgnoreCase)) { await BusinessGoalMeterTests.RunAsync(); return T.Report(); }
+if (args.Contains("history-only", StringComparer.OrdinalIgnoreCase)) { await PromptHistoryTests.RunAsync(); return T.Report(); }
 if (args.Contains("tabs-only", StringComparer.OrdinalIgnoreCase)) { await TabTests.RunAsync(); return T.Report(); }
+if (args.Contains("mcp-origin-only", StringComparer.OrdinalIgnoreCase))
+{
+    await McpTests.RunAsync();
+    return T.Report();
+}
+if (args.Contains("argument-parser-only", StringComparer.OrdinalIgnoreCase))
+{
+    await ToolArgumentParserTests.RunAsync();
+    return T.Report();
+}
+if (args.Contains("semantic-batch-only", StringComparer.OrdinalIgnoreCase))
+{
+    await SemanticBatchNavigationTests.RunAsync(Path.Combine(AppContext.BaseDirectory, "realistic_sites"));
+    return T.Report();
+}
+
+if (args.Contains("capture-only", StringComparer.OrdinalIgnoreCase))
+{
+    await CapturePipelineTests.RunAsync();
+    await CapturePipelineTests.RunBrowserAsync(testsite, Page);
+    return T.Report();
+}
 
 await CapturePipelineTests.RunAsync();
 // ---------------------------------------------------------------------------- Unit tests

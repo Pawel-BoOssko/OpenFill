@@ -21,7 +21,8 @@ public sealed record VerifiedAction(string Recipient, int Total, string Evidence
 
 public sealed record RunOptions(string? TaskKey = null, string? ContinueFromKey = null, string? PriorContext = null,
     AskHandler? Ask = null, Action<string>? Activity = null, Action<string?>? UserWaiting = null, string? Title = null, string? Requester = null, Func<VerifiedAction, int>? Verified = null,
-    bool AutomaticContinuation = false);
+    bool AutomaticContinuation = false, string? ExecutionMode = null, string? StartUrl = null,
+    string? GoalId = null, string? GoalText = null);
 
 /// <summary>Why a task was not started. Kind: limit (too many tasks at once), domain_busy (another task works on the site), no_key, empty, other.</summary>
 public sealed record RunRefusal(string Kind, string Message);
@@ -78,8 +79,12 @@ public interface IRunHost
         string selector, string regex, string? directory, int maxMatches, CancellationToken ct)
         => Task.FromResult(new JsonObject { ["status"] = "error", ["message"] = "Direct page capture not supported by this host." });
 
-    /// <summary>Stops one task (or every task when the key is null).</summary>
+    /// <summary>Stops one task from the OpenFill window (or every task when the key is null).</summary>
     void Stop(string? taskKey);
+
+    // Explicitly tag MCP cancellation and planned shutdown; legacy fake hosts still work.
+    void StopFromRequester(string? taskKey) => Stop(taskKey);
+    void StopForMaintenance(string? taskKey) => Stop(taskKey);
 
     /// <summary>Takes a screenshot of the task's browser tab (the newest task's tab when the key is null) and saves it; returns the file name (null when it cannot be taken).</summary>
     Task<string?> CaptureScreenshotAsync(string? taskKey, CancellationToken ct);

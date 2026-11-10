@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":120,"method":"tools/call","params":{"name":"openfill_query_capture","arguments":{"source_path":"C:\\Users\\pboru\\OpenFill\\shared\\captures\\capture_20261031_195424_929_140188.txt","operation":"text_literal","query":"This domain is for use in documentation","max_preview_rows":3}}}

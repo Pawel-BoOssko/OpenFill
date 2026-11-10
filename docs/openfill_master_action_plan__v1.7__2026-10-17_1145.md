@@ -1,3 +1,6 @@
+<!-- AKTUALNE 2026-11-02: Airbnb ANULOWANE w CAŁYM backlogu OpenFill. Historyczne wzmianki poniżej nie są zadaniami. -->
+> **PLAN NADRZĘDNY OF-IMP-20261031 (31.10.2026):** dla wdrożenia filtrów terminalowych, pamięci i procedur wykonawczych obowiązuje dokument docs/OPENFILL_SCALONY_PLAN_WDROZENIA_20261031.md. Niniejszy dokument pozostaje źródłem wcześniejszych ustaleń i szczegółów technicznych. Nie uruchamiać dwóch równoległych implementacji tego samego zakresu.
+
 # OpenFill — backlog v1.7
 Data: 2026-10-17 11:45 Europe/Warsaw
 Źródło: `openfill_master_action_plan__v1.5__2026-10-17_1016.md` (235 pozycji, gałąź `autosync/PBOX1`) + decyzje Pawła z 17.10.2026 (przegląd: Claude).
@@ -498,3 +501,55 @@ Nie realizować bez zgody Pawła. Nowe pomysły czatu dopisywać tutaj z „auto
 - Poprzednia wersja 1.57 zachowana w app__rollback__v1.57__20261030_232309.
 - Raport: docs/OPENFILL_RELEASE_1_58_PRODUCTION_ACCEPTANCE_20261030.md.
 - Otwarte testy LinkedIn authenticated real oraz human waiting upgrade nie blokowaly wdrozenia po zgodzie uzytkownika; nie oznaczac ich DONE.
+
+## 2026-10-31: nowy priorytet, wydajnosc modelu i przegladarki
+- Audyt zakonczony, raport docs/OPENFILL_TOKEN_WASTE_AUDIT_20261031.md i 1477 przebiegow szczegolowych.
+- P0: deduplikacja rzeczywiscie niezmienionego stanu DOM, grupowanie odczytow i akcji, zapis duzych widokow do plikow i filtr przed Luna.
+- P0: WhatsApp wsadowy odczyt listy numerow oraz dobieranie rozmowy po preview; unikac nadmiarowych 56 powtornych otwarc 13 numerow w jednym zadaniu.
+- ANULOWANE 2026-11-02 na polecenie właściciela: historyczny P0 Airbnb adapter kalendarza i cen. Usunięte z aktywnego backlogu, nie wykonywać.
+- P1: LinkedIn/Google Business/Facebook recepty po domenie i widoku, pojedyncze selekcje z DOM, act_many i weryfikacja rezultatow.
+- P1: telemetryka postepu i narzedzi bez nowych arbitralnych blokad, porownania A/B na faktycznym efekcie zadania.
+- Stan: zaprojektowane po analizie logow, NIE wdrozone. Istniejacy kompresor historii dziala i pozostaje bez zmian.
+
+### [OF-HISTORY-20261102] P1: domkniecie historycznych running (DO ZROBIENIA, nie wykonano migracji)
+- Potwierdzone 2026-11-02 na PBOX1: history/tasks.ndjson zawiera 4802 rekordy, 1610 unikalnych task_id; 3218 historycznych rekordow running, ale tylko 26 unikalnych task_id z ostatnim stanem running. Wiek tych 26: 1,2 do 28 dni. Nie wolno traktowac 3218 rekordow jako osieroconych zadan.
+- Istniejacy HistoryStore.Load() mapuje nieaktywne running na interrupted WYŁĄCZNIE w wyniku odczytu; nie utrwala korekty w NDJSON. To zweryfikowana przyczyna pozostawania running na dysku, nie wyjasnia jeszcze kazdego przerwania procesu.
+- Etap A: dla kazdego z 26 sprawdzic aktywne task_id / runId, terminalne zdarzenia w logach, ostatni czas, powiazania i retry. W skanie logow znaleziono 0 session/end dla tych 26 runId. Ostroznie: 41 grup z identycznym tekstem zadania to KANDYDACI na powiazane proby, nie dowod; pod jednym task_id nie zaobserwowano wielu roznych runId.
+- Etap B: przy restarcie/startup aplikacji i dla historycznych osieroconych zapisac terminalne interrupted (nie success), gdy nie ma juz aktywnego wykonania. Zachowac historia append-only, nie masowo usuwac i nie zmieniac statusu zywego taska.
+- Etap C: w audycie kosztow laczyc przebiegi tej samej czynnosci dopiero po potwierdzeniu ich identycznosci poprzez jawny parent/root/request_id lub solidne dowody kontynuacji. Koszt musi obejmowac wszystkie jej proby. Jedna proba nierozstrzygnieta to osobna pozycja z oznaczeniem niepewnosci.
+- Przygotowane read-only artefakty: tools/of_cost_history_lifecycle_20261102.py oraz docs/OPENFILL_HISTORY_LIFECYCLE_STAGE1_20261102.json. Najpierw dokonczyc audyt kosztow etapy 1 -> 2 -> 3; zadanie naprawcze niezaleznie P1.
+
+### [OF-HISTORY-20261102] ZAKOŃCZONE P1, SOURCE + LIVE, 2026-11-02
+- Poprzednie podpunkty tego zadania oznaczone nieaktualnymi jako TODO: wykonano startup persist running -> interrupted w HistoryStore i AppHost, bez czyszczenia historii.
+- QA 3/3 PASS, dotnet publish PASS, LIVE PID252, MCP true, SHA256 Core 694E48BAAA9D59DDF9B47553968D007C0353FFDA6FC9E402C3B5FB1A0001B89B, rollback app__rollback__before_release_20261102_222615.
+- Odczyt rzeczywisty po restarcie: 1611 task_id, 27 interrupted, 0 running, 4831 historycznych rekordów zachowanych. Nie ponawiać testów zakończonego P1 bez konkretnej awarii.
+- Analiza kosztów i łączenia wznowień pozostaje oddzielnym zadaniem, nie wznawiać anulowanego Airbnb.
+
+### [OF-COST-AUDIT-20261102] Etapy 1-9 wykonane, 54 normy do weryfikacji
+- AKTUALNE wyniki: docs/OPENFILL_COST_STAGE9_FINAL_COMPARISON_20261102.{md,json,csv}. Stare koszty w raportach etapów 3/4/5 oznaczone nieaktualnymi dla sumarycznej analizy, nie usuwać (archiwum).
+- DONE: inwentaryzacja 96 grup aktywności, historyczne pomiary, identyfikacja i połączenie 8 pewnych łańcuchów wznowień, weryfikacja 2 fałszywych podobieństw, korekta 49 brakujących przebiegów, klasyfikacja 491 wcześniej nieopisanych pozycji, normy dla dodatkowych 437, porównanie 1512/1566 jednostek.
+- DO ZROBIENIA (P1 analityczne): 46 jednostek wymagających ręcznego odczytu pełnego celu i niezależnego, rozsądnego wzorca liczby akcji/wywołań; 8 łańcuchów ze zmienionym zakresem i/lub niepełnym pomiarem, nie przypisywać im sztucznej normy. Sprawdzić także inne kontynuacje wskazane przez tekst promptów, które nie wystąpiły w 11 początkowych kandydatach.
+- NIE przedstawiać hipotetycznych 92,9% mniej calls jako osiągniętych oszczędności albo oszczędności USD. Cały koszt historyczny modelu poza Airbnb to 41,459336 USD według dostępnego rejestru.
+- Airbnb anulowane i poza wszelką pracą. Brak dodatkowych testów / QA dla ukończonych elementów.
+
+
+### [OF-COST-AUDIT-20261102] 2026-11-02 OF-WAKE-000007: ETAP 14 ZAKOŃCZONY, kolejne badanie tylko przy nowym zadaniu
+- AKTUALNE ARTEFAKTY: docs/OPENFILL_COST_STAGE14_RECONCILED_20261102.csv/json/md, Source tools/of_cost_stage14_reconciled_all_20261102.py; wcześniejsze raporty to archiwum i nie pokazują pełnego połączenia prób.
+- DONE: zidentyfikowane działania, zamrożone normy przed ponownym dopasowaniem logów, rozliczenie pomiarów 1574 runId; 21 potwierdzonych łańcuchów, rozdzielenie niezależnych celów, normy dla 1545/1550 jednostek.
+- WYNIK MODELOWY: 76566 rzeczywistych calls i 41.459336 USD; 1545 jednostek z normą: 76422 calls rzeczywiste vs 5515 normatywnych. USD scenariusz przy niezmienionym historycznym średnim koszcie wywołania: 2.139122 USD, hipotetyczna różnica 39.279606 USD. To NIE jest realna udokumentowana oszczędność. Pięć jednostek nieporównywalnych, nie fałszować zerem.
+- NIEAKTUALNE do dalszego TODO: powtarzanie testów sklasyfikowanych etapów, masowa reanaliza identycznego zestawu plików. W raporcie zachowano ograniczenia co do niepełnej listy powiązań.
+- NASTĘPNY P0 aplikacyjny: doprowadzić WhatsApp batch i LinkedIn batch do użycia LIVE z małym kosztem i mierzyć rzeczywiste wyniki jednego zadania, po wyborze rzeczywiście nieukończonego podzadania z aktualnego planu. Bez Airbnb. Nie wysyłać wiadomości testowych do osób bez prawidłowo określonego celu i odbiorcy.
+
+
+## 2026-11-02: OF-ARCHFLOW, przebudowa architektury wywolan modelu
+- OF-000008: diagnostyka rzeczywistych sekwencji 76566 model calls, 1550 operacji non-Airbnb, 10238 przejsc `act -> get_page`, 59.7% `act` z nastepnym krokiem. To kandydaci do analizy lokalnej weryfikacji, nie udowodniona oszczednosc.
+- SOURCE DONE: instrumentacja `locator_coverage`, `act_locator_unresolved`, `act_many_node`, rozmiary komponentow Responses API i tool result. Smoke 4/4, JS syntax, App build PASS. Bez LIVE release.
+- Kontrakt i algorytm docelowy: `docs/OPENFILL_ARCHFLOW_REBUILD_SPEC_20261102.md`. Nowy planner z kontraktem JSON, semantyczny tracker DOM, lokalny warunkowy executor, ledger skutkow, replan tylko po wyjatku/niepewnosci. Nie dublowac istniejacych `act_many/read_view/verify_view`.
+- PENDING: implementacja i testy LocalPlanExecutor + SemanticLocatorResolver na fake browser, integracja z BrowserController w DEV, pomiar A/B per business_operation_id, dopiero potem LIVE. Airbnb ANULOWANE i nie jest czescia tego zakresu.
+- SOURCE dodatkowo: legacy act_many fail-fast po pierwszym error, preflight wszystkich akcji, jawne NOT_EDITABLE dla nieedytowalnych elementow. Node 5/5 i C# 3/3 testy PASS, finalny App build PASS 0 errors. Nie wydano LIVE, brak rzeczywistego WebView2 acceptance.
+
+## 2026-11-02 OF-000009: LocalPlanExecutor DEV, pierwszy pionowy slice
+- SOURCE DONE: `LocalPlanExecutor__v0.1__2026-11-02.cs` z strict `of.plan.v1` dla locate -> navigation link -> assert_visible; semantyczne ponowne rozwiazanie lokatora, kontrola hosta, rewizji, no auto retry. Nie obsluguje side effects, nie podlaczony do LIVE.
+- TEST DONE: `LocalPlanSmoke.cs`, `archflow-local-plan-only`, 26/26 PASS, exit 0, fake browser. Szczegoly `docs/OPENFILL_ARCHFLOW_LOCAL_PLAN_SLICE_20261102.md`.
+- PENDING: WebView2/CDP adapter DEV, lokalny fixture i race test, potem `fill/wait_until/if/foreach` i `EffectJournal` przed side effects. Potem kontrolowane A/B. Nie wyliczac oszczednosci z samego baseline 5515 calls.
+- ROTACJA: OF-000009 musi zapisac handoff na SATANAMD do `D:\OpenBrowserLiteHandoffs\of\HANDOFF_CURRENT.md`; OF-000010 nowy lead. Harmonogram bez zmian, Airbnb anulowane.

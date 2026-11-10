@@ -58,22 +58,34 @@ public sealed class WhatsAppBrowser
  const used=new Set();
  for(const node of messageNodes){
    if(node.closest('[data-testid="msg-container"],.message-in,.message-out')!==node) continue;
-   const text=clean(node.innerText);
+   // The bubble's innerText includes the delivery time (e.g. "08:20").
+   // Compare the actual editable message body, not its time/status chrome.
+   const content=node.querySelector('[data-testid="msg-text"] .selectable-text') ||
+     [...node.querySelectorAll('.selectable-text')].at(-1);
+   const text=clean(content?.innerText||content?.textContent||node.innerText);
    const labels=attrs(node);
    const id=clean(node.getAttribute('data-id')||node.closest('[data-id]')?.getAttribute('data-id')||node.querySelector('[data-id]')?.getAttribute('data-id')||'');
    if(!text&&!labels.length) continue;
-   const sig=id||text+'|'+labels.join('|');
-   if(used.has(sig)) continue;used.add(sig);
+   // OF-000051: do not collapse repeated visible messages without a provider id.
+   // The DOM root filter above already excludes nested duplicate wrappers.
+   if(id){if(used.has(id)) continue;used.add(id);}
    const out=node.matches('.message-out')||!!node.closest('.message-out')||!!node.querySelector('.message-out')||id.startsWith('true_')||labels.some(v=>/^(read|sent|delivered|odczytano|wysłano|dostarczono)$/i.test(v));
    const incoming=node.matches('.message-in')||!!node.closest('.message-in')||!!node.querySelector('.message-in')||id.startsWith('false_');
-   messages.push({id,text,attributes:labels,direction:out?'out':incoming?'in':'unknown'});
+   const prePlain=clean(node.getAttribute('data-pre-plain-text')||node.querySelector('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text')||node.closest('[data-pre-plain-text]')?.getAttribute('data-pre-plain-text')||'');
+   messages.push({id,text,pre_plain_text:prePlain,attributes:labels,direction:out?'out':incoming?'in':'unknown'});
  }
  const editor=main?.querySelector('[contenteditable="true"][data-tab],[contenteditable="true"][role="textbox"]');
+ const header=main?.querySelector('header');
+ // OF-000053: use exact visible contact labels, not header.innerText mixed with avatar initials.
+ const headerLabels=header?[...header.querySelectorAll('span[title],span[dir="auto"],[data-testid="conversation-info-header-chat-title"]')]
+  .filter(n=>n.getClientRects().length>0).map(n=>clean(n.getAttribute('title')||n.textContent))
+  .filter(Boolean).slice(0,24):[];
  return {
    page:'WhatsApp Web',ready:!!pane,conversation_open:!!main,
    preview_count:previews.length,previews,
    messages,composer_visible:!!editor,
-   conversation_header:main?clean(main.querySelector('header')?.innerText):null,
+   conversation_header:header?clean(header.innerText):null,
+   conversation_header_labels:headerLabels,
    interface_status:!pane?'not_loaded_or_login_required':null
  };
 })()
@@ -93,6 +105,8 @@ public sealed class WhatsAppBrowser
  const scroller=findScroller(),initial=scroller.scrollTop;
  let still=0, complete=false, count=0;
  try{
+   scroller.scrollTop=0;
+   await new Promise(resolve=>setTimeout(resolve,75));
    for(let i=0;i<450;i++){
      count++;
      let rows=[...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')];
@@ -105,8 +119,12 @@ public sealed class WhatsAppBrowser
          .filter(e=>e.getClientRects().length)
          .flatMap(e=>[e.title,e.getAttribute('aria-label'),e.getAttribute('data-icon')])
          .map(clean).filter(Boolean))];
-       const key=text+'|'+labels.join('|');
-       if(!all.has(key)){all.set(key,{text,attributes:labels});added++}
+       const title=node.querySelector('[data-testid="cell-frame-title"] [title]') ||
+         node.querySelector('[data-testid="cell-frame-title"]') || node.querySelector('span[title]');
+       const name=clean(title?.getAttribute('title')||title?.textContent||
+         String(node.innerText||'').split('\n')[0]||'');
+       const key=name+'|'+text+'|'+labels.join('|');
+       if(!all.has(key)){all.set(key,{name,text,attributes:labels});added++}
      }
      const before=scroller.scrollTop;
      const nearBottom=before+scroller.clientHeight>=scroller.scrollHeight-4;
@@ -148,6 +166,87 @@ public sealed class WhatsAppBrowser
         return data["value"]?.DeepClone();
     }
 
+    // Deterministic self-identity lookup verified against the real WhatsApp Web DOM on 31.10.2026.
+    // Reads the phone only from the OWN profile's call-icon row, not a chat or sidebar preview.
+    private const string AccountIdentityScript = """
+(async()=>{
+ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const find=async(sel)=>{for(let i=0;i<12;i++){const el=document.querySelector(sel);if(el&&el.getClientRects().length)return el;await pause(180)}return null};
+ const side=document.querySelector('#pane-side');
+ const you=document.querySelector('button[aria-label="You"][data-navbar-item="true"]');
+ if(!side||!you)return {status:'not_authenticated_or_sidebar_missing'};
+ const result={status:'identity_unverified',phone_digits:null,profile_name:null};
+ try{
+   if(you.getAttribute('aria-pressed')!=='true')you.click();
+   const profile=await find('button[aria-label="View profile"]');
+   if(!profile){result.status='view_profile_button_missing';return result}
+   profile.click();
+   // Current WhatsApp stores the own name directly under profile-drawer;
+   // old versions used a separate pushname-section wrapper.
+   const oldNameSelector='[data-testid="pushname-section"] [data-testid*="pushname-input-read-only"]';
+   const newNameSelector='[data-testid="profile-drawer"] span[data-testid*="pushname-input-read-only"]';
+   const nameEl=(await find(oldNameSelector))||(await find(newNameSelector));
+   result.profile_name=nameEl?String(nameEl.textContent||'').trim():null;
+   const candidates=new Set();
+   const icons=[...document.querySelectorAll('svg title')].filter(e=>String(e.textContent||'').trim()==='ic-call');
+   const phonePattern=/^\+?[\d\s()\-]{8,25}$/;
+   for(const icon of icons){
+     let ancestor=icon.parentElement;
+     for(let depth=0;depth<8&&ancestor;depth++,ancestor=ancestor.parentElement){
+       const spans=[...ancestor.querySelectorAll('span')].filter(e=>e.getClientRects().length);
+       const numbers=spans.map(e=>String(e.textContent||'').trim()).filter(v=>phonePattern.test(v));
+       if(numbers.length){for(const number of numbers)candidates.add(number.replace(/\D/g,''));break}
+     }
+   }
+   // New WhatsApp variants no longer expose svg title=ic-call. The
+   // Copy phone number action is a profile-only anchor; read the visible
+   // phone text in its own drawer, never from a conversation or sidebar.
+   let phoneAnchor='svg title:ic-call';
+   if(candidates.size===0){
+     const drawer=document.querySelector('[data-testid="profile-drawer"]');
+     const copy=drawer?.querySelector('button[aria-label="Copy phone number"]');
+     if(drawer?.getClientRects().length && copy?.getClientRects().length &&
+        copy.getAttribute('aria-disabled')!=='true'){
+       const found=new Set();
+       const rows=drawer.querySelectorAll('div[data-testid="container"] span');
+       for(const el of rows){
+         if(!el.getClientRects().length)continue;
+         const value=String(el.textContent||'').trim();
+         if(phonePattern.test(value))found.add(value.replace(/\D/g,''));
+       }
+       if(found.size===1){
+         candidates.add([...found][0]);
+         phoneAnchor='profile-drawer button[aria-label=Copy phone number] + container';
+       }
+     }
+   }
+   if(candidates.size===1&&result.profile_name){
+     result.phone_digits=[...candidates][0];result.status='verified';
+   } else result.status=candidates.size===0?'phone_marker_missing':'phone_marker_ambiguous';
+   result.evidence={name_selector:nameEl?.matches(newNameSelector)?newNameSelector:oldNameSelector,phone_anchor:phoneAnchor};
+   return result;
+ }finally{
+   const back=document.querySelector('button[aria-label="Back"]');
+   if(back){back.click();await pause(120)}
+   const chats=document.querySelector('button[aria-label="Chats"][data-navbar-item="true"]');
+   if(chats)chats.click();
+ }
+})()
+""";
+
+    public async Task<JsonNode?> ReadAccountIdentityAsync(CancellationToken ct) =>
+        await EvaluateAsync(AccountIdentityScript, ct);
+
+    public async Task<bool> AccountMatchesAsync(string expectedAccount, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(expectedAccount)) return false;
+        var digits = new string(expectedAccount.Where(char.IsAsciiDigit).ToArray());
+        if (digits.Length < 8) return false;
+        var own = await ReadAccountIdentityAsync(ct);
+        return own?["status"]?.ToString() == "verified" &&
+            string.Equals(own["phone_digits"]?.ToString(), digits, StringComparison.Ordinal);
+    }
+
     public async Task<JsonNode?> ReadVisibleAsync(CancellationToken ct) =>
         await EvaluateAsync(VisibleScript,ct);
 
@@ -164,7 +263,8 @@ public sealed class WhatsAppBrowser
                 return view;
             var remainingMs = maxWaitMs - (int)timer.ElapsedMilliseconds;
             if (remainingMs <= 0) return view;
-            await Task.Delay(Math.Min(400, remainingMs), ct);
+            // OF-000052: throttle readiness probes while WhatsApp boots (at most ~9 reads / 20s).
+            await Task.Delay(Math.Min(2500, remainingMs), ct);
         }
         while (true);
     }
@@ -195,6 +295,203 @@ public sealed class WhatsAppBrowser
         while (true);
     }
 
+    // A25: open currently rendered sidebar conversations by their exact visible names.
+    // Does not search the global history or guess an unverified phone/JID.
+    private const string ClickVisibleNameScript = """
+    (() => {
+      const desired = __NAME__;
+      const norm = s => String(s||'').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+      const pane = document.querySelector('#pane-side');
+      if(!pane) return {status:'sidebar_not_loaded'};
+      let rows = [...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')];
+      rows = rows.filter(n => n.getClientRects().length &&
+        !rows.some(p => p !== n && n.contains(p) && p.matches('[role="row"],[data-testid="cell-frame-container"]')));
+      const titleOf = row => {
+        const marker = row.querySelector('[data-testid="cell-frame-title"] [title]') ||
+          row.querySelector('[data-testid="cell-frame-title"]') ||
+          row.querySelector('span[title]');
+        return String(marker?.getAttribute('title') || marker?.textContent ||
+          String(row.innerText||'').split('\n')[0] || '').trim();
+      };
+      const matches = rows.map(row => ({row,label:titleOf(row)}))
+        .filter(item => norm(item.label) === norm(desired));
+      if(matches.length !== 1)
+        return {status:matches.length ? 'ambiguous_visible_name' : 'name_not_rendered',
+          matches:matches.length,visible_rows:rows.length};
+      const clickTarget=matches[0].row.querySelector('[role="gridcell"]')||matches[0].row;
+      const rect=clickTarget.getBoundingClientRect();
+      return {status:'coordinates',label:matches[0].label,
+        x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+    })()
+    """;
+
+    // A26: after a single complete sidebar scan, find a named chat inside a
+    // virtualized list locally. One JavaScript call; no model-driven scrolling.
+    private const string FindAndClickNamedScript = """
+    (async()=> {
+      const desired=__NAME__;
+      const norm=s=>String(s||'').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+      const pane=document.querySelector('#pane-side');
+      if(!pane)return {status:'sidebar_not_loaded'};
+      const nodes=[pane,...pane.querySelectorAll('*')];
+      const scroller=nodes.filter(n=>n.scrollHeight>n.clientHeight+80&&n.clientHeight>80)
+        .sort((a,b)=>(b.scrollHeight-b.clientHeight)-(a.scrollHeight-a.clientHeight))[0]||pane;
+      const initial=scroller.scrollTop;
+      const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+      const rows=()=>[...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')]
+        .filter(n=>n.getClientRects().length&&!Array.from(n.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')).some(e=>e!==n));
+      const labelOf=row=>{
+        const el=row.querySelector('[data-testid="cell-frame-title"] [title]')||
+          row.querySelector('[data-testid="cell-frame-title"]')||row.querySelector('span[title]');
+        return String(el?.getAttribute('title')||el?.textContent||
+          String(row.innerText||'').split('\n')[0]||'').trim();
+      };
+      scroller.scrollTop=0;
+      await pause(90);
+      for(let i=0;i<450;i++){
+        const matches=rows().map(row=>({row,label:labelOf(row)}))
+          .filter(x=>norm(x.label)===norm(desired));
+        if(matches.length>1){
+          scroller.scrollTop=initial;
+          return {status:'ambiguous_visible_name',matches:matches.length};
+        }
+        if(matches.length===1){
+          const clickTarget=matches[0].row.querySelector('[role="gridcell"]')||matches[0].row;
+          const rect=clickTarget.getBoundingClientRect();
+          return {status:'coordinates',label:matches[0].label,
+            x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+        }
+        const before=scroller.scrollTop;
+        if(before+scroller.clientHeight>=scroller.scrollHeight-4)break;
+        scroller.scrollTop=Math.min(scroller.scrollHeight,
+          before+Math.max(150,scroller.clientHeight*.8));
+        await pause(60);
+        if(scroller.scrollTop===before)break;
+      }
+      scroller.scrollTop=initial;
+      return {status:'name_not_rendered_after_scan'};
+    })()
+    """;
+
+    private async Task<JsonNode?> WaitForNamedConversationAsync(string expected, CancellationToken ct)
+    {
+        static string Normal(string value) => string.Join(" ", value.Split((char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? view;
+        do
+        {
+            view = await ReadVisibleAsync(ct);
+            var actual = view?["conversation_header"]?.ToString()
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
+            // OF-000053: the combined header may start with avatar initials.
+            // Accept only a full exact contact label from the visible header DOM.
+            var exactVisibleLabel = view?["conversation_header_labels"] is JsonArray labels &&
+                labels.Any(label => Normal(label?.ToString() ?? "") == Normal(expected));
+            if ((Normal(actual) == Normal(expected) || exactVisibleLabel) &&
+                view?["composer_visible"]?.GetValue<bool>() == true)
+                return view;
+            if (clock.ElapsedMilliseconds >= 8000) return null;
+            await Task.Delay(300, ct);
+        }
+        while (true);
+    }
+
+    public async Task<JsonObject> ReadVisibleNamesAsync(IReadOnlyList<string> names,
+        int maxMessages, CancellationToken ct)
+    {
+        if (names.Count is < 1 or > 60)
+            return new JsonObject { ["status"]="invalid_target_count", ["items"]=new JsonArray() };
+        maxMessages = Math.Clamp(maxMessages, 0, 10);
+        var current = await _browser.CurrentUrlAsync(ct);
+        if (!IsWhatsAppUrl(current))
+            return new JsonObject { ["status"]="not_whatsapp_web", ["items"]=new JsonArray() };
+        // OF-000054: complete the local cold-start readiness check before returning sidebar_not_loaded.
+        var ready = await ReadReadyAsync(ct, 20000);
+        if (ready?["ready"]?.GetValue<bool>() != true)
+            return new JsonObject { ["status"]="sidebar_not_loaded", ["items"]=new JsonArray() };
+
+        var items = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        JsonNode? sidebarDirectory = null; // one complete local scan at most per batch
+        static string NameKey(string? value) => string.Join(" ",
+            (value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        foreach (var rawName in names)
+        {
+            ct.ThrowIfCancellationRequested();
+            var name = (rawName ?? "").Trim();
+            if (name.Length == 0 || !seen.Add(name)) continue;
+            if (name.Length > 150) {
+                items.Add(new JsonObject { ["name"]=name[..150],["status"]="name_too_long" });
+                continue;
+            }
+            var clicked = await EvaluateAsync(ClickVisibleNameScript.Replace(
+                "__NAME__", JsonSerializer.Serialize(name)), ct);
+            if (clicked?["status"]?.ToString() == "name_not_rendered")
+            {
+                // Only one full sidebar scan for all names in this tool invocation.
+                sidebarDirectory ??= await ReadAllPreviewsAsync(ct);
+                var complete = sidebarDirectory?["complete"]?.GetValue<bool>() == true;
+                var matches = (sidebarDirectory?["previews"] as JsonArray)?.OfType<JsonObject>()
+                    .Count(x => NameKey(x["name"]?.ToString()) == NameKey(name)) ?? 0;
+                clicked = !complete
+                    ? new JsonObject { ["status"]="sidebar_scan_incomplete" }
+                    : matches == 0
+                        ? new JsonObject { ["status"]="name_not_found_in_sidebar" }
+                        : matches > 1
+                            ? new JsonObject { ["status"]="ambiguous_sidebar_name", ["matches"]=matches }
+                            : await EvaluateAsync(FindAndClickNamedScript.Replace(
+                                "__NAME__", JsonSerializer.Serialize(name)), ct);
+            }
+            if (clicked?["status"]?.ToString() == "coordinates")
+            {
+                var exactLabel = clicked["label"]?.ToString() ?? name;
+                var x = clicked["x"]?.GetValue<double>() ?? -1;
+                var y = clicked["y"]?.GetValue<double>() ?? -1;
+                var physicalClick = await _browser.RealClickPointAsync(x, y, ct);
+                clicked = physicalClick["ok"]?.GetValue<bool>() == true
+                    ? new JsonObject { ["status"]="clicked", ["label"]=exactLabel }
+                    : new JsonObject { ["status"]="real_click_failed" };
+            }
+            if (clicked?["status"]?.ToString() != "clicked")
+            {
+                items.Add(new JsonObject { ["name"]=name,
+                    ["status"]=clicked?["status"]?.ToString() ?? "click_unavailable" });
+                continue;
+            }
+            var expectedName = clicked["label"]?.ToString() ?? name;
+            var view = await WaitForNamedConversationAsync(expectedName, ct);
+            if (view is null)
+            {
+                items.Add(new JsonObject { ["name"]=name,["status"]="conversation_not_ready" });
+                continue;
+            }
+            var messages = view["messages"] as JsonArray;
+            var recent = new JsonArray();
+            if (messages is not null && maxMessages > 0)
+                foreach (var message in messages.Skip(Math.Max(0, messages.Count - maxMessages)))
+                {
+                    if (message is not JsonObject m) continue;
+                    var body = m["text"]?.ToString() ?? "";
+                    recent.Add(new JsonObject {
+                        ["direction"]=m["direction"]?.ToString() ?? "unknown",
+                        ["text"]=body.Length <= 400 ? body : body[..400]
+                    });
+                }
+            items.Add(new JsonObject {
+                ["name"]=name, ["status"]="loaded",
+                ["scope"]="currently_loaded_messages", ["complete"]=false,
+                ["observed_count"]=messages?.Count ?? 0,
+                ["recent_messages"]=recent
+            });
+        }
+        return new JsonObject {
+            ["status"]="completed_with_item_status",
+            ["identity_scope"]="exact_sidebar_display_name_not_phone_verified",
+            ["requested"]=names.Count,["unique"]=seen.Count,["items"]=items
+        };
+    }
+
     public async Task<JsonNode?> OpenAsync(string target, CancellationToken ct)
     {
         var url=DirectUrl(target);
@@ -220,7 +517,7 @@ public sealed class WhatsAppBrowser
             {
                 if (node?["direction"]?.GetValue<string>() != "out") continue;
                 var text = Clean(node?["text"]?.GetValue<string>() ?? "");
-                if (text.Contains(needle, StringComparison.Ordinal))
+                if (string.Equals(text, needle, StringComparison.Ordinal))
                     found.Add(node?["id"]?.GetValue<string>() ?? "");
             }
             return found;
@@ -229,9 +526,12 @@ public sealed class WhatsAppBrowser
         if (needle.Length == 0) return false;
         var oldMatches = Matches(before, needle);
         var newMatches = Matches(after, needle);
+        // Virtualized WhatsApp bubbles can appear/disappear without a new send.
+        // Only a NEW provider message ID with the EXACT text is evidence.
         if (newMatches.Count == 0) return false;
-        if (newMatches.Count > oldMatches.Count) return true;
-        return newMatches.Any(id => id.Length > 0 && !oldMatches.Contains(id));
+        var previousIds = oldMatches.Where(id => id.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+        return newMatches.Any(id => id.Length > 0 && !previousIds.Contains(id));
     }
 
     public async Task<JsonNode?> SendAsync(string target,string message,CancellationToken ct)

@@ -20,6 +20,10 @@ public sealed class AppPaths
     public string Notes => Path.Combine(Root, "notes");
     public string Runtime => Path.Combine(Root, "runtime");
     public string Tasks => Path.Combine(Root, "tasks");
+    public string Memory => Path.Combine(Root, "memory");
+    public string OperationalDatabase => Path.Combine(Memory, "operational.db");
+    public string Captures => Path.Combine(Root, "captures");
+    public string Procedures => Path.Combine(Root, "procedures");
     public string ConfigFile => Path.Combine(Root, "config.json");
     public string SecretFile => Path.Combine(Root, "openai.key");
     public string GapsFile => Path.Combine(Root, "logs", "gaps.ndjson");
@@ -58,7 +62,7 @@ public sealed class AppPaths
 
     public void EnsureCreated()
     {
-        foreach (var d in new[] { Root, BrowserProfile, Logs, Runs, Overflow, Telemetry, Downloads, Notes, Runtime, Tasks, Screenshots })
+        foreach (var d in new[] { Root, BrowserProfile, Logs, Runs, Overflow, Telemetry, Downloads, Notes, Runtime, Tasks, Screenshots, Memory, Captures, Procedures })
             Directory.CreateDirectory(d);
     }
 }

@@ -6,6 +6,8 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using OpenFill.Core.Agent;
+using OpenFill.Core.Config;
 
 namespace OpenFill.Core.Mcp;
 
@@ -29,14 +31,29 @@ public sealed class McpServer : IAsyncDisposable
 
     private readonly string? _shotsDir;
     private readonly FileTransfer? _files;
+    private readonly string? _sharedFolder;
+    private readonly string? _operationalDatabasePath;
+
+    // A06 OF-000026: MCP capture lookup must use the SAME configured shared
+    // directory as PageCaptureService and the file-transfer endpoint.
+    // Never reconstruct a separate path from UserProfile.
+    private string SharedCaptureDirectory => Path.Combine(
+        _sharedFolder ?? throw new InvalidOperationException("mcp_shared_folder_unavailable"),
+        "captures");
+    private string SharedFilterDirectory => Path.Combine(
+        _sharedFolder ?? throw new InvalidOperationException("mcp_shared_folder_unavailable"),
+        "filters");
 
     /// <summary>Address of the MCP endpoint as the caller sees it (public when there is one). Screenshot links are built from it.</summary>
     public string? LinkBase { get; set; }
 
-    public McpServer(McpTaskManager tasks, string secret, int port = 0, Action<string>? log = null, string? screenshotsDir = null, string? sharedFolder = null, IJevMessageInspector? jevInspector = null)
+    public McpServer(McpTaskManager tasks, string secret, int port = 0, Action<string>? log = null, string? screenshotsDir = null, string? sharedFolder = null, IJevMessageInspector? jevInspector = null, string? operationalDatabasePath = null)
     {
         _shotsDir = screenshotsDir;
-        _files = string.IsNullOrWhiteSpace(sharedFolder) ? null : new FileTransfer(sharedFolder);
+        _sharedFolder = string.IsNullOrWhiteSpace(sharedFolder)
+            ? null : Path.GetFullPath(sharedFolder);
+        _files = _sharedFolder is null ? null : new FileTransfer(_sharedFolder);
+        _operationalDatabasePath = operationalDatabasePath;
         _tasks = tasks;
         _jevInspector = jevInspector;
         _secret = secret;
@@ -210,7 +227,8 @@ public sealed class McpServer : IAsyncDisposable
             ["protocolVersion"] = version,
             ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
             ["serverInfo"] = new JsonObject { ["name"] = "openfill-mcp", ["version"] = BuildInfo.Version },
-            ["instructions"] = "OpenFill drives a real web browser (with the user's own logged-in sessions) through its own built-in agent. " +
+            ["instructions"] = "API/MCP FIRST: Before delegating to OpenFill, check whether an already connected provider API or MCP tool can perform the requested operation. Prefer that direct interface over browser automation for ordinary Gmail email, Google Calendar events, Drive files, Slack and other structured services. GITHUB OPTIONAL HINT: for GitHub repository and file work, consider the native GitHub connector and/or a Git autosync workflow when available and suitable. This is only a suggestion, never an obligation or a condition for starting an OpenFill task. The calling model decides how to proceed according to the user's actual request; OpenFill must not enforce GitHub routing. Autosync is an option to consider, not a request to configure synchronization. EXCEPTION: when OpenFill's own Luna agent is completing an authentication flow, it may open a mailbox in its browser to obtain a one-time sign-in code, sign-in link or temporary credentials. The calling model should not be required to retrieve those authentication messages through its API/MCP. Use OpenFill for capabilities not supported by an available authorized connector, when browser UI interaction/verification is explicitly required, and for its own in-flow authentication. Do not assume a connector is available; verify the capability. Do not split one task between interfaces unnecessarily. " +
+                               "OpenFill drives a real web browser (with the user's own logged-in sessions) through its own built-in agent. " +
                                "Hand it a web task with openfill_start_task, then follow the returned status until it is done. Call openfill_info for the version, settings, costs and recent errors when something looks wrong. " +
                                "READ THIS FIRST: OpenFill has its own autonomous model. Delegate one complete result-oriented task, not a sequence of login, navigation and submission microtasks. OpenFill first attempts authentication with authorized available information. If it asks you a question (needs_input), answer with openfill_reply using available data. If it waits for the person at the computer (waiting_for_user), that person interacts in the OpenFill window; do not ask them to say ready in chat, and monitor using openfill_task_status (each call waits up to 30 seconds). Do not restart the task merely because login or human input is needed. " +
                                "HOW TO WORK WITH IT. (1) State the full desired result and how to verify success. Include ALL known relevant information in one task (site, account, names, contact details, addresses, texts, dates, values, full file paths and authorized authentication data). Foresee task-specific decisions, giving preferred choices and fallbacks, but avoid generic instructions and micromanagement. " +
@@ -255,6 +273,8 @@ public sealed class McpServer : IAsyncDisposable
         {
             ToolDef("openfill_start_task",
 """
+API/MCP FIRST: Check the connected API/MCP tools available to your own client before starting browser automation. Prefer provider-native APIs/MCP for supported operations. For example, read/search/send Gmail mail through a Gmail connector, not through a browser; use connected calendar, Drive or Slack tools likewise. For GitHub tasks you may consider using your own GitHub connector and/or an existing Git autosync mechanism, if appropriate. This is a nonbinding suggestion, not a required route: choose based on the user's task and the capabilities actually available. Do not configure autosync unless explicitly asked. When direct connectors cannot perform the requested operation, normal OpenFill browser workflow remains available. AUTHENTICATION EXCEPTION: Luna within OpenFill may itself read email in its own browser to obtain one-time login codes, sign-in links or temporary credentials needed in the current task. Do not require the calling model to fetch those messages via API/MCP. Never claim a connector exists without checking. This is a routing preference, not a blanket prohibition.
+
 You delegate complete, outcome-oriented web tasks to OpenFill, an autonomous AI agent operating a real browser with access to the user's existing browser sessions.
 
 OpenFill is not a simple browser automation tool. It has its own reasoning model and can independently navigate websites, research information, fill forms, make decisions within the task's scope, handle authentication, execute multi-step workflows, and verify results.
@@ -417,6 +437,8 @@ For external applications such as Networking Radar, supply a unique idempotency_
                     ["chat"] = Prop("string", "REQUIRED. The fixed name of this chat (for example 'Skakanka', 'Lupus website'): chosen once, then the same string in every call from this chat and in every tool of this workspace. OpenFill refuses the task without it. It sets the second colour, so the person sees at once which chat of which model asked for the task."),
                     ["title"] = Prop("string", "Optional. A short name for the task (2 to 5 words, for example 'Skakanka - Google Business profile'). It is shown on the browser tab and on the cards in the OpenFill window, so the person can tell the tasks apart."),
                     ["idempotency_key"] = Prop("string", "Optional stable caller request ID (1-128 ASCII letters, digits, dot, dash, underscore or colon). Reusing it with the same requester/chat and identical task returns the existing task_id, including after restart. Reusing it for different task text returns idempotency_conflict. Recommended for event registrations; distinct users/events need distinct keys."),
+                    ["execution_mode"] = Prop("string", "Optional EXPLICIT opt-in: local_plan_v1_draft. One bounded plan from Luna then local same-origin link navigation and draft textbox editing, verified locally; no save/send/submit, no automatic fallback. Requires start_url. Omit for normal tasks."),
+                    ["start_url"] = Prop("string", "Required only for execution_mode=local_plan_v1_draft: absolute http(s) URL with no credentials or fragment. The browser navigates there before the one-call local plan."),
                     ["wait_seconds"] = wait()
                 },
                 new[] { "task", "requester", "chat" }, idempotent: false),
@@ -515,6 +537,106 @@ This is a current loaded-DOM snapshot, not a complete remote-site crawl.
                     ["max_matches"] = Prop("integer","Maximum filtered matches stored; default 50")
                 },
                 new[] { "task_id","requester","chat" }, idempotent:false, readOnly:true),
+            ToolDef("openfill_operation_metrics",
+"""
+Compact aggregate counts from the current instance's SQLite operational ledger:
+batches, items, attempts, verified, uncertain, failed, skipped, planned and evidence counts
+grouped by procedure. No browser access and no model invocations.
+Filters provider/account_id if supplied; empty means all accounts in this local instance.
+""",
+                new JsonObject {
+                    ["provider"] = Prop("string", "Optional provider, e.g. linkedin"),
+                    ["account_id"] = Prop("string", "Optional exact account ID")
+                }, Array.Empty<string>(), idempotent:true, readOnly:true),
+            ToolDef("openfill_procedures",
+"""
+Returns the small catalog of supported, versioned procedures and whether they are candidate, verified or suspended.
+Only verified procedures are eligible for automatic deterministic execution. The ordinary OpenFill autonomous agent remains available for other tasks.
+""",
+                new JsonObject(), Array.Empty<string>(), idempotent: true, readOnly: true),
+            ToolDef("openfill_prepare_airbnb_price_batch",
+"""
+Prepare Airbnb price changes for a complete inclusive date range. Requires actual per-date observed prices and evidence references. Computes old/new values, saves one operation per date, produces a file manifest. Does NOT modify the Airbnb website.
+""",
+                new JsonObject {
+                    ["account_id"] = Prop("string", "Exact host account ID"),
+                    ["listing_id"] = Prop("string", "Exact Airbnb listing ID"),
+                    ["currency"] = Prop("string", "Currency code ISO 4217"),
+                    ["rate_plan"] = Prop("string", "Rate plan or empty"),
+                    ["request_id"] = Prop("string", "Stable caller request ID"),
+                    ["requester"] = Prop("string", "Caller name"),
+                    ["chat"] = Prop("string", "Caller conversation"),
+                    ["first_date"] = Prop("string", "YYYY-MM-DD inclusive"),
+                    ["last_date"] = Prop("string", "YYYY-MM-DD inclusive"),
+                    ["percent_change"] = Prop("number", "Percentage change, e.g. 35 for +35%"),
+                    ["price_decimals"] = Prop("integer", "0 or 2 decimal places"),
+                    ["observations"] = new JsonObject {
+                        ["type"] = "array",
+                        ["items"] = new JsonObject {
+                            ["type"]="object",
+                            ["properties"] = new JsonObject {
+                                ["date"]=Prop("string", "YYYY-MM-DD"),
+                                ["old_price"]=Prop("number", "Observed existing day rate"),
+                                ["source_ref"]=Prop("string", "Capture or trustworthy observed source")
+                            },
+                            ["required"] = new JsonArray("date","old_price","source_ref")
+                        }
+                    }
+                },
+                new[] { "account_id", "listing_id", "currency", "rate_plan", "request_id", "requester", "chat",
+                         "first_date", "last_date", "percent_change", "price_decimals", "observations" },
+                idempotent: true, readOnly: false),
+            ToolDef("openfill_prepare_linkedin_batch",
+"""
+Prepare a persisted LinkedIn message batch with exact sender account, requester, chat, request ID and list of target/message pairs. One SQLite pass resolves cached threads and profile links; returns operation IDs. No navigation or sending occurs.
+""",
+                new JsonObject {
+                    ["account_id"] = Prop("string", "Verified sender account scope"),
+                    ["request_id"] = Prop("string", "Stable idempotent request ID"),
+                    ["requester"] = Prop("string", "Caller name"),
+                    ["chat"] = Prop("string", "Caller conversation"),
+                    ["items"] = new JsonObject {
+                        ["type"]="array",
+                        ["items"] = new JsonObject {
+                            ["type"]="object",
+                            ["properties"]= new JsonObject {
+                                ["target"]=Prop("string", "Exact provider ID, profile or thread URL"),
+                                ["message"]=Prop("string", "Exact intended text")
+                            },
+                            ["required"]=new JsonArray("target","message")
+                        }
+                    }
+                },
+                new[] { "account_id", "request_id", "requester", "chat", "items" },
+                idempotent: true, readOnly: false),
+            ToolDef("openfill_memory_query",
+"""
+Queries durable OpenFill operational memory on PBOX1, scoped by exact provider and sender account.
+Read-only, no WebView2. mode=identities searches provider IDs, profile links and names; mode=messages searches SQLite FTS5; mode=observations finds prior capture files by host and URL substring without a browser read.
+""",
+                new JsonObject {
+                    ["mode"] = Prop("string", "identities, messages or observations"),
+                    ["provider"] = Prop("string", "Exact provider name"),
+                    ["account_id"] = Prop("string", "Known provider sender account identifier"),
+                    ["search"] = Prop("string", "Provider ID, profile URL, contact name or full-text expression"),
+                    ["limit"] = Prop("integer", "Maximum 100, default 20")
+                },
+                new[] { "mode", "provider", "search" }, idempotent: true, readOnly: true),
+            ToolDef("openfill_query_capture",
+"""
+Search an ALREADY SAVED capture by capture_id (preferred) or a local file by source_path, without WebView2 navigation or Luna.
+capture_id resolves the immutable manifest and verifies SHA256 before filtering. Historical capture data is not proof of current website state.
+Accepted operations: text_literal, text_regex, text_count, json_select, ndjson_select. An empty match is not a tool failure.
+""",
+                new JsonObject {
+                    ["capture_id"] = Prop("string", "Existing capture ID; preferred over source_path"),
+                    ["file_kind"] = Prop("string", "text, elements or html; default text"),
+                    ["source_path"] = Prop("string", "Legacy absolute path when capture_id is not provided"),
+                    ["operation"] = Prop("string", "text_literal, text_regex, text_count, json_select, ndjson_select"),
+                    ["query"] = Prop("string", "Literal text, regex or jq expression"),
+                    ["max_preview_rows"] = Prop("integer", "At most 30 preview lines, default 10")
+                },
+                new[] { "operation", "query" }, idempotent: true, readOnly: true),
             ToolDef("openfill_screenshot",
 """
 Takes a screenshot of the current OpenFill browser page and returns the JPEG image itself (an image in the tool result) plus a private URL as a fallback.
@@ -587,6 +709,63 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
         return fallback;
     }
 
+    private JsonObject PrepareLinkedInBatch(JsonObject? args)
+    {
+        if (string.IsNullOrWhiteSpace(_operationalDatabasePath))
+            return new JsonObject { ["status"] = "storage_unconfigured" };
+        var items = (args?["items"] as JsonArray)?.OfType<JsonObject>()
+            .Select(x => new ProcedureTarget(Str(x,"target") ?? "", Str(x,"message") ?? ""))
+            .ToArray() ?? [];
+        return new LinkedInBatchPlanner(new OperationalMemoryStore(_operationalDatabasePath)).Prepare(
+            Str(args,"account_id") ?? "", Str(args,"request_id") ?? "", items,
+            Str(args,"requester") ?? "", Str(args,"chat") ?? "");
+    }
+
+    private JsonObject PrepareAirbnbBatch(JsonObject? args)
+    {
+        if (string.IsNullOrWhiteSpace(_operationalDatabasePath))
+            return new JsonObject { ["status"] = "storage_unconfigured" };
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var observed = (args?["observations"] as JsonArray)?.OfType<JsonObject>()
+            .Select(x => new AirbnbPriceObservation(
+                DateOnly.ParseExact(Str(x,"date") ?? "", "yyyy-MM-dd", culture),
+                decimal.Parse(x["old_price"]?.ToString() ?? "", culture),
+                Str(x,"source_ref") ?? "")).ToArray() ?? [];
+        return new AirbnbPricePlanner(new OperationalMemoryStore(_operationalDatabasePath)).Prepare(
+            Str(args,"account_id") ?? "", Str(args,"listing_id") ?? "",
+            Str(args,"currency") ?? "", Str(args,"rate_plan") ?? "",
+            Str(args,"request_id") ?? "", Str(args,"requester") ?? "",
+            Str(args,"chat") ?? "",
+            DateOnly.ParseExact(Str(args,"first_date") ?? "", "yyyy-MM-dd", culture),
+            DateOnly.ParseExact(Str(args,"last_date") ?? "", "yyyy-MM-dd", culture),
+            decimal.Parse(args?["percent_change"]?.ToString() ?? "", culture),
+            Int(args,"price_decimals",0), observed);
+    }
+
+    private JsonObject MemoryQuery(JsonObject? args)
+    {
+        if (string.IsNullOrWhiteSpace(_operationalDatabasePath))
+            return new JsonObject { ["status"] = "storage_unconfigured" };
+        var provider = Str(args, "provider");
+        var accountId = Str(args, "account_id");
+        var search = Str(args, "search");
+        var mode = Str(args, "mode");
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(search) ||
+            (mode != "observations" && string.IsNullOrWhiteSpace(accountId)))
+            return new JsonObject { ["status"] = "invalid_query", ["reason"] = "provider/search required; account_id required for identities and messages" };
+        var memory = new OperationalMemoryStore(_operationalDatabasePath);
+        var limit = Math.Clamp(Int(args, "limit", 20), 1, 100);
+        var results = mode switch {
+            "identities" => memory.FindIdentities(provider, accountId, search, limit),
+            "messages" => memory.SearchMessages(provider, accountId, search, limit),
+            "observations" => memory.RecentObservations(provider, accountId, search, limit),
+            _ => null
+        };
+        return results is null
+            ? new JsonObject { ["status"] = "invalid_mode", ["reason"] = "identities, messages or observations" }
+            : new JsonObject { ["status"] = "ok", ["results"] = results, ["count"] = results.Count };
+    }
+
     private async Task<JsonObject> CallToolAsync(JsonObject? p)
     {
         var name = p?["name"]?.GetValue<string>() ?? "";
@@ -599,7 +778,7 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             var wait = Int(args, "wait_seconds", 25);
             result = name switch
             {
-                "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key")),
+                "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key"), Str(args, "execution_mode"), Str(args, "start_url")),
                 "openfill_task_status" => await _tasks.StatusAsync(Str(args, "task_id"), wait, _cts.Token),
                 "openfill_reply" => await _tasks.ReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait, _cts.Token),
                 "openfill_cancel_task" => _tasks.Cancel(Str(args, "task_id")),
@@ -610,6 +789,26 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
                     Str(args, "task_id"), Str(args, "requester"), Str(args, "chat"), Str(args, "url"),
                     Str(args, "mode"), Str(args, "selector"), Str(args, "regex"),
                     Str(args, "output_folder"), Int(args, "max_matches", 50), _cts.Token),
+                "openfill_procedures" => new JsonObject { ["status"] = "ok", ["procedures"] = ProcedureCatalog.FromEmbedded(
+                    _operationalDatabasePath is null ? null : Path.Combine(
+                        Path.GetDirectoryName(_operationalDatabasePath)!, "procedure-learning")).List() },
+                "openfill_operation_metrics" => new OperationalMemoryStore(_operationalDatabasePath ?? throw new InvalidOperationException("Operational database unavailable")).Metrics(Str(args, "provider") ?? "", Str(args, "account_id") ?? ""),
+                "openfill_prepare_linkedin_batch" => PrepareLinkedInBatch(args),
+                "openfill_prepare_airbnb_price_batch" => PrepareAirbnbBatch(args),
+                "openfill_memory_query" => MemoryQuery(args),
+                "openfill_query_capture" => !string.IsNullOrWhiteSpace(Str(args, "capture_id"))
+                    ? await CaptureArtifactQueryService.QueryAsync(
+                        SharedCaptureDirectory,
+                        Str(args, "capture_id") ?? "", Str(args, "file_kind") ?? "text",
+                        Str(args, "operation") ?? "", Str(args, "query") ?? "",
+                        SharedFilterDirectory,
+                        Int(args, "max_preview_rows", 10), _cts.Token)
+                    : !string.IsNullOrWhiteSpace(Str(args, "source_path"))
+                        ? await FileFilterService.QueryAsync(
+                            Str(args, "source_path"), Str(args, "operation"), Str(args, "query"),
+                            SharedFilterDirectory,
+                            Int(args, "max_preview_rows", 10), 60, _cts.Token)
+                        : new JsonObject { ["status"] = "error", ["reason_code"] = "capture_reference_missing" },
                 "openfill_screenshot" => await ScreenshotResultAsync(Str(args, "task_id")),
                 "openfill_file_transfer" => _files is null
                     ? new JsonObject { ["status"] = "error", ["message"] = "No shared directory configured" }

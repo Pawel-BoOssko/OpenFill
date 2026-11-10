@@ -41,6 +41,40 @@ public sealed class HistoryStore
         }
     }
 
+    /// <summary>
+    /// At process startup, persist unfinished tasks from the previous process as interrupted.
+    /// Do not invent an end timestamp: a crash/restart does not establish when work stopped.
+    /// Each task is appended only once because the latest record then ceases to be running.
+    /// Call before accepting any new task in this process.
+    /// </summary>
+    public int PersistInterruptedFromPreviousProcess()
+    {
+        lock (_lock)
+        {
+            if (!File.Exists(_file)) return 0;
+            var latest = new Dictionary<string, HistoryRecord>(StringComparer.Ordinal);
+            using (var fs = new FileStream(_file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fs, Encoding.UTF8))
+            {
+                string? line;
+                while ((line = reader.ReadLine()) is not null)
+                {
+                    HistoryRecord? record;
+                    try { record = JsonSerializer.Deserialize<HistoryRecord>(line, EventLog.Ndjson); }
+                    catch { continue; }
+                    if (record is not null && !string.IsNullOrEmpty(record.Id))
+                        latest[record.Id] = record;
+                }
+            }
+            var stale = latest.Values.Where(r => r.Status == "running")
+                .Select(r => r with { Status = "interrupted" }).ToArray();
+            if (stale.Length == 0) return 0;
+            var lines = string.Join("\n", stale.Select(r => JsonSerializer.Serialize(r, EventLog.Ndjson)));
+            File.AppendAllText(_file, lines + "\n", new UTF8Encoding(false));
+            return stale.Length;
+        }
+    }
+
     /// <summary>The newest tasks first. A record that is still "running" but is not the current task becomes "interrupted".</summary>
     public List<HistoryRecord> Load(int max, string? currentId)
         => Load(max, currentId is null ? Array.Empty<string>() : new[] { currentId });

@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="testsite\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="testsite" />
+    <None Include="..\realistic_sites\invitations.html" CopyToOutputDirectory="PreserveNewest" Link="realistic_sites\invitations.html" />
   </ItemGroup>
 </Project>
