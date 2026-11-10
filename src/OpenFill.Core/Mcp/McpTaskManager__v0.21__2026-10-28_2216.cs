@@ -94,6 +94,9 @@ public sealed class McpTaskManager
         lock (_lock) return _open.Values.Select(l => l.Rec).Where(IsOpen).OrderBy(r => r.CreatedUtc).ToList();
     }
 
+    /// <summary>One direct CDP visit and title read, bypassing the browser LLM entirely.</summary>
+    public Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct)
+        => _host.ReadSelfChatTitleAsync(platform, nativeChatId, ct);
     // ------------------------------------------------------------------ public operations
 
     /// <summary>Direct C# snapshot. Reuses a known task card and verifies both caller identity fields.</summary>

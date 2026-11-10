@@ -79,6 +79,14 @@ public interface IRunHost
         string selector, string regex, string? directory, int maxMatches, CancellationToken ct)
         => Task.FromResult(new JsonObject { ["status"] = "error", ["message"] = "Direct page capture not supported by this host." });
 
+    /// <summary>
+    /// Model-free read of a previously verified native conversation URL. Implementations
+    /// must navigate directly to that exact URL, check the final URL and extract the title
+    /// from one browser snapshot. No search and no model inference.
+    /// </summary>
+    Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct)
+        => Task.FromResult(new JsonObject { ["status"]="direct_read_unavailable",
+                                            ["message"]="Browser does not support model-free self-chat title reads." });
     /// <summary>Stops one task from the OpenFill window (or every task when the key is null).</summary>
     void Stop(string? taskKey);
 

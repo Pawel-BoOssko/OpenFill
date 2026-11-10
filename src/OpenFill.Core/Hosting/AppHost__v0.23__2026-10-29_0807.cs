@@ -1039,6 +1039,93 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     public void Stop() => Stop((string?)null);
 
     /// <summary>Screenshot of a task's browser tab (the newest running task's, or the open tab) saved under screenshots\ (MCP serves it as a private link). Keeps the newest 60 files.</summary>
+    /// <summary>
+    /// Zero browser-model calls: a single direct CDP navigation to the previously bound
+    /// native URL and a single title/URL DOM evaluation. Uses the normal tab lifecycle
+    /// and domain lock, does not search chat history or invoke the planner.
+    /// </summary>
+    public async Task<JsonObject> ReadSelfChatTitleAsync(
+        string platform, string nativeChatId, CancellationToken ct)
+    {
+        if (platform is not ("chatgpt" or "claude") ||
+            !Guid.TryParse(nativeChatId, out var parsed) || nativeChatId.Length != 36)
+            return new JsonObject { ["status"]="invalid_native_id" };
+
+        var domain = platform == "chatgpt" ? "chatgpt.com" : "claude.ai";
+        var url = "https://" + domain + (platform == "chatgpt" ? "/c/" : "/chat/") + parsed.ToString("D");
+        if (Tabs is null) return new JsonObject { ["status"]="direct_read_unavailable",
+            ["message"]="OpenFill has no active WebView2 tab manager." };
+
+        var key = "self-title-" + Guid.NewGuid().ToString("N");
+        if (Locks.TryAcquireOne(key, "mcp_self_chat", "read own chat title", domain) is { } holder)
+            return new JsonObject { ["status"]="domain_busy",
+                ["message"]="Another task is using " + domain, ["open_task_id"]=holder.TaskKey };
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        Browser.BrowserController? browser = null;
+        var begun = false;
+        try
+        {
+            var start = await Tabs.BeginAsync(key, "Self chat title", null,
+                deadline.Token, shortLabel:"Self chat title", requester:"OpenFill SelfChat Direct",
+                preferredDomain:domain);
+            begun = true;
+            var connection = Tabs.ConnectionOf(start.TabId);
+            if (connection is null)
+                return new JsonObject { ["status"]="browser_tab_unavailable" };
+
+            browser = new Browser.BrowserController(new CdpSession(connection), Session.Log);
+            await browser.InitAsync(deadline.Token);
+            await browser.NavigateAsync(url, deadline.Token);
+
+            // One combined DOM read after page readiness. Never infer from navigation task labels.
+            var node = await browser.RunJsAsync(
+                "({url:location.href,title:document.title,ready:document.readyState})", deadline.Token);
+            if (node?["ok"]?.GetValue<bool>() != true || node["value"] is not JsonObject value)
+                return new JsonObject { ["status"]="dom_read_failed" };
+
+            var actual = value["url"]?.GetValue<string>();
+            if (!Uri.TryCreate(actual, UriKind.Absolute, out var uri) ||
+                !string.Equals(uri.GetLeftPart(UriPartial.Path).TrimEnd('/'),
+                    url, StringComparison.OrdinalIgnoreCase))
+                return new JsonObject { ["status"]="target_mismatch",
+                    ["expected_url"]=url, ["actual_url"]=actual };
+
+            var originalTitle = value["title"]?.GetValue<string>()?.Trim() ?? "";
+            var title = originalTitle;
+            if (platform == "chatgpt" && title.EndsWith(" | ChatGPT", StringComparison.OrdinalIgnoreCase))
+                title = title[..^" | ChatGPT".Length].Trim();
+            if (platform == "claude" && title.EndsWith(" - Claude", StringComparison.OrdinalIgnoreCase))
+                title = title[..^" - Claude".Length].Trim();
+
+            if (title.Length == 0 || title is "ChatGPT" or "Claude")
+                return new JsonObject { ["status"]="title_unavailable", ["verified_url"]=actual,
+                    ["native_chat_id"]=parsed.ToString("D"),
+                    ["message"]="Page loaded but did not expose a specific chat title." };
+
+            return new JsonObject {
+                ["status"]="ok", ["platform"]=platform, ["native_chat_id"]=parsed.ToString("D"),
+                ["verified_url"]=actual, ["name"]=title, ["browser_title"]=originalTitle,
+                ["native_url_bound"]=true, ["browser_model_calls"]=0, ["search_calls"]=0
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new JsonObject { ["status"]="direct_read_timeout",
+                                    ["message"]="Direct browser title read was cancelled or exceeded 20 seconds." };
+        }
+        catch (Exception ex)
+        {
+            return new JsonObject { ["status"]="direct_read_error", ["message"]=ex.Message };
+        }
+        finally
+        {
+            try { browser?.Detach(); } catch { }
+            if (begun) { try { await Tabs.EndAsync(key); } catch { } }
+            Locks.ReleaseAll(key);
+        }
+    }
     /// <summary>Direct model-free snapshot of an existing tab: no new task, no navigation.</summary>
     public async Task<JsonObject> CapturePageAsync(string taskKey, string? expectedUrl, string mode,
         string selector, string regex, string? directory, int maxMatches, CancellationToken ct)

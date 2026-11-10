@@ -816,6 +816,14 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             return SelfChatSteering.IdentityStatus(ctx);
         if (SelfChatSteering.ValidateAction(ctx, action, args) is { } rejected)
             return rejected;
+        if (action == "name" && ctx.IdentitySource == "server_verified_binding" &&
+            ctx.NativeChatId is not null)
+        {
+            var direct = await _tasks.ReadSelfChatTitleAsync(ctx.Platform, ctx.NativeChatId, _cts.Token);
+            direct["identity_source"] = "server_verified_binding";
+            direct["self_chat_operation"] = action;
+            return direct;
+        }
         var taskText = SelfChatSteering.BuildBrowserTask(ctx, action, args);
         var result = await _tasks.StartAsync(
             taskText, Math.Clamp(Int(args, "wait_seconds", 25), 0, 30), _cts.Token,

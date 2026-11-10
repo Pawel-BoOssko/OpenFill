@@ -102,4 +102,5 @@ Check(File.Exists(bindingFile) && !File.ReadAllText(bindingFile).Contains(marker
 Directory.Delete(tmp, true);
 Check(cachedTask.Length < 900, "direct task has bounded prompt length");
 Check(fallback.Length < 1600, "fallback task has bounded prompt length");
+n += await SelfChatHttpProtocolSmoke.Run();
 Console.WriteLine($"TOTAL {n} PASSED");
