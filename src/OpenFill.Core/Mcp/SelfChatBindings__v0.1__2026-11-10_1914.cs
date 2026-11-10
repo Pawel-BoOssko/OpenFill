@@ -43,11 +43,32 @@ public sealed class SelfChatBindingStore
         }
     }
 
-    public bool TryRecord(SelfChatSteering.Context context, string? summary, string? outcome)
+    public static string? CandidateNativeId(string? summary)
+    {
+        if (string.IsNullOrWhiteSpace(summary)) return null;
+        const string prefix = "OPENFILL_SELF_CHAT_RESULT:";
+        var index = summary.LastIndexOf(prefix, StringComparison.Ordinal);
+        if (index < 0) return null;
+        var line = summary[(index + prefix.Length)..].TrimStart();
+        var end = line.IndexOfAny(new[] { '\r', '\n' });
+        if (end >= 0) line = line[..end];
+        if (line.Length is < 20 or > 8192) return null;
+        try
+        {
+            var proof = JsonNode.Parse(line) as JsonObject;
+            var candidate = proof?["native_chat_id"]?.GetValue<string>();
+            return Guid.TryParse(candidate, out var parsed) && candidate?.Length == 36
+                ? parsed.ToString("D") : null;
+        }
+        catch { return null; }
+    }
+
+    public bool TryRecord(SelfChatSteering.Context context, string? summary, string? outcome,
+                          bool independentlyVerified = false)
     {
         // A malformed model summary or an unavailable cache file must not turn an
         // already completed browser task into an MCP exception.
-        try { return TryRecordCore(context, summary, outcome); }
+        try { return independentlyVerified && TryRecordCore(context, summary, outcome); }
         catch { return false; }
     }
 

@@ -1045,7 +1045,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     /// and domain lock, does not search chat history or invoke the planner.
     /// </summary>
     public async Task<JsonObject> ReadSelfChatTitleAsync(
-        string platform, string nativeChatId, CancellationToken ct)
+        string platform, string nativeChatId, CancellationToken ct, string? expectedFallbackMarker = null)
     {
         if (platform is not ("chatgpt" or "claude") ||
             !Guid.TryParse(nativeChatId, out var parsed) || nativeChatId.Length != 36)
@@ -1080,8 +1080,15 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             await browser.NavigateAsync(url, deadline.Token);
 
             // One combined DOM read after page readiness. Never infer from navigation task labels.
-            var node = await browser.RunJsAsync(
-                "({url:location.href,title:document.title,ready:document.readyState})", deadline.Token);
+            // The second argument is a plain alphanumeric exact-match token, never
+            // a full message or a search query. Evaluate a Boolean in the chat's
+            // central message pane and never transmit message text to the server.
+            var expression = expectedFallbackMarker is null
+                ? "({url:location.href,title:document.title,ready:document.readyState})"
+                : "({url:location.href,title:document.title,ready:document.readyState," +
+                  "markerVisible:(document.querySelector('main')?.innerText?.includes(" +
+                  System.Text.Json.JsonSerializer.Serialize(expectedFallbackMarker) + ")===true)})";
+            var node = await browser.RunJsAsync(expression, deadline.Token);
             if (node?["ok"]?.GetValue<bool>() != true || node["value"] is not JsonObject value)
                 return new JsonObject { ["status"]="dom_read_failed" };
 
@@ -1092,6 +1099,12 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
                 return new JsonObject { ["status"]="target_mismatch",
                     ["expected_url"]=url, ["actual_url"]=actual };
 
+            if (expectedFallbackMarker is not null &&
+                value["markerVisible"]?.GetValue<bool>() != true)
+                return new JsonObject { ["status"]="marker_not_visible",
+                    ["verified_url"]=actual, ["native_chat_id"]=parsed.ToString("D"),
+                    ["fallback_visible"]=false };
+
             var originalTitle = value["title"]?.GetValue<string>()?.Trim() ?? "";
             var title = originalTitle;
             if (platform == "chatgpt" && title.EndsWith(" | ChatGPT", StringComparison.OrdinalIgnoreCase))
@@ -1099,7 +1112,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             if (platform == "claude" && title.EndsWith(" - Claude", StringComparison.OrdinalIgnoreCase))
                 title = title[..^" - Claude".Length].Trim();
 
-            if (title.Length == 0 || title is "ChatGPT" or "Claude")
+            if (expectedFallbackMarker is null && (title.Length == 0 || title is "ChatGPT" or "Claude"))
                 return new JsonObject { ["status"]="title_unavailable", ["verified_url"]=actual,
                     ["native_chat_id"]=parsed.ToString("D"),
                     ["message"]="Page loaded but did not expose a specific chat title." };
@@ -1107,7 +1120,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             return new JsonObject {
                 ["status"]="ok", ["platform"]=platform, ["native_chat_id"]=parsed.ToString("D"),
                 ["verified_url"]=actual, ["name"]=title, ["browser_title"]=originalTitle,
-                ["native_url_bound"]=true, ["browser_model_calls"]=0, ["search_calls"]=0
+                ["native_url_bound"]=true, ["browser_model_calls"]=0, ["search_calls"]=0,
+                ["fallback_visible"]=expectedFallbackMarker is null ? null : true
             };
         }
         catch (OperationCanceledException)

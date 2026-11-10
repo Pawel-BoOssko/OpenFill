@@ -84,12 +84,13 @@ var bindingStore = new SelfChatBindingStore(Path.Combine(tmp, "operational.db"))
 var nativeGuid = "8fae14dc-2a64-4afd-a0b8-63b852cc03b8";
 var goodProof = "OPENFILL_SELF_CHAT_RESULT: " +
     """{"status":"ok","platform":"chatgpt","native_chat_id":"8fae14dc-2a64-4afd-a0b8-63b852cc03b8","verified_url":"https://chatgpt.com/c/8fae14dc-2a64-4afd-a0b8-63b852cc03b8","fallback_id":"OFSCWDWQHHA9LDYSLJ95QIRME87Q","fallback_visible":true,"same_conversation":true,"account_verified":true}""";
-Check(!bindingStore.TryRecord(context, goodProof, "partial"), "partial agent result not cached");
-Check(!bindingStore.TryRecord(context, goodProof.Replace(marker,"OFSC111111111111111111111111"), "success"), "wrong marker cannot bind");
-Check(!bindingStore.TryRecord(context, goodProof.Replace("chatgpt.com", "wrong.example"), "success"), "wrong URL domain cannot bind");
-Check(!bindingStore.TryRecord(context, goodProof.Replace("account_verified\":true", "account_verified\":false"), "success"), "unverified account cannot bind");
-Check(!bindingStore.TryRecord(context, "Agent said success but supplied no JSON proof", "success"), "unstructured model summary cannot bind");
-Check(bindingStore.TryRecord(context, goodProof, "success"), "exact verified marker may be bound");
+Check(!bindingStore.TryRecord(context, goodProof, "partial", true), "partial agent result not cached");
+Check(!bindingStore.TryRecord(context, goodProof.Replace(marker,"OFSC111111111111111111111111"), "success", true), "wrong marker cannot bind");
+Check(!bindingStore.TryRecord(context, goodProof.Replace("chatgpt.com", "wrong.example"), "success", true), "wrong URL domain cannot bind");
+Check(!bindingStore.TryRecord(context, goodProof.Replace("account_verified\":true", "account_verified\":false"), "success", true), "unverified account cannot bind");
+Check(!bindingStore.TryRecord(context, "Agent said success but supplied no JSON proof", "success", true), "unstructured model summary cannot bind");
+Check(!bindingStore.TryRecord(context, goodProof, "success"), "model-only proof never binds without independent CDP check");
+Check(bindingStore.TryRecord(context, goodProof, "success", true), "exact verified marker may be bound");
 Check(bindingStore.TryGet(context.SelfSessionHash, "chatgpt", out var cachedId) && cachedId == nativeGuid, "cached native chat ID returned");
 Check(!bindingStore.TryGet(b.SelfSessionHash, "chatgpt", out _), "second caller cannot reuse binding");
 var cachedCtx = context with { NativeChatId = cachedId, FallbackId = null, IdentitySource = "server_verified_binding" };

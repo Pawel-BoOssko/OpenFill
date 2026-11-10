@@ -10,13 +10,16 @@ public static class SelfChatHttpProtocolSmoke
     {
         public int Runs;
         public int DirectTitleReads;
-        public Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct)
+        public bool RealMarkerPresent = true;
+        public bool CorrectVerifiedUrl = true;
+        public Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct, string? expectedFallbackMarker = null)
         {
             DirectTitleReads++;
             return Task.FromResult(new JsonObject {
                 ["status"]="ok", ["platform"]=platform, ["native_chat_id"]=nativeChatId,
-                ["verified_url"]="https://chatgpt.com/c/" + nativeChatId,
-                ["name"]="Nic nie rób", ["browser_model_calls"]=0, ["search_calls"]=0
+                ["verified_url"]=CorrectVerifiedUrl ? "https://chatgpt.com/c/" + nativeChatId : "https://chatgpt.com/c/11111111-1111-1111-1111-111111111111",
+                ["name"]="Nic nie rób", ["browser_model_calls"]=0, ["search_calls"]=0,
+                ["fallback_visible"]=expectedFallbackMarker is null ? null : (RealMarkerPresent && expectedFallbackMarker==Fallback)
             });
         }
         public string LastTask = "";
@@ -118,6 +121,8 @@ public static class SelfChatHttpProtocolSmoke
         }
         Check(status["status"]?.ToString()=="done", "browser task completes");
         var completed = first["status"]?.ToString()=="done" ? first : status;
+        Check(completed["independent_cdp_marker_verified"]?.ToString()=="true",
+              "server independently verified exact marker in the conversation via CDP");
         Check(completed["native_url_bound"]?.ToString()=="true", "verified completion binds native URL");
         Check(completed["binding_saved_now"]?.ToString()=="true", "first completion writes binding");
 
@@ -131,8 +136,47 @@ public static class SelfChatHttpProtocolSmoke
               "another MCP session cannot access native ID");
         var fast=await Tool("openfill_self_chat_name",session:sessionA);
         Check(fast["status"]?.ToString()=="ok" && fast["name"]?.ToString()=="Nic nie rób", "cached title read returns title immediately");
-        Check(host.Runs==1 && host.DirectTitleReads==1 && fast["browser_model_calls"]?.ToString()=="0",
+        Check(host.Runs==1 && host.DirectTitleReads==2 && fast["browser_model_calls"]?.ToString()=="0",
               "cached title read zero model calls");
+
+        host.RealMarkerPresent = false;
+        var missingMarkerSession = "v1/mcp-http-test-marker-absent";
+        var absent = await Tool("openfill_self_chat_name",
+            new JsonObject{["fallback_id"]=FakeHost.Fallback},missingMarkerSession);
+        var absentId=absent["task_id"]?.ToString();
+        if (absentId is null) throw new Exception("No absent-marker task ID");
+        var absentFinal=absent;
+        for(int i=0; i<8 && absentFinal["status"]?.ToString()!="done"; i++)
+        {
+            absentFinal=await Tool("openfill_task_status",new JsonObject{["task_id"]=absentId,["wait_seconds"]=0});
+            await Task.Delay(35);
+        }
+        Check(absentFinal["status"]?.ToString()=="done" &&
+              absentFinal["independent_cdp_marker_verified"]?.ToString()=="false" &&
+              absentFinal["binding_saved_now"]?.ToString()=="false",
+              "agent claim rejected when exact marker absent from actual chat DOM");
+        var notBound=await Tool("openfill_self_chat_identity",session:missingMarkerSession);
+        Check(notBound["native_chat_id"] is null, "missing marker never creates native ID");
+
+        host.RealMarkerPresent = true;
+        host.CorrectVerifiedUrl = false;
+        var mismatchSession = "v1/mcp-http-test-wrong-url";
+        var wrongUrl = await Tool("openfill_self_chat_name",
+            new JsonObject{["fallback_id"]=FakeHost.Fallback},mismatchSession);
+        var wrongId=wrongUrl["task_id"]?.ToString();
+        if(wrongId is null) throw new Exception("No mismatch task ID");
+        var wrongFinal=wrongUrl;
+        for(int i=0;i<8 && wrongFinal["status"]?.ToString()!="done";i++)
+        {
+            wrongFinal=await Tool("openfill_task_status",new JsonObject{["task_id"]=wrongId,["wait_seconds"]=0});
+            await Task.Delay(35);
+        }
+        Check(wrongFinal["status"]?.ToString()=="done" &&
+              wrongFinal["independent_cdp_marker_verified"]?.ToString()=="false" &&
+              wrongFinal["binding_saved_now"]?.ToString()=="false",
+              "browser-reported wrong URL rejected despite model claiming success");
+        var wrongNotBound=await Tool("openfill_self_chat_identity",session:mismatchSession);
+        Check(wrongNotBound["native_chat_id"] is null, "wrong URL never creates native chat mapping");
 
         try { Directory.Delete(dir,true); } catch {}
         return passed;

@@ -84,7 +84,7 @@ public interface IRunHost
     /// must navigate directly to that exact URL, check the final URL and extract the title
     /// from one browser snapshot. No search and no model inference.
     /// </summary>
-    Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct)
+    Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct, string? expectedFallbackMarker = null)
         => Task.FromResult(new JsonObject { ["status"]="direct_read_unavailable",
                                             ["message"]="Browser does not support model-free self-chat title reads." });
     /// <summary>Stops one task from the OpenFill window (or every task when the key is null).</summary>

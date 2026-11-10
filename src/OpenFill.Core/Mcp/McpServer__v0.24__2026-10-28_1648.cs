@@ -826,7 +826,7 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
         }
         var taskText = SelfChatSteering.BuildBrowserTask(ctx, action, args);
         var result = await _tasks.StartAsync(
-            taskText, Math.Clamp(Int(args, "wait_seconds", 25), 0, 30), _cts.Token,
+            taskText, Math.Clamp(Int(args, "wait_seconds", 5), 0, 10), _cts.Token,
             title: "Self chat " + action,
             requester: "OpenFill Self Chat Steering",
             chat: SelfChatSteering.TaskChatLabel(ctx));
@@ -837,33 +837,65 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             "First binding: exact visible fallback_id search, URL and account verification.";
         if (result["task_id"]?.GetValue<string>() is { } taskId)
             _pendingSelfChats[taskId] = ctx;
-        ObserveSelfChatCompletion(result);
+        await ObserveSelfChatCompletionAsync(result);
         return result;
     }
     private async Task<JsonObject> SelfChatStatusAsync(string? taskId, int wait)
     {
+        if (taskId is not null && _pendingSelfChats.ContainsKey(taskId))
+            wait = Math.Clamp(wait, 0, 10);
         var result = await _tasks.StatusAsync(taskId, wait, _cts.Token);
-        ObserveSelfChatCompletion(result);
+        await ObserveSelfChatCompletionAsync(result);
         return result;
     }
 
     private async Task<JsonObject> SelfChatReplyAsync(string? taskId, string? answer, int wait)
     {
+        if (taskId is not null && _pendingSelfChats.ContainsKey(taskId))
+            wait = Math.Clamp(wait, 0, 10);
         var result = await _tasks.ReplyAsync(taskId, answer, wait, _cts.Token);
-        ObserveSelfChatCompletion(result);
+        await ObserveSelfChatCompletionAsync(result);
         return result;
     }
 
-    private void ObserveSelfChatCompletion(JsonObject snapshot)
+    private async Task ObserveSelfChatCompletionAsync(JsonObject snapshot)
     {
         var id = snapshot["task_id"]?.GetValue<string>();
         if (id is null || !_pendingSelfChats.TryGetValue(id, out var context)) return;
         var status = snapshot["status"]?.GetValue<string>();
         if (status is "done")
         {
-            var saved = _selfChatBindings.TryRecord(context,
-                snapshot["summary"]?.GetValue<string>(), snapshot["outcome"]?.GetValue<string>());
-            snapshot["native_url_bound"] = saved || context.IdentitySource == "server_verified_binding";
+            var summary = snapshot["summary"]?.GetValue<string>();
+            var outcome = snapshot["outcome"]?.GetValue<string>();
+            var independentProof = false;
+
+            if (context.IdentitySource != "server_verified_binding" &&
+                context.FallbackId is not null && outcome == "success" &&
+                SelfChatBindingStore.CandidateNativeId(summary) is { } candidateId)
+            {
+                // An LLM assertion is not enough to permanently bind a caller to a URL.
+                // One additional direct CDP visit verifies the exact printed marker in
+                // that chat's message pane, without further model calls or searching.
+                var check = await _tasks.ReadSelfChatTitleAsync(context.Platform, candidateId,
+                    _cts.Token, context.FallbackId);
+                var expectedUrl = context.Platform == "chatgpt" ?
+                    "https://chatgpt.com/c/" + candidateId :
+                    "https://claude.ai/chat/" + candidateId;
+                independentProof =
+                    check["status"]?.ToString() == "ok" &&
+                    check["fallback_visible"]?.ToString() == "true" &&
+                    string.Equals(check["native_chat_id"]?.ToString(), candidateId,
+                                  StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(check["verified_url"]?.ToString(), expectedUrl,
+                                  StringComparison.OrdinalIgnoreCase);
+                snapshot["independent_cdp_status"] = check["status"]?.ToString();
+                snapshot["independent_cdp_marker_verified"] = independentProof;
+            }
+
+            var saved = _selfChatBindings.TryRecord(context, summary, outcome,
+                                                     independentlyVerified: independentProof);
+            snapshot["native_url_bound"] = saved ||
+                context.IdentitySource == "server_verified_binding";
             snapshot["binding_saved_now"] = saved;
             _pendingSelfChats.TryRemove(id, out _);
         }

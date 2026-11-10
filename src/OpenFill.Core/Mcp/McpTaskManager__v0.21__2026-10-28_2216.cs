@@ -95,8 +95,8 @@ public sealed class McpTaskManager
     }
 
     /// <summary>One direct CDP visit and title read, bypassing the browser LLM entirely.</summary>
-    public Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct)
-        => _host.ReadSelfChatTitleAsync(platform, nativeChatId, ct);
+    public Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct, string? expectedFallbackMarker = null)
+        => _host.ReadSelfChatTitleAsync(platform, nativeChatId, ct, expectedFallbackMarker);
     // ------------------------------------------------------------------ public operations
 
     /// <summary>Direct C# snapshot. Reuses a known task card and verifies both caller identity fields.</summary>
