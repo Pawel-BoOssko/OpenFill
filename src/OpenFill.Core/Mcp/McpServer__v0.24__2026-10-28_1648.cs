@@ -146,14 +146,14 @@ public sealed class McpServer : IAsyncDisposable
             {
                 var replies = new JsonArray();
                 foreach (var item in batch)
-                    if (item is JsonObject o && await HandleMessageAsync(o) is { } r) replies.Add(r);
+                    if (item is JsonObject o && await HandleMessageAsync(o, req) is { } r) replies.Add(r);
                 if (replies.Count == 0) { res.StatusCode = 202; res.Close(); return; }
                 await WriteAsync(res, 200, "application/json", replies.ToJsonString());
                 return;
             }
             if (parsed is JsonObject single)
             {
-                var reply = await HandleMessageAsync(single);
+                var reply = await HandleMessageAsync(single, req);
                 if (reply is null) { res.StatusCode = 202; res.Close(); return; }
                 await WriteAsync(res, 200, "application/json", reply.ToJsonString());
                 return;
@@ -198,7 +198,7 @@ public sealed class McpServer : IAsyncDisposable
 
     // ------------------------------------------------------------------ JSON-RPC
 
-    private async Task<JsonObject?> HandleMessageAsync(JsonObject msg)
+    private async Task<JsonObject?> HandleMessageAsync(JsonObject msg, HttpListenerRequest req)
     {
         var method = msg["method"]?.GetValue<string>();
         var id = msg["id"];
@@ -212,7 +212,7 @@ public sealed class McpServer : IAsyncDisposable
             case "tools/list":
                 return Rpc.Result(id, new JsonObject { ["tools"] = ToolList() });
             case "tools/call":
-                return Rpc.Result(id, await CallToolAsync(msg["params"] as JsonObject));
+                return Rpc.Result(id, await CallToolAsync(msg["params"] as JsonObject, req));
             default:
                 return Rpc.Error(id, -32601, "Method not found: " + method);
         }
@@ -271,6 +271,43 @@ public sealed class McpServer : IAsyncDisposable
         JsonObject taskId() => Prop("string", "Task id returned by openfill_start_task. Optional while only one task is open; required when several are open.");
         return new JsonArray
         {
+            ToolDef("openfill_self_chat_identity",
+                "Return calling chat's stable session identity when OpenAI MCP metadata exists. Native ChatGPT/Claude URL ID requires unique browser verification; never confuse MCP transport session ID with native conversation ID.",
+                new JsonObject {
+                    ["platform"] = Prop("string", "Optional chatgpt or claude; may be obtained from metadata"),
+                    ["fallback_id"] = Prop("string", "OPTIONAL. 20-32 random alphanumeric ASCII characters. MUST be visibly printed in THIS chat before passing to MCP; use to find exact native URL if session ID cannot be converted."),
+                    ["wait_seconds"] = wait()
+                }, Array.Empty<string>(), idempotent:true, readOnly:true),
+            ToolDef("openfill_self_chat_name",
+                "Read the title of THIS chat only. First publish a random 20-32 alphanumeric fallback_id visibly in the calling conversation, then pass the same token. One-token search only if no direct URL.",
+                new JsonObject {
+                    ["platform"] = Prop("string", "Optional chatgpt or claude; automatically detected for ChatGPT when session metadata exists"),
+                    ["fallback_id"] = Prop("string", "REQUIRED: first generate one random 20-32 character ASCII letters/digits token and WRITE IT as a visible message in THIS chat, not only in tool arguments or a file; pass the exact token. Browser searches this token once."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"fallback_id"}, idempotent:true, readOnly:true),
+            ToolDef("openfill_self_chat_rename",
+                "Rename only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this conversation, then pass it unchanged. No preceding ID lookup. When native URL known, open direct; otherwise one exact-token search.",
+                new JsonObject {
+                    ["new_name"] = Prop("string", "Exact new title, 1-120 printable characters"),
+                    ["platform"] = Prop("string", "Optional chatgpt or claude"),
+                    ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"new_name", "fallback_id"}, idempotent:false),
+            ToolDef("openfill_self_chat_archive",
+                "Archive only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known; else one exact-token search.",
+                new JsonObject {
+                    ["platform"] = Prop("string", "Optional chatgpt or claude"),
+                    ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"fallback_id"}, idempotent:false),
+            ToolDef("openfill_self_chat_move_project",
+                "Move only THIS calling chat to the named project. First publish random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known, otherwise one search by exact token.",
+                new JsonObject {
+                    ["project_name"] = Prop("string", "Unique exact target project name, 1-150 characters"),
+                    ["platform"] = Prop("string", "Optional chatgpt or claude"),
+                    ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"project_name", "fallback_id"}, idempotent:false),
             ToolDef("openfill_start_task",
 """
 API/MCP FIRST: Check the connected API/MCP tools available to your own client before starting browser automation. Prefer provider-native APIs/MCP for supported operations. For example, read/search/send Gmail mail through a Gmail connector, not through a browser; use connected calendar, Drive or Slack tools likewise. For GitHub tasks you may consider using your own GitHub connector and/or an existing Git autosync mechanism, if appropriate. This is a nonbinding suggestion, not a required route: choose based on the user's task and the capabilities actually available. Do not configure autosync unless explicitly asked. When direct connectors cannot perform the requested operation, normal OpenFill browser workflow remains available. AUTHENTICATION EXCEPTION: Luna within OpenFill may itself read email in its own browser to obtain one-time login codes, sign-in links or temporary credentials needed in the current task. Do not require the calling model to fetch those messages via API/MCP. Never claim a connector exists without checking. This is a routing preference, not a blanket prohibition.
@@ -766,7 +803,25 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             : new JsonObject { ["status"] = "ok", ["results"] = results, ["count"] = results.Count };
     }
 
-    private async Task<JsonObject> CallToolAsync(JsonObject? p)
+    private async Task<JsonObject> RunSelfChatAsync(string action, HttpListenerRequest req, JsonObject? args, JsonObject? requestMeta)
+    {
+        var ctx = SelfChatSteering.Resolve(req, args, requestMeta);
+        if (action == "identity" && (!ctx.HasFallbackId || ctx.Platform.Length == 0))
+            return SelfChatSteering.IdentityStatus(ctx);
+        if (SelfChatSteering.ValidateAction(ctx, action, args) is { } rejected)
+            return rejected;
+        var taskText = SelfChatSteering.BuildBrowserTask(ctx, action, args);
+        var result = await _tasks.StartAsync(
+            taskText, Math.Clamp(Int(args, "wait_seconds", 25), 0, 30), _cts.Token,
+            title: "Self chat " + action,
+            requester: "OpenFill Self Chat Steering",
+            chat: SelfChatSteering.TaskChatLabel(ctx));
+        result["self_chat_operation"] = action;
+        result["identity_source"] = ctx.IdentitySource;
+        result["verification"] = "Browser must uniquely match invoking chat evidence and URL before performing operation.";
+        return result;
+    }
+    private async Task<JsonObject> CallToolAsync(JsonObject? p, HttpListenerRequest req)
     {
         var name = p?["name"]?.GetValue<string>() ?? "";
         var args = p?["arguments"] as JsonObject;
@@ -778,6 +833,11 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             var wait = Int(args, "wait_seconds", 25);
             result = name switch
             {
+                "openfill_self_chat_identity" => await RunSelfChatAsync("identity", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_name" => await RunSelfChatAsync("name", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_rename" => await RunSelfChatAsync("rename", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_archive" => await RunSelfChatAsync("archive", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_move_project" => await RunSelfChatAsync("move_project", req, args, p?["_meta"] as JsonObject),
                 "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key"), Str(args, "execution_mode"), Str(args, "start_url")),
                 "openfill_task_status" => await _tasks.StatusAsync(Str(args, "task_id"), wait, _cts.Token),
                 "openfill_reply" => await _tasks.ReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait, _cts.Token),
