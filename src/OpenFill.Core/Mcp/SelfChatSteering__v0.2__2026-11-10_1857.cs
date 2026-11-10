@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -77,6 +77,18 @@ public static class SelfChatSteering
         if (ctx.Platform.Length == 0)
             return Error("platform_unknown", "Platform unavailable: chatgpt or claude.");
 
+        if (ctx.HasNativeId && ctx.IdentitySource == "server_verified_binding")
+            return new JsonObject {
+                ["status"] = "native_id_verified",
+                ["platform"] = ctx.Platform,
+                ["self_chat_id"] = "of-chat-" + ctx.SelfSessionHash,
+                ["native_chat_id"] = ctx.NativeChatId,
+                ["native_url"] = ctx.Platform == "chatgpt" ?
+                    "https://chatgpt.com/c/" + ctx.NativeChatId :
+                    "https://claude.ai/chat/" + ctx.NativeChatId,
+                ["native_url_bound"] = true,
+                ["identity_source"] = "server_verified_binding"
+            };
         if (ctx.SelfSessionHash is not null)
             return new JsonObject
             {
@@ -110,7 +122,7 @@ public static class SelfChatSteering
         // Client-supplied native headers are not independently authenticated.
         // Until a verified server-side binding exists, every UI action requires the
         // printed fallback marker as an independent self-chat assertion.
-        if (!ctx.HasFallbackId)
+        if (!ctx.HasFallbackId && !(ctx.HasNativeId && ctx.IdentitySource == "server_verified_binding"))
             return Error("fallback_id_required",
                 "Generate and PRINT a random 20-32 character alphanumeric fallback_id as a visible message in this very chat BEFORE calling this tool. Pass exactly the same identifier in fallback_id. No page action was started.");
 
@@ -135,47 +147,53 @@ public static class SelfChatSteering
     /// </summary>
     public static string BuildBrowserTask(Context ctx, string action, JsonObject? args)
     {
-        if (ctx.Platform.Length == 0 || !ctx.HasFallbackId)
-            throw new InvalidOperationException("Self-chat lacks platform or exact fallback identifier.");
-        var url = ctx.NativeChatId is null ? null : ctx.Platform == "chatgpt"
-            ? "https://chatgpt.com/c/" + ctx.NativeChatId
-            : "https://claude.ai/chat/" + ctx.NativeChatId;
-        var actionText = action switch
+        var bound = ctx.IdentitySource == "server_verified_binding" && ctx.HasNativeId;
+        if (ctx.Platform.Length == 0 || (!ctx.HasFallbackId && !bound))
+            throw new InvalidOperationException("No verified chat binding or exact fallback marker.");
+
+        var baseUrl = ctx.Platform == "chatgpt" ? "https://chatgpt.com" : "https://claude.ai";
+        var url = ctx.HasNativeId ? baseUrl + (ctx.Platform == "chatgpt" ? "/c/" : "/chat/") + ctx.NativeChatId : null;
+        var instruction = action switch
         {
-            "identity" => "Read the native ID and full URL, without modifying the chat.",
-            "name" => "Read the current chat title, without changing it.",
-            "rename" => "Set the chat title to " + JsonSerializer.Serialize(args?["new_name"]?.GetValue<string>()?.Trim()) + ".",
-            "archive" => "Archive the matched chat.",
-            "move_project" => "Move the matched chat to the unique project named " +
-                JsonSerializer.Serialize(args?["project_name"]?.GetValue<string>()?.Trim()) + ".",
+            "identity" => "Read the native conversation UUID and URL.",
+            "name" => "Read the current title.",
+            "rename" => "Change title to " + JsonSerializer.Serialize(args?["new_name"]?.GetValue<string>()?.Trim()) + ".",
+            "archive" => "Archive this chat.",
+            "move_project" => "Move this chat to project " + JsonSerializer.Serialize(args?["project_name"]?.GetValue<string>()?.Trim()) + ".",
             _ => throw new ArgumentOutOfRangeException(nameof(action))
         };
-        var route = url is not null
-            ? "FAST PATH: Go directly to " + url + " and verify the exact marker is visible in that conversation."
-            : ctx.Platform == "chatgpt"
-                ? "FALLBACK: Open https://chatgpt.com; use Search chats ONCE with the exact marker, open the single result, read its URL and verify the marker."
-                : "FALLBACK: Open https://claude.ai; use the built-in chat search ONCE with the exact marker, open the unique result, read its URL and verify the marker.";
 
+        if (bound)
+            return $"""
+                OPENFILL SELF-CHAT OPERATION {action}. FAST PATH: direct URL {url}.
+                The server previously linked this exact MCP caller to that native chat.
+                Go to URL once, wait for DOM readiness, read URL/title/account together once.
+                Before any change, verify URL and authenticated account; {instruction}
+                If changing state, verify the same URL and result once, then finish.
+                No search. No repeated page loads. Minimize inner-model calls.
+                Return status, native_chat_id, URL, title, action outcome; do not guess.
+                """;
+
+        var route = url is not null
+            ? $"FAST PATH (client candidate): open {url} directly and verify the marker in that chat."
+            : ctx.Platform == "chatgpt"
+                ? $"FALLBACK: open {baseUrl}, use Search chats ONCE with exact marker, open its unique result."
+                : $"FALLBACK: open {baseUrl}, use chat search ONCE with exact marker, open its unique result.";
+        var proof = """{"status":"ok","platform":"chatgpt","native_chat_id":"UUID","verified_url":"https://chatgpt.com/c/UUID","fallback_id":"TOKEN","fallback_visible":true,"same_conversation":true,"account_verified":true}""";
         return $"""
             OPENFILL SELF-CHAT OPERATION {action}, platform={ctx.Platform}.
             {route}
-            Exact literal alphanumeric marker printed in THIS invoking conversation: {ctx.FallbackId}
-            MCP caller session fingerprint, not URL ID: {ctx.SelfSessionHash ?? "not supplied"}
-            Account hint if any: {JsonSerializer.Serialize(ctx.AccountHint)}
-            ACTION AFTER IDENTIFICATION ONLY: {actionText}
-
-            Prefer deterministic browser actions and one combined read of title, URL, marker, account;
-            keep the number of inner-model calls minimal. Wait for actual DOM readiness once instead
-            of reloading repeatedly. Search only the exact marker, NEVER long message fragments.
-            If zero or multiple matches, account mismatch, or marker is not visible in opened chat,
-            stop and return precise failure. The invoking chat's displayed marker MUST match exactly.
-            Before mutation verify the URL and marker belong to that same chat, never select by title.
-            After mutation, read the same URL once to confirm the requested result.
-            Return precise native_chat_id, full chat URL, title, action status and before/after.
-            Do not claim completion if merely queued or not verified.
+            Exact marker ALREADY published in invoking chat: {ctx.FallbackId}.
+            Read URL/title/account/marker once after loading. Before changes, require
+            exactly one matching chat, marker visibly present, and matching account.
+            If not matched: return not_found/ambiguous/account_mismatch, no action.
+            If matched: {instruction} Verify the same URL and result once.
+            Never search by title or long text. Minimal model calls and page reloads.
+            On complete success only, return result and a final machine-readable line:
+            OPENFILL_SELF_CHAT_RESULT: {proof}
+            Replace placeholders with real values. No proof line on partial/failure.
             """;
     }
-
     public static string TaskChatLabel(Context ctx)
     {
         var key = ctx.Platform + "|" + (ctx.SelfSessionHash ?? ctx.FallbackId ?? ctx.NativeChatId ?? "");

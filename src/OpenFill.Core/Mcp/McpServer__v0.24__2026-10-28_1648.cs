@@ -33,6 +33,9 @@ public sealed class McpServer : IAsyncDisposable
     private readonly FileTransfer? _files;
     private readonly string? _sharedFolder;
     private readonly string? _operationalDatabasePath;
+    private readonly SelfChatBindingStore _selfChatBindings;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SelfChatSteering.Context>
+        _pendingSelfChats = new(StringComparer.Ordinal);
 
     // A06 OF-000026: MCP capture lookup must use the SAME configured shared
     // directory as PageCaptureService and the file-transfer endpoint.
@@ -54,6 +57,7 @@ public sealed class McpServer : IAsyncDisposable
             ? null : Path.GetFullPath(sharedFolder);
         _files = _sharedFolder is null ? null : new FileTransfer(_sharedFolder);
         _operationalDatabasePath = operationalDatabasePath;
+        _selfChatBindings = new SelfChatBindingStore(operationalDatabasePath);
         _tasks = tasks;
         _jevInspector = jevInspector;
         _secret = secret;
@@ -806,7 +810,9 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
     private async Task<JsonObject> RunSelfChatAsync(string action, HttpListenerRequest req, JsonObject? args, JsonObject? requestMeta)
     {
         var ctx = SelfChatSteering.Resolve(req, args, requestMeta);
-        if (action == "identity" && (!ctx.HasFallbackId || ctx.Platform.Length == 0))
+        if (_selfChatBindings.TryGet(ctx.SelfSessionHash, ctx.Platform, out var nativeId))
+            ctx = ctx with { NativeChatId = nativeId, IdentitySource = "server_verified_binding" };
+        if (action == "identity" && (!ctx.HasFallbackId || ctx.IdentitySource == "server_verified_binding" || ctx.Platform.Length == 0))
             return SelfChatSteering.IdentityStatus(ctx);
         if (SelfChatSteering.ValidateAction(ctx, action, args) is { } rejected)
             return rejected;
@@ -818,9 +824,45 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             chat: SelfChatSteering.TaskChatLabel(ctx));
         result["self_chat_operation"] = action;
         result["identity_source"] = ctx.IdentitySource;
-        result["verification"] = "Browser must uniquely match invoking chat evidence and URL before performing operation.";
+        result["verification"] = ctx.IdentitySource == "server_verified_binding" ?
+            "Direct URL mode: verify target and account before action." :
+            "First binding: exact visible fallback_id search, URL and account verification.";
+        if (result["task_id"]?.GetValue<string>() is { } taskId)
+            _pendingSelfChats[taskId] = ctx;
+        ObserveSelfChatCompletion(result);
         return result;
     }
+    private async Task<JsonObject> SelfChatStatusAsync(string? taskId, int wait)
+    {
+        var result = await _tasks.StatusAsync(taskId, wait, _cts.Token);
+        ObserveSelfChatCompletion(result);
+        return result;
+    }
+
+    private async Task<JsonObject> SelfChatReplyAsync(string? taskId, string? answer, int wait)
+    {
+        var result = await _tasks.ReplyAsync(taskId, answer, wait, _cts.Token);
+        ObserveSelfChatCompletion(result);
+        return result;
+    }
+
+    private void ObserveSelfChatCompletion(JsonObject snapshot)
+    {
+        var id = snapshot["task_id"]?.GetValue<string>();
+        if (id is null || !_pendingSelfChats.TryGetValue(id, out var context)) return;
+        var status = snapshot["status"]?.GetValue<string>();
+        if (status is "done")
+        {
+            var saved = _selfChatBindings.TryRecord(context,
+                snapshot["summary"]?.GetValue<string>(), snapshot["outcome"]?.GetValue<string>());
+            snapshot["native_url_bound"] = saved || context.IdentitySource == "server_verified_binding";
+            snapshot["binding_saved_now"] = saved;
+            _pendingSelfChats.TryRemove(id, out _);
+        }
+        else if (status is "failed" or "blocked" or "cancelled" or "interrupted" or "stopped_by_user")
+            _pendingSelfChats.TryRemove(id, out _);
+    }
+
     private async Task<JsonObject> CallToolAsync(JsonObject? p, HttpListenerRequest req)
     {
         var name = p?["name"]?.GetValue<string>() ?? "";
@@ -839,8 +881,8 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
                 "openfill_self_chat_archive" => await RunSelfChatAsync("archive", req, args, p?["_meta"] as JsonObject),
                 "openfill_self_chat_move_project" => await RunSelfChatAsync("move_project", req, args, p?["_meta"] as JsonObject),
                 "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key"), Str(args, "execution_mode"), Str(args, "start_url")),
-                "openfill_task_status" => await _tasks.StatusAsync(Str(args, "task_id"), wait, _cts.Token),
-                "openfill_reply" => await _tasks.ReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait, _cts.Token),
+                "openfill_task_status" => await SelfChatStatusAsync(Str(args, "task_id"), wait),
+                "openfill_reply" => await SelfChatReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait),
                 "openfill_cancel_task" => _tasks.Cancel(Str(args, "task_id")),
                 "openfill_info" => _tasks.ShortInfo(),
                 "openfill_full_status" => InfoResult(),
