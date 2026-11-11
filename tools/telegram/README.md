@@ -1,4 +1,4 @@
-# OpenFill Telegram mobile bridge (OpenFill 1.61)
+# OpenFill Telegram mobile bridge (OpenFill 1.62)
 
 Project owner: OpenFill. Integration documented by GPT-6, 2026-11-11 22:03:17 CET.
 
@@ -38,8 +38,23 @@ The tested bot on PBOX1 is @OpenFillTelefonBot. Do not commit runtime credential
 - Bridge uses long-polling, without inbound TCP listener. MainForm local sound is independent.
 
 ## Current implementation
-Version 1.61 sources compile; Python unit tests 16/16 and C# gateway tests 15/15 pass on PBOX1.
+Version 1.62 sources compile; Python unit tests 16/16 and C# gateway tests 15/15 pass on PBOX1.
 The live PBOX1 bridge includes the plain-message routing fix.
 OpenFill.exe installed earlier was built from 1.60 sources; changing this repository version does not by itself install a 1.61 production binary.
 Speaker playback, confirm (disabled in current OpenFill settings), code prompts and simultaneous-card replies need final physical acceptance.
 The source branch feature/openfill-telegram-20261111 is intentionally separate from main.
+
+## Telegram delivery receipts (1.62)
+
+Each text message received from the paired user gets a contextual Telegram reply:
+
+- Accepted response: the message was routed to and accepted by the OpenFill task via IPC.
+- Not routed: the bot received the message but no unique active card could be resolved.
+- Rejected: OpenFill IPC rejected the response; no success claim is made.
+
+Receipts use reply_parameters to link the acknowledgment to the source Telegram message.
+They are persisted in the receipts SQLite table, deduplicated by Telegram update ID, and
+are not blindly retried when delivery outcome is unknown. An IPC outage delays any
+positive acknowledgment until OpenFill actually accepts the answer.
+
+The bot token and the user's answer text are never written to receipt contents.
