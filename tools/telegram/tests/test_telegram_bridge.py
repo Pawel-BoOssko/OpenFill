@@ -21,6 +21,7 @@ class FakeIpc:
         self.instance = "instance1"
         self.answers = []
         self.fail = False
+        self.answer_response = None
 
     def call(self, method, **kwargs):
         if method == "health":
@@ -33,7 +34,7 @@ class FakeIpc:
             if self.fail:
                 raise OSError("IPC interrupted")
             self.answers.append(kwargs["action"])
-            return {"status": "accepted", "accepted": True}
+            return self.answer_response or {"status": "accepted", "accepted": True}
         raise AssertionError(method)
 
 
@@ -61,7 +62,7 @@ class FakeBot:
 
 
 def update(uid, text, reply=None, user=12, chat=12, kind="private"):
-    message = {"text": text, "from": {"id": user},
+    message = {"message_id": 1000 + uid, "text": text, "from": {"id": user},
                "chat": {"id": chat, "type": kind}}
     if reply is not None:
         message["reply_to_message"] = {"message_id": reply}
@@ -81,6 +82,99 @@ class BridgeTests(unittest.TestCase):
     def tearDown(self):
         self.bridge.db.close()
         self.temp.cleanup()
+
+    def test_receipt_after_accepted_answer(self):
+        self.ipc.cards = [card("A")]
+        self.bridge.sync()
+        self.bridge.deliver()
+        self.bridge.ingest(update(2, "TAK"))
+        self.assertEqual(self.bridge.db.execute("SELECT state FROM receipts").fetchone()[0], "waiting")
+        self.bridge.process_actions()
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 2)
+        ack = self.bot.messages[-1]
+        self.assertIn("przyj\u0119ta do zadania", ack["text"])
+        self.assertEqual(ack["reply_parameters"]["message_id"], 1002)
+        self.assertEqual(self.bridge.db.execute("SELECT state FROM receipts").fetchone()[0], "sent")
+
+    def test_receipt_unassigned_plain_message(self):
+        self.bridge.ingest(update(2, "Cze??"))
+        self.bridge.process_actions()
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 1)
+        self.assertIn("nie zosta\u0142a przypisana", self.bot.messages[0]["text"])
+        self.assertEqual(self.bot.messages[0]["reply_parameters"]["message_id"], 1002)
+
+    def test_receipt_two_cards_ambiguous(self):
+        self.ipc.cards = [card("A"), card("B")]
+        self.bridge.sync()
+        self.bridge.deliver()
+        self.bridge.ingest(update(2, "TAK"))
+        self.bridge.process_actions()
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 3)
+        self.assertIn("nie zosta\u0142a przypisana", self.bot.messages[-1]["text"])
+
+    def test_receipt_not_positive_while_ipc_down(self):
+        self.ipc.cards = [card("A")]
+        self.bridge.sync()
+        self.bridge.deliver()
+        self.bridge.ingest(update(2, "TAK"))
+        self.ipc.fail = True
+        self.bridge.process_actions()
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 1)
+        self.assertEqual(self.bridge.db.execute("SELECT state FROM receipts").fetchone()[0], "waiting")
+        self.ipc.fail = False
+        self.bridge.process_actions()
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 2)
+        self.assertIn("przyj\u0119ta do zadania", self.bot.messages[-1]["text"])
+
+    def test_receipt_duplicate_update_and_retry(self):
+        u = update(2, "TAK")
+        self.bridge.ingest(u)
+        self.bridge.ingest(u)
+        self.bridge.deliver_receipts()
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 1)
+        self.assertEqual(self.bridge.db.execute("SELECT count(*) FROM receipts").fetchone()[0], 1)
+
+    def test_receipt_ipc_rejected_response_is_not_success(self):
+        self.ipc.cards = [card("A")]
+        self.bridge.sync()
+        self.bridge.deliver()
+        self.bridge.ingest(update(2, "NOT_A_VALID_ANSWER"))
+        self.ipc.answer_response = {"status": "expired", "accepted": False}
+        self.bridge.process_actions()
+        self.bridge.deliver_receipts()
+        self.assertIn("nie przyj\u0119\u0142o", self.bot.messages[-1]["text"])
+        self.assertNotIn("przyj\u0119ta do zadania", self.bot.messages[-1]["text"])
+
+    def test_receipt_429_retry(self):
+        self.bridge.ingest(update(2, "TAK"))
+        self.bot.error = RateLimited(3)
+        self.bridge.deliver_receipts()
+        row = self.bridge.db.execute("SELECT state,next_attempt FROM receipts").fetchone()
+        self.assertEqual(row["state"], "queued")
+        self.assertGreater(row["next_attempt"], 0)
+        self.assertEqual(len(self.bot.messages), 0)
+
+    def test_receipt_unknown_outcome_no_retry(self):
+        self.bridge.ingest(update(2, "TAK"))
+        self.bot.error = OSError("unknown send result")
+        self.bridge.deliver_receipts()
+        self.bot.error = None
+        self.bridge.deliver_receipts()
+        self.assertEqual(self.bridge.db.execute("SELECT state FROM receipts").fetchone()[0], "uncertain")
+        self.assertEqual(len(self.bot.messages), 0)
+
+    def test_receipt_not_for_unpaired_person_or_group(self):
+        self.bridge.ingest(update(2, "TAK", user=99, chat=99))
+        self.bridge.ingest(update(3, "TAK", kind="group"))
+        self.bridge.deliver_receipts()
+        self.assertEqual(len(self.bot.messages), 0)
+        self.assertEqual(self.bridge.db.execute("SELECT count(*) FROM receipts").fetchone()[0], 0)
 
     def test_two_cards_reverse_reply(self):
         self.ipc.cards = [card("A"), card("B")]

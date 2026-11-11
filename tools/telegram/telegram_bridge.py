@@ -97,6 +97,10 @@ class Bridge:
           status TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS pairing(user_id INTEGER PRIMARY KEY,
           chat_id INTEGER UNIQUE NOT NULL,paired_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS receipts(update_id TEXT PRIMARY KEY,
+          chat_id INTEGER NOT NULL,source_message_id INTEGER NOT NULL,
+          card_id TEXT,state TEXT NOT NULL,body TEXT NOT NULL,
+          next_attempt REAL NOT NULL DEFAULT 0);
         """)
 
     def get_meta(self, key, default=""):
@@ -210,6 +214,7 @@ class Bridge:
                                  (user_id, chat_id)).fetchone()
         if paired:
             card_id, answer = None, None
+            action_queued = False
             if callback:
                 token, sep, choice = (callback.get("data") or "").rpartition(":")
                 if sep and choice in ("y", "n"):
@@ -243,6 +248,21 @@ class Bridge:
                     self.db.execute("INSERT OR IGNORE INTO actions VALUES(?,?,?,?,?,?)",
                                     (str(update_id), card_id, card["instance_id"], card["task_key"],
                                      protect(answer), "pending"))
+                    action_queued = True
+            # A receipt is tied to the user's Telegram message, not the bot's card.
+            # Do not assert successful OpenFill processing before its IPC accepts it.
+            source_id = msg.get("message_id")
+            if source_id is not None and text and not text.startswith("/pair "):
+                if action_queued:
+                    state, body = "waiting", ""
+                elif text.startswith("/"):
+                    state, body = "queued", "OpenFill: polecenie odebrane. Nie przekazano go do zadania."
+                else:
+                    state, body = ("queued", "OpenFill: wiadomo\u015b\u0107 odebrana, ale nie zosta\u0142a "
+                                   "przypisana do zadania. U\u017cyj Odpowiedz (Reply) na w\u0142a\u015bciwej karcie.")
+                self.db.execute("INSERT OR IGNORE INTO receipts VALUES(?,?,?,?,?,?,0)",
+                                (str(update_id), chat_id, source_id,
+                                 card_id if action_queued else None, state, body))
         self.db.execute("INSERT OR IGNORE INTO updates VALUES(?,?)", (update_id, utc_now()))
 
     def process_actions(self):
@@ -254,8 +274,40 @@ class Bridge:
                     "text": unprotect(row["answer"])})
             except OSError:
                 continue
-            self.db.execute("UPDATE actions SET status=?,answer='' WHERE id=?",
-                            (response["status"], row["id"]))
+            with self.db:
+                self.db.execute("UPDATE actions SET status=?,answer='' WHERE id=?",
+                                (response["status"], row["id"]))
+                if response.get("accepted") and response["status"] == "accepted":
+                    receipt_text = "OpenFill: wiadomo\u015b\u0107 odebrana i przyj\u0119ta do zadania."
+                else:
+                    receipt_text = ("OpenFill: wiadomo\u015b\u0107 odebrana, ale zadanie nie przyj\u0119\u0142o "
+                                    "odpowiedzi (status: " + str(response["status"]) + ").")
+                self.db.execute("UPDATE receipts SET state='queued',body=? "
+                                "WHERE update_id=? AND state='waiting'",
+                                (receipt_text, row["id"]))
+
+    def deliver_receipts(self):
+        # Durable delivery queue; a restart must not produce a second acknowledgment.
+        for item in self.db.execute(
+                "SELECT * FROM receipts WHERE state='queued' AND next_attempt<=?",
+                (time.time(),)).fetchall():
+            self.db.execute("UPDATE receipts SET state='sending' WHERE update_id=?",
+                            (item["update_id"],))
+            try:
+                self.bot.call("sendMessage", chat_id=item["chat_id"], text=item["body"],
+                              reply_parameters={"message_id": item["source_message_id"],
+                                                "allow_sending_without_reply": True})
+            except RateLimited as error:
+                self.db.execute("UPDATE receipts SET state='queued',next_attempt=? "
+                                "WHERE update_id=?",
+                                (time.time() + error.seconds, item["update_id"]))
+            except Exception:
+                # Telegram lacks an idempotency key; uncertain delivery is never blindly repeated.
+                self.db.execute("UPDATE receipts SET state='uncertain' WHERE update_id=?",
+                                (item["update_id"],))
+            else:
+                self.db.execute("UPDATE receipts SET state='sent' WHERE update_id=?",
+                                (item["update_id"],))
 
     def poll(self):
         offset = int(self.get_meta("offset", "0"))
@@ -266,6 +318,7 @@ class Bridge:
                 self.ingest(update)
                 self.put_meta("offset", max(int(self.get_meta("offset", "0")), update["update_id"] + 1))
         self.process_actions()
+        self.deliver_receipts()
 
     def run(self):
         while True:
