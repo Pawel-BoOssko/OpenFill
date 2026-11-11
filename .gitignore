@@ -14,3 +14,9 @@ dist/
 *.p12
 *.pfx
 *.key
+# Telegram bridge and Python build/test state
+__pycache__/
+*.py[cod]
+telegram_bridge.sqlite3*
+telegram_bridge_credentials.dpapi.json
+telegram_bot_token.txt

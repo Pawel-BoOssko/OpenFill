@@ -65,6 +65,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     private string? _maintReason, _maintBy;
     private readonly object _lock = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingAsks = new();
+    public MobileCardGateway MobileCards { get; }
+    private MobileCardPipeServer MobilePipe { get; }
     private readonly ConcurrentDictionary<string, string> _openCards = new();
     private readonly ConcurrentDictionary<string, string?> _cardRun = new();   // card id -> task key (null: not tied to a task)
     private readonly Dictionary<string, RunState> _runs = new();                // task key -> running task
@@ -131,6 +133,9 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         Session.Log.Published += OnLogEvent;
         Session.Costs.Changed += () => { try { Send(CostsMessage()); } catch { } };
         _panel.Received += OnPanelMessage;
+        MobileCards = new MobileCardGateway((id, answer) => _pendingAsks.TryGetValue(id, out var tcs) && tcs.TrySetResult(answer));
+        MobilePipe = new MobileCardPipeServer(MobileCards);
+        MobilePipe.Start();
     }
 
     public Task InitAsync(CancellationToken ct = default) => Session.InitAsync(ct);
@@ -1284,6 +1289,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         _cardRun[id] = st?.Key;
         var json = card.ToJsonString(EventLog.Ndjson);
         _openCards[id] = json;
+        MobileCards.Open(card, st?.Key, TimeSpan.FromMinutes(Config.UserAnswerTimeoutMinutes));
         _panel.Send(json);
         if (st is not null) { st.State = "waiting"; Tabs?.SetState(st.Key, "waiting"); SendState(); }
         try { Attention?.Invoke(true, card["question"]?.GetValue<string>() ?? card["what"]?.GetValue<string>() ?? ""); } catch { }
@@ -1297,6 +1303,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         }
         finally
         {
+            MobileCards.Close(id, tcs.Task.IsCompletedSuccessfully ? "answered" : "expired_or_cancelled");
             _pendingAsks.TryRemove(id, out _);
             _openCards.TryRemove(id, out _);
             _cardRun.TryRemove(id, out _);
@@ -1348,6 +1355,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         }
         catch { }
         _panel.Received -= OnPanelMessage;
+        await MobilePipe.DisposeAsync();
         await Session.DisposeAsync();
     }
 
