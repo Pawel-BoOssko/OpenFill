@@ -2,6 +2,8 @@
 // CAPTURE_TASK_OUTCOME_20261030
 // SOURCE_CAPTURE_PATCH_20261030
 // OpenFill - Metadata: wersja 0.22, data 2026-10-29 23:14
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -26,13 +28,16 @@ public sealed class ToolRegistry
     private readonly SiteNotesStore _notes;
     private readonly CaptureRecipeStore _recipes;
     private readonly PageCaptureService _capture;
-    private readonly HashSet<(string Host,string Path,string Mode,string Selector,string Pattern)> _usedCaptures = new();
+    private readonly OperationalMemoryStore _memory;
+    private readonly bool _candidateStagingOnly;
+    private readonly HashSet<(string Host,string Path,string Mode,string Selector,string Pattern,string ViewSignature,string AccountScope)> _usedCaptures = new();
 
     /// <summary>Record one whole-task verdict per actually used capture method (not per successful snapshot).</summary>
     public void RecordCaptureTaskOutcome(string status)
     {
         foreach (var x in _usedCaptures)
-            _recipes.RecordTaskOutcome(x.Host,x.Path,x.Mode,x.Selector,x.Pattern,status);
+            _recipes.RecordTaskOutcomeScoped(x.Host,x.Path,x.Mode,x.Selector,x.Pattern,
+                x.ViewSignature,x.AccountScope,status);
     }
     private readonly IUserInteraction _ui;
     private readonly GapRecorder _gaps;
@@ -83,6 +88,9 @@ public sealed class ToolRegistry
         _browser = browser; _log = log; _config = config; _limiter = limiter; _notes = notes; _ui = ui; _gaps = gaps; _costs = costs; _files = files; _gate = gate; _verified = verified;
         _recipes = new CaptureRecipeStore(Path.Combine(notes.NotesDirectory, "recipes"));
         _capture = new PageCaptureService(browser, files?.SharedDir ?? Path.GetTempPath(), _recipes);
+        var instanceRoot = Path.GetDirectoryName(notes.NotesDirectory) ?? notes.NotesDirectory;
+        _memory = new OperationalMemoryStore(Path.Combine(instanceRoot, "memory", "operational.db"));
+        _candidateStagingOnly = string.Equals(Path.GetFileName(instanceRoot), "dev", StringComparison.OrdinalIgnoreCase);
     }
 
     private readonly IDomainGate? _gate;
@@ -114,6 +122,18 @@ public sealed class ToolRegistry
     private static JsonObject Schema(JsonObject properties, params string[] required)
         => new() { ["type"] = "object", ["properties"] = properties, ["required"] = new JsonArray(required.Select(r => (JsonNode)r).ToArray()), ["additionalProperties"] = false };
 
+    // Legacy id-batches execute through actions.js, not through the trusted CDP input handlers.
+    private static readonly HashSet<string> LegacyBatchActions = new(StringComparer.Ordinal)
+    {
+        "set", "type", "click", "check", "uncheck", "select", "clear", "focus", "pressEnter"
+    };
+
+    public static bool LegacyBatchStepsSupported(JsonArray steps)
+        => steps.Count is >= 1 and <= 40 && steps.All(s =>
+            s is JsonObject o &&
+            !string.IsNullOrWhiteSpace(o["id"]?.ToString()) &&
+            LegacyBatchActions.Contains(o["action"]?.ToString() ?? ""));
+
     // The first WhatsApp DOM snapshot is delivered before Luna's FIRST model call.
     // No chat is opened, no history is fetched and no model decision is needed.
     public async Task<string?> InitialWhatsAppViewAsync(string task, CancellationToken ct)
@@ -137,17 +157,481 @@ public sealed class ToolRegistry
         }
     }
 
+    // A16: for a reused tab, the first Luna call starts with a compact live
+    // view instead of paying a model turn merely to discover current rows.
+    // No navigation, no per-site rules, and never duplicates WhatsApp prefetch.
+    public async Task<string?> InitialGenericViewAsync(string task, CancellationToken ct)
+    {
+        if (task.Contains("whatsapp", StringComparison.OrdinalIgnoreCase))
+            return null;
+        try
+        {
+            var currentUrl = await _browser.CurrentUrlAsync(ct);
+            if (!Uri.TryCreate(currentUrl, UriKind.Absolute, out var uri) ||
+                uri.Scheme is not ("https" or "http") ||
+                WhatsAppBrowser.IsWhatsAppUrl(currentUrl))
+                return null;
+            // OF-000043: skip Google/start-page context if the current task is
+            // explicitly to open/read a SINGLE URL on another domain.
+            // In continued tasks, ignore URLs from the prior-context preamble.
+            var taskMarker = task.LastIndexOf("\n\nTask: ", StringComparison.Ordinal);
+            var currentTask = taskMarker >= 0 ? task[(taskMarker + 8)..] : task;
+            var directTargetTask = System.Text.RegularExpressions.Regex.IsMatch(
+                currentTask, @"^\s*(odczytaj|przeczytaj|otwórz|wejdź|przejdź|sprawdź|pobierz|read|open|visit|navigate|go to|check|fetch)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+                TimeSpan.FromMilliseconds(50));
+            if (directTargetTask)
+            {
+                var urls = System.Text.RegularExpressions.Regex.Matches(
+                    currentTask, @"https?://[^\s<>'""\]\)]+",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+                    TimeSpan.FromMilliseconds(50))
+                    .Select(m => m.Value.TrimEnd('.', ',', ';'))
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                if (urls.Length == 1 &&
+                    Uri.TryCreate(urls[0], UriKind.Absolute, out var destination) &&
+                    destination.Scheme is "http" or "https" &&
+                    !CostGuard.DomainOf(destination.Host).Equals(
+                        CostGuard.DomainOf(uri.Host), StringComparison.OrdinalIgnoreCase))
+                {
+                    _log.Write("view_inspection", "initial_view_skipped_unrelated_url",
+                        "Skipped unrelated start-page prefetch; task has one explicit external URL",
+                        new { startHost = uri.Host, destinationHost = destination.Host,
+                            runId = _log.CurrentRunId });
+                    return null;
+                }
+            }
+            var observed = await _browser.RunJsAsync(SemanticViewDigest.Script, ct);
+            var view = SemanticViewDigest.Summarize(observed as JsonObject);
+            if (view["status"]?.ToString() != "ok") return null;
+            var text = view.ToJsonString();
+            if (text.Length > 16000)
+            {
+                // This is an initial hint, not a data export. Keep the first
+                // few rows/controls and let Luna request more if needed.
+                if (view["sections"] is JsonArray sections)
+                    foreach (var section in sections.OfType<JsonObject>())
+                        if (section["records"] is JsonArray records)
+                            while (records.Count > 8) records.RemoveAt(records.Count - 1);
+                text = view.ToJsonString();
+            }
+            _log.Write("view_inspection", "initial_generic_view",
+                "Current tab presented before first model turn",
+                new { urlHost = uri.Host, responseBytes = Encoding.UTF8.GetByteCount(text),
+                    runId = _log.CurrentRunId });
+            return "INITIAL LIVE VIEW (current tab only; incomplete rendered records; do not assume task destination):\n" + text;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return null; }
+    }
+
     public List<Tool> Build()
     {
         _temporaryCredentials.Clear();
         var tools = new List<Tool>();
         var whatsapp = new WhatsAppBrowser(_browser);
+        // D03: one local DOM read for many Airbnb calendar dates, no price mutation.
+        tools.Add(new Tool
+        {
+            Name = "airbnb_read_calendar_prices",
+            Description = "Read current Airbnb host multicalendar cells for one exact listing ID and a date range in ONE DOM/tool call. Returns raw visible date-cell text and labels, plus missing dates. Prices are observations only: no editing and no claim that hidden dates or price values are verified.",
+            Parameters = Schema(Obj(
+                ("listing_id", Str("Exact numeric Airbnb listing ID")),
+                ("first_date", Str("Start date YYYY-MM-DD")),
+                ("last_date", Str("End date YYYY-MM-DD, at most 61 dates")),
+                ("percent_change", Obj(("type","number"),("description","Optional percentage for proposed nightly prices; no edits"))),
+                ("price_decimals", Obj(("type","integer"),("description","Round proposed prices to 0 or 2 decimals")))),
+                "listing_id", "first_date", "last_date"),
+            Handler = async (args, ct) =>
+            {
+                decimal? percentage = null;
+                if (decimal.TryParse(args["percent_change"]?.ToString(),
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,out var percent))
+                    percentage=percent;
+                var result = await new AirbnbCalendarReadService(_browser).ReadAsync(
+                    args["listing_id"]?.ToString() ?? "",
+                    args["first_date"]?.ToString() ?? "",
+                    args["last_date"]?.ToString() ?? "", ct,
+                    percentage,args["price_decimals"]?.GetValue<int>() ?? 0);
+                return ToolResult.Text(result.ToJsonString());
+            }
+        });
+        tools.Add(new Tool
+        {
+            Name = "airbnb_prepare_price_batch",
+            Description = "Prepare a multi-day Airbnb listing price change with complete observed old prices, date coverage and evidence. Calculates all new prices and persists each day in SQLite. This tool NEVER clicks Save or changes prices on Airbnb.",
+            Parameters = Schema(Obj(
+                ("account_id", Str("Authenticated host account identity")),
+                ("listing_id", Str("Exact Airbnb listing ID")),
+                ("currency", Str("Uppercase ISO 4217 currency code")),
+                ("rate_plan", Str("Exact rate plan or empty if none")),
+                ("request_id", Str("Stable caller batch request ID")),
+                ("requester", Str("Caller identity")),
+                ("chat", Str("Caller conversation")),
+                ("first_date", Str("First included date YYYY-MM-DD")),
+                ("last_date", Str("Last included date YYYY-MM-DD")),
+                ("percent_change", Obj(("type", "number"))),
+                ("price_decimals", Obj(("type", "integer"))),
+                ("observations", Obj(("type", "array")))),
+                "account_id", "listing_id", "currency", "rate_plan", "request_id", "requester",
+                "chat", "first_date", "last_date", "percent_change", "price_decimals", "observations"),
+            Handler = (args, ct) =>
+            {
+                try
+                {
+                    var observations = (args["observations"] as JsonArray)?.OfType<JsonObject>()
+                        .Select(x => new AirbnbPriceObservation(
+                            DateOnly.ParseExact(x["date"]?.ToString() ?? "", "yyyy-MM-dd",
+                                System.Globalization.CultureInfo.InvariantCulture),
+                            decimal.Parse(x["old_price"]?.ToString() ?? "",
+                                System.Globalization.CultureInfo.InvariantCulture),
+                            x["source_ref"]?.ToString() ?? ""))
+                        .ToArray() ?? [];
+                    var plan = new AirbnbPricePlanner(_memory).Prepare(
+                        args["account_id"]?.ToString() ?? "", args["listing_id"]?.ToString() ?? "",
+                        args["currency"]?.ToString() ?? "", args["rate_plan"]?.ToString() ?? "",
+                        args["request_id"]?.ToString() ?? "", args["requester"]?.ToString() ?? "",
+                        args["chat"]?.ToString() ?? "",
+                        DateOnly.ParseExact(args["first_date"]?.ToString() ?? "", "yyyy-MM-dd",
+                            System.Globalization.CultureInfo.InvariantCulture),
+                        DateOnly.ParseExact(args["last_date"]?.ToString() ?? "", "yyyy-MM-dd",
+                            System.Globalization.CultureInfo.InvariantCulture),
+                        decimal.Parse(args["percent_change"]?.ToString() ?? "",
+                            System.Globalization.CultureInfo.InvariantCulture),
+                        args["price_decimals"]?.GetValue<int>() ?? 0, observations);
+                    return Task.FromResult(ToolResult.Text(plan.ToJsonString()));
+                }
+                catch (Exception ex) { return Task.FromResult(ToolResult.Error("Airbnb price planning failed: " + ex.Message)); }
+            }
+        });
+        // D04: two scoped provider read-only adapters selected from E01 history.
+        // No authentication inference, scheduling, publishing, messages or mutation.
+        tools.Add(new Tool
+        {
+            Name = "google_meta_view_audit",
+            Description = "One compact read-only capture of a known YouTube Studio channel or Meta Business view. Use provider youtube_studio or meta_business, exact expected_scope_id and scope_key channel_id, business_id or asset_id. Result establishes URL scope only, NEVER login identity. No send/save/publish. Includes visible headings, controls and view signature.",
+            Parameters = Schema(Obj(
+                ("provider", Str("youtube_studio or meta_business")),
+                ("intent", Str("YouTube: audit_channel_readonly or upload_schedule_short. Meta: audit_page_readonly or reel_editor_workflow")),
+                ("expected_scope_id", Str("Exact expected channel, business or asset ID")),
+                ("scope_key", Str("channel_id, business_id or asset_id"))),
+                "provider", "intent", "expected_scope_id", "scope_key"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var page = await _browser.ExtractAsync(maxFields: 120, ct: ct);
+                    var result = DomainReadAuditService.Inspect(
+                        args["provider"]?.ToString() ?? "",
+                        args["intent"]?.ToString() ?? "",
+                        args["expected_scope_id"]?.ToString() ?? "",
+                        args["scope_key"]?.ToString() ?? "", page);
+                    _log.Write("d04", "readonly_view_audit",
+                        "Observed scoped Google/Meta view",
+                        new { provider = args["provider"]?.ToString(),
+                              status = result["status"]?.ToString(),
+                              reason = result["reason_code"]?.ToString() });
+                    return ToolResult.Text(result.ToJsonString());
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex) { return ToolResult.Error("d04_view_capture_failed:" + ex.GetType().Name); }
+            }
+        });
+        tools.Add(new Tool
+        {
+            Name = "linkedin_prepare_batch",
+            Description = "Prepare a LinkedIn message batch in persistent SQLite in one operation. Resolve known thread/profile links without opening LinkedIn, store intended messages, return status per target. This is preparation only: it does not send any messages.",
+            Parameters = Schema(Obj(
+                ("account_id", Str("Exact expected LinkedIn sender account ID")),
+                ("request_id", Str("Stable unique identifier for this batch")),
+                ("requester", Str("Caller name")),
+                ("chat", Str("Caller conversation")),
+                ("items", Obj(("type", "array")))),
+                "account_id", "request_id", "requester", "chat", "items"),
+            Handler = (args, ct) =>
+            {
+                try
+                {
+                    var requested = (args["items"] as JsonArray)?.OfType<JsonObject>()
+                        .Select(x => new ProcedureTarget(x["target"]?.ToString() ?? "", x["message"]?.ToString() ?? ""))
+                        .ToArray() ?? [];
+                    var plan = new LinkedInBatchPlanner(_memory).Prepare(
+                        args["account_id"]?.ToString() ?? "", args["request_id"]?.ToString() ?? "",
+                        requested, args["requester"]?.ToString() ?? "", args["chat"]?.ToString() ?? "");
+                    return Task.FromResult(ToolResult.Text(plan.ToJsonString()));
+                }
+                catch (Exception ex) { return Task.FromResult(ToolResult.Error("LinkedIn prepare batch failed: " + ex.Message)); }
+            }
+        });
+        // D02: read-only identity/thread verification is available in LIVE.
+        // Side-effecting LinkedIn batch sending remains a separate DEV candidate.
+        tools.Add(new Tool
+        {
+            Name = "linkedin_verify_thread",
+            Description = "Read-only D02 preflight. Compare exact LinkedIn sender profile, messaging thread, recipient profile and unique composer in the CURRENT DOM. No navigation, no send. A blocked result must not be treated as authorization.",
+            Parameters = Schema(Obj(
+                ("sender_profile_url", Str("Expected exact sender LinkedIn /in/ URL")),
+                ("thread_url", Str("Expected exact LinkedIn messaging thread URL")),
+                ("target_profile_url", Str("Expected exact recipient LinkedIn /in/ URL"))),
+                "sender_profile_url", "thread_url", "target_profile_url"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var result = await new LinkedInThreadPreflight(_browser).ObserveAndCheckAsync(
+                        args["sender_profile_url"]?.ToString() ?? "",
+                        args["thread_url"]?.ToString() ?? "",
+                        args["target_profile_url"]?.ToString() ?? "", ct);
+                    return ToolResult.Text(result.ToJsonString());
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    return ToolResult.Error("LinkedIn thread preflight failed: " + ex.Message);
+                }
+            }
+        });
+        // OF-000020: one explicit LinkedIn effect in DEV only, with durable journal.
+        // No model-generated implicit approval and no stable/LIVE registration.
+        if (_candidateStagingOnly) tools.Add(new Tool
+        {
+            Name = "linkedin_send_current_effect",
+            Description = "DEV ONLY: send one explicitly approved message in the CURRENT LinkedIn thread. Requires exact sender, recipient, thread URL, effect ID and authorized=true. Persists attempted before clicking; verified means outgoing visible in UI, not delivery. No automatic retry.",
+            Parameters = Schema(Obj(
+                ("authorized", Obj(("type", "boolean"))),
+                ("business_operation_id", Str("Stable unique business action ID")),
+                ("effect_id", Str("Stable unique effect ID, never default")),
+                ("task_id", Str("Source task ID")),
+                ("run_id", Str("Source run ID")),
+                ("sender_profile_url", Str("Exact LinkedIn /in/ sender URL")),
+                ("thread_url", Str("Exact current messaging thread URL")),
+                ("target_profile_url", Str("Exact LinkedIn /in/ target URL")),
+                ("message", Str("Exactly approved message, no rewrites"))),
+                "authorized", "business_operation_id", "effect_id", "task_id", "run_id",
+                "sender_profile_url", "thread_url", "target_profile_url", "message"),
+            Handler = async (args, ct) =>
+            {
+                if (args["authorized"]?.GetValue<bool>() != true)
+                    return ToolResult.Error("linkedin_effect_explicit_authorization_required");
+                try
+                {
+                    var sender = args["sender_profile_url"]?.ToString() ?? "";
+                    var thread = args["thread_url"]?.ToString() ?? "";
+                    var target = args["target_profile_url"]?.ToString() ?? "";
+                    var message = args["message"]?.ToString() ?? "";
+                    var sha = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(message)));
+                    var key = new LocalPlanEffectKey(
+                        args["business_operation_id"]?.ToString() ?? "",
+                        args["task_id"]?.ToString() ?? "",
+                        args["run_id"]?.ToString() ?? "",
+                        "linkedin", sender, target, "send", sha,
+                        args["effect_id"]?.ToString() ?? "");
+                    var evidenceDirectory = Path.Combine(
+                        Path.GetDirectoryName(_memory.DatabasePath)!, "evidence");
+                    var result = await new LinkedInLocalPlanEffectBridge(
+                        _browser, _memory, evidenceDirectory)
+                        .SendCurrentAsync(key, sender, thread, target, message, ct);
+                    return ToolResult.Text(JsonSerializer.Serialize(result));
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    return ToolResult.Error("linkedin_effect_invalid_or_failed: " + ex.Message);
+                }
+            }
+        });
+        // OF-000048 D02: expose this existing candidate explicitly in LIVE.
+        // The embedded procedure remains candidate and cannot auto-route.
+        // Authorisation, exact sender/thread/target preflight, and durable
+        // per-target ledger remain mandatory for any actual sends.
+        tools.Add(new Tool
+        {
+            Name = "linkedin_send_batch",
+            Description = "Explicit-only LinkedIn batch candidate (available in LIVE): send 1-50 user-approved exact messages to known recipient profile/thread URLs. Requires authorized=true, verified exact sender, stable request_id, requester/chat and items[{profile_url,thread_url,message}]. Persistent per-target operation ledger, preflight and outgoing UI evidence; attempted/uncertain effects are not automatically resent. UI evidence is NOT delivery confirmation.",
+            Parameters = Schema(Obj(
+                ("authorized", Obj(("type", "boolean"))),
+                ("sender_profile_url", Str("Exact authenticated sender LinkedIn profile URL")),
+                ("request_id", Str("Stable unique ID for this exact approved batch")),
+                ("requester", Str("Requester identity")),
+                ("chat", Str("Caller conversation identity")),
+                ("items", Obj(("type", "array"), ("items", Schema(Obj(
+                    ("profile_url", Str("Exact recipient profile URL")),
+                    ("thread_url", Str("Exact known recipient messaging thread URL")),
+                    ("message", Str("Exact approved message; no rewriting"))),
+                    "profile_url", "thread_url", "message"))))),
+                "authorized", "sender_profile_url", "request_id", "requester", "chat", "items"),
+            Handler = async (args, ct) =>
+            {
+                if (args["authorized"]?.GetValue<bool>() != true)
+                    return ToolResult.Error("linkedin_batch_explicit_authorization_required");
+                try
+                {
+                    var sender = args["sender_profile_url"]?.ToString() ?? "";
+                    var requestId = args["request_id"]?.ToString() ?? "";
+                    var requester = args["requester"]?.ToString() ?? "";
+                    var chat = args["chat"]?.ToString() ?? "";
+                    // OF-000050: reject the entire malformed batch before any side effect.
+                    if (args["items"] is not JsonArray rows || rows.Count is < 1 or > 50 ||
+                        rows.Any(x => x is not JsonObject row ||
+                            string.IsNullOrWhiteSpace(row["profile_url"]?.ToString()) ||
+                            string.IsNullOrWhiteSpace(row["thread_url"]?.ToString()) ||
+                            string.IsNullOrWhiteSpace(row["message"]?.ToString())))
+                        return ToolResult.Error("LinkedIn batch requires 1-50 complete profile_url/thread_url/message items.");
+                    var targets = (args["items"] as JsonArray)?.OfType<JsonObject>()
+                        .Select(x => new LinkedInSendTarget(
+                            x["profile_url"]?.ToString() ?? "",
+                            x["thread_url"]?.ToString() ?? "",
+                            x["message"]?.ToString() ?? "")).ToArray() ?? [];
+                    var evidenceDirectory = Path.Combine(
+                        Path.GetDirectoryName(_memory.DatabasePath)!, "evidence");
+                    var result = await new LinkedInSendBatchService(
+                        _browser, _memory, evidenceDirectory).SendBatchAsync(
+                            sender, requestId, targets, requester, chat, ct, stagingOnly:true);
+                    return ToolResult.Text(result.ToJsonString());
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    return ToolResult.Error("linkedin_batch_invalid_or_failed: " + ex.Message);
+                }
+            }
+        });
         tools.Add(new Tool
         {
             Name = "whatsapp_read_visible",
-            Description = "ONE DOM read of WhatsApp Web. All currently rendered conversation previews and all currently loaded messages of the open conversation, without browsing older history, screenshots or individual-message clicks.",
+            Description = "One WhatsApp Web read after bounded local page-readiness polling (up to 18 seconds during first load), returning rendered conversation previews and currently loaded messages. The ready flag is authoritative; do not treat a loading snapshot as an empty inbox.",
             Parameters = Schema(Obj()),
-            Handler = async (args, ct) => ToolResult.Text((await whatsapp.ReadVisibleAsync(ct))?.ToJsonString() ?? "{}")
+            Handler = async (args, ct) => ToolResult.Text((await whatsapp.ReadReadyAsync(ct, 18000))?.ToJsonString() ?? "{}")
+        });
+        // A25: ONE model call can read several named chats from the visible sidebar.
+        // Only read-only DOM actions are performed; unrendered/ambiguous names are reported.
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_read_names",
+            Description = "Read several WhatsApp conversations by exact sidebar display name in ONE tool/model call. Checks visible rows first; if a name is missing, scans the virtualized sidebar once locally and locates the matching row without model-driven scrolling. Returns last 5 loaded messages per chat (max 10), reports absent or ambiguous names, never scrolls older message history or sends.",
+            Parameters = Schema(Obj(
+                ("names", Obj(("type", "array"), ("items", Str("Exact sidebar display name currently rendered")))),
+                ("max_messages", Obj(("type", "integer"), ("description", "Last messages per chat: default 5, max 10")))), "names"),
+            Handler = async (args, ct) =>
+            {
+                var names = (args["names"] as JsonArray)?.Select(x => x?.ToString() ?? "").ToArray() ?? [];
+                var result = await whatsapp.ReadVisibleNamesAsync(names,
+                    args["max_messages"]?.GetValue<int>() ?? 5, ct);
+                return ToolResult.Text(result.ToJsonString());
+            }
+        });
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_read_batch",
+            Description = "In ONE Luna call, open a batch of known WhatsApp phone/JID conversations, skip duplicate numbers, store all currently loaded messages in SQLite, and return the last 5 messages per chat by default (up to 10), plus counts. No older-history scrolling.",
+            Parameters = Schema(Obj(
+                ("account_id", Str("Verified WhatsApp sender/account scope for durable records")),
+                ("targets", Obj(("type", "array"), ("items", Str("Phone number or phone-type WhatsApp JID")))),
+                ("max_messages", Obj(("type", "integer"), ("description", "Recent messages returned per chat: default 5, max 10")))), "account_id", "targets"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var numbers = (args["targets"] as JsonArray)?.Select(x => x?.ToString() ?? "").ToArray() ?? [];
+                    var result = await new WhatsAppBatchService(whatsapp, _memory).ReadBatchAsync(
+                        args["account_id"]?.ToString() ?? "", numbers, ct,
+                        args["max_messages"]?.GetValue<int>() ?? 5);
+                    return ToolResult.Text(result.ToJsonString());
+                }
+                catch (Exception ex) { return ToolResult.Error("WhatsApp batch read failed: " + ex.Message); }
+            }
+        });
+        // OF-000047: expose the existing opt-in D01 candidate to LIVE.
+        // It is never auto-routed: authorization, exact recipients/messages,
+        // sender verification and the durable per-target journal are required.
+        tools.Add(new Tool
+        {
+            Name = "whatsapp_send_batch",
+            Description = "Explicit-only WhatsApp batch send candidate (also available in LIVE): requires user-authorized exact recipient phone numbers/messages, verified sender phone, stable request_id and requester/chat. Uses durable per-recipient ledger; uncertain/attempted sends are never automatically retried. UI evidence is not delivery confirmation.",
+            Parameters = Schema(Obj(
+                ("sender_phone", Str("Own WhatsApp account phone, international format, verified in the browser")),
+                ("request_id", Str("Stable unique ID for this explicit batch")),
+                ("requester", Str("Requester identity")),
+                ("chat", Str("Source conversation identity")),
+                ("authorized", Obj(("type", "boolean"))),
+                // OF-000049: validate the exact recipient/payload contract in the
+                // model-visible schema, matching the existing LinkedIn batch tool.
+                ("items", Obj(("type", "array"), ("items", Schema(Obj(
+                    ("target", Str("Exact approved recipient phone number in international format")),
+                    ("message", Str("Exact approved message text; do not rewrite"))),
+                    "target", "message"))))),
+                "sender_phone", "request_id", "requester", "chat", "authorized", "items"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    if (args["authorized"]?.GetValue<bool>() != true)
+                        return ToolResult.Error("Explicit authorization for this batch is required.");
+                    if (string.IsNullOrWhiteSpace(args["requester"]?.ToString()) ||
+                        string.IsNullOrWhiteSpace(args["chat"]?.ToString()))
+                        return ToolResult.Error("WhatsApp batch requires nonempty requester and chat identity.");
+                    if (args["items"] is not JsonArray rows || rows.Count is < 1 or > 100 ||
+                        rows.Any(x => x is not JsonObject row ||
+                            string.IsNullOrWhiteSpace(row["target"]?.ToString()) ||
+                            string.IsNullOrEmpty(row["message"]?.ToString())))
+                        return ToolResult.Error("WhatsApp batch items must contain 1-100 recipient objects with nonempty target and message.");
+                    var items = rows.OfType<JsonObject>()
+                        .Select(x => new ProcedureTarget(x["target"]!.ToString(), x["message"]!.ToString()))
+                        .ToArray();
+                    var result = await new WhatsAppBatchService(whatsapp, _memory).SendBatchAsync(
+                        args["sender_phone"]?.ToString() ?? "", args["request_id"]?.ToString() ?? "",
+                        items, (account, token) => whatsapp.AccountMatchesAsync(account, token),
+                        // The candidate is invoked explicitly; never auto-route it.
+                        // allowCandidateForStaging here enables this one reviewed
+                        // candidate under its existing sender/effect guards in LIVE.
+                        null, args["requester"]?.ToString(), args["chat"]?.ToString(), ct, true);
+                    return ToolResult.Text(result.ToJsonString());
+                }
+                catch (Exception ex) { return ToolResult.Error("WhatsApp send batch failed: " + ex.Message); }
+            }
+        });
+        // OF-000020: journaled single effect, DEBUG/STAGING candidate only.
+        if (_candidateStagingOnly) tools.Add(new Tool
+        {
+            Name = "whatsapp_send_effect",
+            Description = "Candidate provider effect in dev only: exactly one WhatsApp send with verified own phone, immutable business/effect IDs, durable attempted-before-send SQLite transition, and exact outgoing DOM evidence. Never automatically replay attempted, uncertain or verified effects. Requires explicit authorization and known recipient phone.",
+            Parameters = Schema(Obj(
+                ("sender_phone", Str("Verified own WhatsApp phone number")),
+                ("recipient_phone", Str("Exact destination phone digits in international format")),
+                ("message", Str("Exact payload to send once")),
+                ("business_operation_id", Str("Stable ID for the original user-authorized business operation")),
+                ("effect_id", Str("Stable unique effect ID within the business operation")),
+                ("task_id", Str("Task telemetry ID")),
+                ("run_id", Str("Run telemetry ID")),
+                ("authorized", Obj(("type", "boolean")))),
+                "sender_phone", "recipient_phone", "message", "business_operation_id",
+                "effect_id", "task_id", "run_id", "authorized"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    if (args["authorized"]?.GetValue<bool>() != true)
+                        return ToolResult.Error("Explicit authorization for this effect is required.");
+                    var message = args["message"]?.ToString() ?? "";
+                    var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(message)));
+                    var key = new LocalPlanEffectKey(
+                        args["business_operation_id"]?.ToString() ?? "",
+                        args["task_id"]?.ToString() ?? "",
+                        args["run_id"]?.ToString() ?? "",
+                        "whatsapp",
+                        args["sender_phone"]?.ToString() ?? "",
+                        args["recipient_phone"]?.ToString() ?? "",
+                        "send", hash,
+                        args["effect_id"]?.ToString() ?? "");
+                    var evidenceDir = Path.Combine(
+                        Path.GetDirectoryName(_memory.DatabasePath)!, "evidence");
+                    var result = await new WhatsAppLocalPlanEffectBridge(
+                        new WhatsAppBrowserEffectPort(whatsapp), _memory, evidenceDir)
+                        .SendAsync(key, message, ct);
+                    return ToolResult.Text(JsonSerializer.Serialize(result));
+                }
+                catch (Exception ex) { return ToolResult.Error("WhatsApp effect failed: " + ex.Message); }
+            }
         });
         tools.Add(new Tool
         {
@@ -175,11 +659,104 @@ public sealed class ToolRegistry
         });
 
 
+        // One browser observation and local CLI query, without sending raw DOM through the model.
+        tools.Add(new Tool
+        {
+            Name = "observe_query",
+            Description = "Capture the current authenticated view to a local file, immediately filter it with rg/jq, and return only a concise result. For another query over the SAME view, use file_query with the returned source path rather than capturing again.",
+            Parameters = Schema(Obj(
+                ("operation", Str("text_literal, text_regex, text_count, json_select")),
+                ("query", Str("Literal/regex or jq expression")),
+                ("selector", Str("CSS root; default body")),
+                ("require_authenticated", Obj(("type", "boolean"))),
+                ("authenticated_selector", Str("Positive marker of authenticated session")),
+                ("max_preview_rows", Obj(("type", "integer")))), "operation", "query"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var op = args["operation"]?.ToString() ?? "";
+                    var kind = op == "json_select" ? "elements" : "text";
+                    var verifiedSignature = args["_verified_recipe_signature"]?.ToString();
+                    var verifiedUrl = args["_verified_recipe_url"]?.ToString();
+                    var verifiedAccount = args["_verified_recipe_account"]?.ToString();
+                    var verifiedMode = args["_verified_recipe_mode"]?.ToString();
+                    // Use the exact signed capture mode; both text-only and all
+                    // revalidate their bounded DOM shape before filtering.
+                    var signed = !string.IsNullOrWhiteSpace(verifiedSignature);
+                    if (signed && verifiedMode is not ("all" or "text"))
+                        return ToolResult.Error("verified_recipe_mode_invalid");
+                    var mode = signed ? verifiedMode! : kind == "elements" ? "elements" : "text";
+                    if (op is not ("json_select" or "text_literal" or "text_regex" or "text_count"))
+                        return ToolResult.Error("observe_query unsupported operation");
+                    var captured = await _capture.CaptureAsync(mode,
+                        args["selector"]?.ToString() ?? "body", "", null, 50, ct,
+                        expectedUrl: signed ? verifiedUrl : null,
+                        requireAuthenticated: args["require_authenticated"]?.GetValue<bool>() ?? false,
+                        authenticatedSelector: args["authenticated_selector"]?.ToString(),
+                        expectedViewSignature: signed ? verifiedSignature : null,
+                        expectedAccountScope: signed ? verifiedAccount : null);
+                    if (captured["status"]?.ToString() != "saved")
+                        return new ToolResult(captured.ToJsonString(), false);
+                    var path = (captured["files"] as JsonArray)?.OfType<JsonObject>()
+                        .FirstOrDefault(x => x["kind"]?.ToString() == kind)?["path"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(path)) return ToolResult.Error("observe_query source artifact missing");
+                    var sourceUrl = captured["url"]?.ToString();
+                    var captureId = captured["capture_id"]?.ToString() ?? "";
+                    var sourceHash = (captured["files"] as JsonArray)?.OfType<JsonObject>()
+                        .FirstOrDefault(x => x["kind"]?.ToString() == kind)?["sha256"]?.ToString();
+                    string memoryStatus = "saved";
+                    try
+                    {
+                        var host = Uri.TryCreate(sourceUrl, UriKind.Absolute, out var sourceUri) ? sourceUri.Host : null;
+                        _memory.RecordObservation(captureId, null, host, sourceUrl,
+                            captured["source_scope"]?.ToString() ?? "currently_loaded_dom", false, path, sourceHash);
+                    }
+                    catch (Exception ex) { memoryStatus = "record_failed:" + ex.GetType().Name; }
+                    var filtered = await FileFilterService.QueryAsync(path, op,
+                        args["query"]?.ToString(), Path.Combine(_files?.SharedDir ?? Path.GetTempPath(), "terminal"),
+                        args["max_preview_rows"]?.GetValue<int>() ?? 10, 60, ct);
+                    var status = filtered["status"]?.ToString();
+                    // OF-000032: read_view -> observe_query is also a capture used
+                    // by the current task. Without this, successful read_view
+                    // never advances its signed recipe from candidate to verified.
+                    // Track only a usable, filtered artifact, not a failed query.
+                    if (status == "ok" &&
+                        Uri.TryCreate(sourceUrl, UriKind.Absolute, out var capturedUri) &&
+                        captured["view_signature"]?.ToString() is { Length: 64 } usedSignature)
+                    {
+                        _usedCaptures.Add((capturedUri.Host, capturedUri.AbsolutePath,
+                            mode, args["selector"]?.ToString() ?? "body", "",
+                            usedSignature, captured["account_scope"]?.ToString() ?? ""));
+                    }
+                    _log.Write("capture_filter", "observe_query_finished", "Captured once and filtered locally", new {
+                        captureId, sourceUrl, status, memoryStatus,
+                        sourceBytes = filtered["source_bytes"]?.ToString(),
+                        outputBytes = filtered["output_bytes"]?.ToString(),
+                        filterElapsedMs = filtered["elapsed_ms"]?.ToString(),
+                        reusedSnapshot = captured["reused_snapshot"]?.GetValue<bool>() == true,
+                        runId = _log.CurrentRunId
+                    }, status == "error" ? "error" : "ok");
+                    return new ToolResult(new JsonObject {
+                        ["status"] = status,
+                        ["capture_id"] = captured["capture_id"]?.ToString(),
+                        ["manifest_path"] = captured["manifest_path"]?.ToString(),
+                        ["source_scope"] = captured["source_scope"]?.ToString(),
+                        ["reused_snapshot"] = captured["reused_snapshot"]?.GetValue<bool>() == true,
+                        ["cache_verification"] = captured["cache_verification"]?.ToString(),
+                        ["memory_status"] = memoryStatus,
+                        ["query_result"] = filtered.DeepClone()
+                    }.ToJsonString(), status is "ok" or "zero_matches");
+                }
+                catch (Exception ex) { return ToolResult.Error("observe_query failed: " + ex.Message); }
+            }
+        });
+
         // A single C# service: WebView2 DOM -> unfiltered source files -> deterministic filters -> compact model result.
         tools.Add(new Tool
         {
             Name = "page_capture",
-            Description = "Preferred for bulk DOM exports. Sign in FIRST using existing browser UI if required, verify authenticated session, THEN capture and filter. Never count a login page as a completed export. LinkedIn account pages are checked automatically. require_authenticated=true and authenticated_selector allow explicit verification for other sites. Full data to files only. use_best reuses a verified technical profile.",
+            Description = "Preferred for bulk DOM exports. Sign in FIRST using existing browser UI if required, verify authenticated session, THEN capture and filter. Never count a login page as a completed export. LinkedIn account pages are checked automatically. require_authenticated=true and authenticated_selector allow explicit verification for other sites. Full data to files only. Automatically reuse the verified account/view-scoped technical capture recipe when one exists; use_best=false opts out for a neutral capture.",
             Parameters = Schema(Obj(
                 ("mode", Str("text, elements, html, all; default all")),
                 ("selector", Str("CSS root selector; default body")),
@@ -195,17 +772,34 @@ public sealed class ToolRegistry
                 var mode = args["mode"]?.GetValue<string>() ?? "all";
                 var selector = args["selector"]?.GetValue<string>() ?? "body";
                 var regex = args["regex"]?.GetValue<string>() ?? "";
-                if (args["use_best"]?.GetValue<bool>() == true)
+                var recipeSelection = "none";
+                string? recipeExpectedUrl = null;
+                string? recipeExpectedSignature = null;
+                string? recipeExpectedAccount = null;
+                if (args["use_best"]?.GetValue<bool>() != false)
                 {
                     var now = await _browser.CurrentUrlAsync(ct);
                     if (Uri.TryCreate(now, UriKind.Absolute, out var uri))
                     {
-                        var best = _recipes.Best(uri.Host, uri.AbsolutePath);
+                        // Verified exact live structure takes precedence over legacy route-only
+                        // recipes. Never probe/reuse an unverified account-bearing view.
+                        var exact = await CaptureRecipeLiveProbe.SelectAsync(
+                            _browser, _recipes.Get(uri.Host), uri, ct);
+                        var best = exact ?? _recipes.BestScoped(new CaptureRecipeScope(
+                            uri.Host, uri.AbsolutePath,
+                            Authenticated: args["require_authenticated"]?.GetValue<bool>() == true));
                         if (best != null)
                         {
+                            recipeSelection = exact is null ? "verified_neutral_route" : "verified_live_view";
                             if (args["mode"] == null) mode = best.Mode;
                             if (args["selector"] == null) selector = best.Selector;
                             if (args["regex"] == null) regex = best.Pattern;
+                            if (exact != null && mode == exact.Mode && selector == exact.Selector)
+                            {
+                                recipeExpectedUrl = now;
+                                recipeExpectedSignature = exact.ViewSignature;
+                                recipeExpectedAccount = string.IsNullOrWhiteSpace(exact.AccountScope) ? null : exact.AccountScope;
+                            }
                         }
                     }
                 }
@@ -213,16 +807,122 @@ public sealed class ToolRegistry
                 {
                     var value = await _capture.CaptureAsync(mode, selector, regex, args["output_folder"]?.GetValue<string>(),
                         args["max_matches"]?.GetValue<int>() ?? 50, ct,
+                        expectedUrl: recipeExpectedUrl,
                         requireAuthenticated: args["require_authenticated"]?.GetValue<bool>() ?? false,
                         authenticatedSelector: args["authenticated_selector"]?.GetValue<string>(),
-                        allowLoginPage: args["allow_login_page"]?.GetValue<bool>() ?? false);
+                        allowLoginPage: args["allow_login_page"]?.GetValue<bool>() ?? false,
+                        expectedViewSignature: recipeExpectedSignature,
+                        expectedAccountScope: recipeExpectedAccount);
+                    if (value["status"]?.ToString() == "view_changed" &&
+                        value["reason_code"]?.ToString() is "recipe_view_changed" or "recipe_structure_incomplete")
+                    {
+                        // One neutral read, never reuse the stale selector or promote it.
+                        mode = "all"; selector = "body"; regex = "";
+                        value = await _capture.CaptureAsync(mode, selector, regex, args["output_folder"]?.GetValue<string>(),
+                            args["max_matches"]?.GetValue<int>() ?? 50, ct,
+                            expectedUrl: recipeExpectedUrl,
+                            requireAuthenticated: args["require_authenticated"]?.GetValue<bool>() ?? false,
+                            authenticatedSelector: args["authenticated_selector"]?.GetValue<string>(),
+                            allowLoginPage: args["allow_login_page"]?.GetValue<bool>() ?? false,
+                            expectedAccountScope: recipeExpectedAccount);
+                        recipeSelection = "neutral_fallback_view_changed";
+                    }
                     if (value["status"]?.ToString() != "saved") return new ToolResult(value.ToJsonString(), false);
+                    value["recipe_selection"] = recipeSelection;
                     if (Uri.TryCreate(value["url"]?.ToString(), UriKind.Absolute, out var captured))
-                        _usedCaptures.Add((captured.Host,captured.AbsolutePath,mode,selector,regex));
+                        _usedCaptures.Add((captured.Host,captured.AbsolutePath,mode,selector,regex,
+                            value["view_signature"]?.ToString() ?? "",
+                            value["account_scope"]?.ToString() ?? ""));
                     return ToolResult.Text(value.ToJsonString());
                 }
                 catch (Exception ex) { return ToolResult.Error("Page capture failed: " + ex.Message); }
             }
+        });
+        tools.Add(new Tool
+        {
+            Name = "memory_identity",
+            Description = "Look up known provider-specific identities and profile URLs in persistent SQLite before revisiting a website. Record only an exact provider ID observed from a verified source.",
+            Parameters = Schema(Obj(
+                ("mode", Str("query or record")),
+                ("provider", Str("linkedin, whatsapp or exact service")),
+                ("account_id", Str("Exact active sender account identity")),
+                ("search", Str("Known provider ID, canonical URL or part of name for query")),
+                ("external_id", Str("Exact provider ID for record")),
+                ("profile_url", Str("Canonical observed profile URL")),
+                ("display_name", Str("Observed name")),
+                ("source_ref", Str("Required evidence reference for record"))), "mode", "provider", "account_id"),
+            Handler = (args, ct) =>
+            {
+                try
+                {
+                    var mode = args["mode"]?.ToString();
+                    var provider = args["provider"]?.ToString() ?? "";
+                    var account = args["account_id"]?.ToString() ?? "";
+                    if (mode == "query") return Task.FromResult(ToolResult.Text(_memory.FindIdentities(provider, account, args["search"]?.ToString() ?? "").ToJsonString()));
+                    if (mode != "record") return Task.FromResult(ToolResult.Error("memory_identity mode must be query or record"));
+                    var source = args["source_ref"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(source)) return Task.FromResult(ToolResult.Error("source_ref is required to record identity"));
+                    _memory.UpsertIdentity(provider, account, args["external_id"]?.ToString() ?? "", args["profile_url"]?.ToString(), args["display_name"]?.ToString(), source);
+                    return Task.FromResult(ToolResult.Text("identity_recorded"));
+                }
+                catch (Exception ex) { return Task.FromResult(ToolResult.Error("Memory identity failed: " + ex.Message)); }
+            }
+        });
+        // OF-IMP-20261031 A02/A03: direct file-to-CLI query, without another browser read.
+        tools.Add(new Tool
+        {
+            Name = "file_query",
+            Description = "Query an ALREADY SAVED capture by capture_id (verified manifest/SHA256) or a legacy source_path. Uses rg/jq, no new WebView2 read. Historical data is not proof of current page state.",
+            Parameters = Schema(Obj(
+                ("capture_id", Str("Existing capture ID; preferred to source_path")),
+                ("file_kind", Str("text, elements or html; default text")),
+                ("source_path", Str("Legacy full path to existing local data file")),
+                ("operation", Str("text_literal, text_regex, text_count, json_select, ndjson_select")),
+                ("query", Str("Literal, regex or jq expression")),
+                ("max_preview_rows", Obj(("type", "integer")))), "operation", "query"),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var captureId = args["capture_id"]?.ToString();
+                    var fileKind = args["file_kind"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(fileKind)) fileKind = "text";
+                    if (string.IsNullOrWhiteSpace(captureId) &&
+                        string.IsNullOrWhiteSpace(args["source_path"]?.ToString()))
+                        return ToolResult.Error("capture_reference_missing");
+                    var result = !string.IsNullOrWhiteSpace(captureId)
+                        ? await CaptureArtifactQueryService.QueryAsync(
+                            Path.Combine(_files?.SharedDir ?? Path.GetTempPath(), "captures"),
+                            captureId, fileKind,
+                            args["operation"]?.ToString() ?? "", args["query"]?.ToString() ?? "",
+                            Path.Combine(_files?.SharedDir ?? Path.GetTempPath(), "terminal"),
+                            args["max_preview_rows"]?.GetValue<int>() ?? 10, ct)
+                        : await FileFilterService.QueryAsync(
+                            args["source_path"]?.GetValue<string>(),
+                            args["operation"]?.GetValue<string>(),
+                            args["query"]?.GetValue<string>(),
+                            Path.Combine(_files?.SharedDir ?? Path.GetTempPath(), "terminal"),
+                            args["max_preview_rows"]?.GetValue<int>() ?? 10, 60, ct);
+                    var status = result["status"]?.ToString();
+                    _log.Write("file_filter", "query_finished", "Filtered an already saved file", new {
+                        operation = args["operation"]?.ToString(), status,
+                        sourceBytes = result["source_bytes"]?.ToString(),
+                        outputBytes = result["output_bytes"]?.ToString(),
+                        filterElapsedMs = result["elapsed_ms"]?.ToString(),
+                        outputLines = result["output_lines"]?.ToString(),
+                        reusedSnapshot = true, runId = _log.CurrentRunId
+                    }, status == "error" ? "error" : "ok");
+                    return new ToolResult(result.ToJsonString(), status is "ok" or "zero_matches");
+                }
+                catch (Exception ex) { return ToolResult.Error("File query failed: " + ex.Message); }
+            }
+        });
+        tools.Add(new Tool
+        {
+            Name = "file_tools",
+            Description = "Small diagnostic: list available local CLI filters and absolute paths. No browser action.",
+            Parameters = Schema(Obj()),
+            Handler = (args, ct) => Task.FromResult(ToolResult.Text(FileFilterService.Availability().ToJsonString()))
         });
         tools.Add(new Tool
         {
@@ -280,22 +980,461 @@ public sealed class ToolRegistry
             }
         });
 
+        // A08: universal structural reconnaissance, one bounded DOM probe, no page text.
+        tools.Add(new Tool
+        {
+            Name = "inspect_view",
+            Description = "Read-only structural recognition of ANY current website. Returns a tiny view manifest (type, confidence, counts, hashed route/signature). No full DOM, text, form values, account identity or content cache. Use before choosing a filtered read or interactive controls on an unfamiliar page.",
+            Parameters = Schema(Obj()),
+            Handler = async (args, ct) =>
+            {
+                try
+                {
+                    var started = System.Diagnostics.Stopwatch.StartNew();
+                    var response = await _browser.RunJsAsync(SemanticViewInspector.Script, ct);
+                    var manifest = SemanticViewInspector.Summarize(response as JsonObject);
+                    started.Stop();
+                    manifest["elapsed_ms"] = started.ElapsedMilliseconds;
+                    _log.Write("view_inspection", "structural_probe", "Bounded DOM structure inspected",
+                        new { status = manifest["status"]?.ToString(), viewType = manifest["view_type"]?.ToString(),
+                            elapsedMs = started.ElapsedMilliseconds, fullDomCapture = false });
+                    return new ToolResult(manifest.ToJsonString(), manifest["status"]?.ToString() == "ok");
+                }
+                catch (Exception ex) { return ToolResult.Error("inspect_view failed: " + ex.Message); }
+            }
+        });
+
+        // A10: domain-independent record projection for a loaded list, inbox or grid.
+        tools.Add(new Tool
+        {
+            Name = "view_digest",
+            Description = "One read-only current-DOM call returns visible rows of up to four semantic regions (lists, conversations, messages, grids). Includes concise text, links, actions and partial/virtualized indicators, not entire DOM. For deeper queries use read_view with an explicit filter and stored capture_id.",
+            Parameters = Schema(Obj()),
+            Handler = async (args, ct) =>
+            {
+                var started = System.Diagnostics.Stopwatch.StartNew();
+                var reply = await _browser.RunJsAsync(SemanticViewDigest.Script, ct);
+                var digest = SemanticViewDigest.Summarize(reply as JsonObject);
+                started.Stop();
+                var body = digest.ToJsonString();
+                _log.Write("view_digest", "projected", "Universal visible record projection",
+                    new { status = digest["status"]?.ToString(),
+                        sections = digest["section_count"]?.ToString(),
+                        rows = digest["returned_records"]?.ToString(),
+                        bytes = System.Text.Encoding.UTF8.GetByteCount(body),
+                        elapsedMs = started.ElapsedMilliseconds, fullDomCapture = false,
+                        locatorCoverage = SemanticViewDigest.LocatorCoverage(digest),
+                        runId = _log.CurrentRunId });
+                return new ToolResult(body, digest["status"]?.ToString() == "ok");
+            }
+        });
+
+        // A11: use a unique CSS locator from view_digest without an intervening
+        // whole-page get_page. No site-specific selectors or automatic retries.
+        tools.Add(new Tool
+        {
+            Name = "act_locator",
+            Description = "Act on one exact current-DOM CSS selector (prefer selector supplied by view_digest). Supports click, set or focus. Must pass current expected_host and, for clicking a person/row, expected_text. If target_text_mismatch, inspect bounded observed_text and choose a corrected locator instead of repeating the same mismatch. Optional verify checks the result locally in the SAME call. Never retry a potentially effective action just because verification is uncertain.",
+            Parameters = Schema(Obj(
+                ("selector", Str("Unique stable CSS selector from current view_digest")),
+                ("action", Str("click, set, focus")),
+                ("value", Str("Value for set")),
+                ("expected_host", Str("Exact host of current view_digest")),
+                ("expected_text", Str("Optional text fragment expected inside the target")),
+                ("timeout_ms", Obj(("type", "integer"))),
+                ("verify", Obj(("type", "object"), ("properties", Obj(
+                    ("selector", Str("Target for post-action verification")),
+                    ("check", Str("exists, absent, visible, text_contains, value_equals, attribute_equals")),
+                    ("expected", Str("Expected value")),
+                    ("attribute", Str("Attribute for attribute_equals")),
+                    ("expected_host", Str("Host for verification")),
+                    ("timeout_ms", Obj(("type", "integer")))))))), "selector", "action", "expected_host"),
+            Handler = async (args, ct) =>
+            {
+                var selector = args["selector"]?.ToString()?.Trim() ?? "";
+                var verb = args["action"]?.ToString()?.Trim().ToLowerInvariant() ?? "";
+                var host = args["expected_host"]?.ToString()?.Trim().ToLowerInvariant() ?? "";
+                var value = args["value"]?.ToString() ?? "";
+                var expectedText = args["expected_text"]?.ToString() ?? "";
+                var timeoutMs = Math.Clamp(args["timeout_ms"]?.GetValue<int>() ?? 0, 0, 6000);
+                if (selector.Length is < 2 or > 500 || verb is not ("click" or "set" or "focus") ||
+                    host.Length is < 1 or > 253 || host.Any(c => !(char.IsLetterOrDigit(c) || c is '-' or '.')) ||
+                    value.Length > 3000 || expectedText.Length > 250)
+                    return ToolResult.Error("act_locator_invalid_input");
+                var verify = args["verify"] as JsonObject;
+                if (verify != null && ViewEvidenceProbe.Prepare(
+                    verify["selector"]?.ToString(), verify["check"]?.ToString(),
+                    verify["expected"]?.ToString(), verify["attribute"]?.ToString(),
+                    verify["expected_host"]?.ToString()).Script == null)
+                    return ToolResult.Error("action_not_attempted:postcheck_invalid");
+                var js = """
+                    (() => {
+                      if (location.hostname.toLowerCase() !== __HOST__)
+                        return {ok:false,reason_code:"host_mismatch",action_attempted:false};
+                      let nodes;
+                      try { nodes=document.querySelectorAll(__SELECTOR__); }
+                      catch (_) { return {ok:false,reason_code:"selector_invalid",action_attempted:false}; }
+                      const verb=__VERB__,value=__VALUE__,expected=__EXPECTED__;
+                      let matches=Array.from(nodes);
+                      if (expected && matches.length>1) {
+                        const exact=matches.filter(e=>(e.innerText||e.textContent||'').split(String.fromCharCode(10))
+                          .some(line=>line.trim()===expected));
+                        matches=exact.length===1?exact:matches.filter(e=>(e.innerText||e.textContent||'').includes(expected));
+                      }
+                      if (matches.length!==1)
+                        return {ok:false,reason_code:matches.length===0?"selector_not_found":"selector_not_unique",observed_count:matches.length,action_attempted:false};
+                      const el=matches[0];
+                      if (expected && !(el.innerText||el.textContent||"").includes(expected))
+                        return {ok:false,reason_code:"target_text_mismatch",
+                            observed_text:(el.innerText||el.textContent||"").replace(/\s+/g," ").trim().slice(0,180),
+                            observed_count:1,action_attempted:false};
+                      if (el.disabled)
+                        return {ok:false,reason_code:"target_disabled",action_attempted:false};
+                      if (verb==="click") el.click();
+                      else if (verb==="focus") el.focus();
+                      else if (verb==="set") {
+                        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+                          const proto=el instanceof HTMLInputElement?HTMLInputElement.prototype:HTMLTextAreaElement.prototype;
+                          Object.getOwnPropertyDescriptor(proto,"value").set.call(el,value);
+                        } else if (el.isContentEditable) el.textContent=value;
+                        else return {ok:false,reason_code:"target_not_editable",action_attempted:false};
+                        el.dispatchEvent(new Event("input",{bubbles:true}));
+                        el.dispatchEvent(new Event("change",{bubbles:true}));
+                      }
+                      return {ok:true,action_attempted:true,verification_status:"not_checked",repeat_action_automatically:false};
+                    })()
+                    """.Replace("__HOST__", System.Text.Json.JsonSerializer.Serialize(host))
+                        .Replace("__SELECTOR__", System.Text.Json.JsonSerializer.Serialize(selector))
+                        .Replace("__VERB__", System.Text.Json.JsonSerializer.Serialize(verb))
+                        .Replace("__VALUE__", System.Text.Json.JsonSerializer.Serialize(value))
+                        .Replace("__EXPECTED__", System.Text.Json.JsonSerializer.Serialize(expectedText));
+                // A15: local pre-action waiting for asynchronous search results.
+                // Retry only failures that EXPLICITLY state action_attempted=false;
+                // never rerun a click/set that may already have taken effect.
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                var probes = 0;
+                JsonObject? action;
+                do
+                {
+                    var res = await _browser.RunJsAsync(js, ct);
+                    probes++;
+                    if (res?["ok"]?.GetValue<bool>() != true)
+                        return ToolResult.Error("act_locator_dom_error:" + (res?["error"]?.ToString() ?? "unknown"));
+                    action = res["value"] as JsonObject;
+                    if (action?["ok"]?.GetValue<bool>() == true) break;
+                    var reason = action?["reason_code"]?.ToString() ?? "";
+                    if (timeoutMs <= 0 || clock.ElapsedMilliseconds >= timeoutMs ||
+                        action?["action_attempted"]?.GetValue<bool>() != false ||
+                        reason is not ("selector_not_unique" or "selector_not_found" or "target_text_mismatch"))
+                    {
+                        _log.Write("semantic_action", "act_locator_unresolved",
+                            "Current semantic locator did not resolve to one actionable element",
+                            new { reasonCode = reason, attempted = action?["action_attempted"]?.ToString(),
+                                probes, elapsedMs = clock.ElapsedMilliseconds,
+                                runId = _log.CurrentRunId }, status: "warn");
+                        return new ToolResult(action?.ToJsonString() ?? "{}", false);
+                    }
+                    await Task.Delay(150, ct);
+                } while (true);
+                action["preflight_probes"] = probes;
+                action["preflight_elapsed_ms"] = clock.ElapsedMilliseconds;
+                if (verify != null)
+                {
+                    var evidence = await tools.First(x => x.Name == "verify_view").Handler(verify, ct);
+                    JsonNode? evidenceNode;
+                    try { evidenceNode = JsonNode.Parse(evidence.Output); }
+                    catch { evidenceNode = JsonValue.Create(evidence.Output); }
+                    action["verification_status"] = evidence.Ok ? "observed" : "uncertain";
+                    action["verification_evidence"] = evidenceNode;
+                }
+                _log.Write("semantic_action", "act_locator", "Targeted DOM action", new {
+                    operation = verb, verified = action["verification_status"]?.ToString(),
+                    runId = _log.CurrentRunId });
+                return new ToolResult(action.ToJsonString(), true);
+            }
+        });
+
+        // A07: a short targeted assertion against the live DOM, not a full get_page or capture.
+        tools.Add(new Tool
+        {
+            Name = "verify_view",
+            Description = "Check a specific CURRENT element after an action without get_page. Read-only DOM probe: exists, absent, visible, text_contains, value_equals or attribute_equals. Use an exact CSS selector and optionally expected_host; timeout_ms permits short local polling. A matching DOM element is only observation, not proof of delivery or persistence.",
+            Parameters = Schema(Obj(
+                ("selector", Str("Narrow CSS selector of the expected element; never body")),
+                ("check", Str("exists, absent, visible, text_contains, value_equals, attribute_equals")),
+                ("expected", Str("Expected text/value/attribute value for comparison")),
+                ("attribute", Str("Attribute name for attribute_equals")),
+                ("expected_host", Str("Optional exact hostname guard")),
+                ("timeout_ms", Obj(("type", "integer")))), "selector", "check"),
+            Handler = async (args, ct) =>
+            {
+                var prepared = ViewEvidenceProbe.Prepare(args["selector"]?.ToString(),
+                    args["check"]?.ToString(), args["expected"]?.ToString(),
+                    args["attribute"]?.ToString(), args["expected_host"]?.ToString());
+                if (prepared.Script == null) return ToolResult.Error(prepared.ReasonCode);
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var timeout = Math.Clamp(args["timeout_ms"]?.GetValue<int>() ?? 0, 0, 4000);
+                JsonObject? observed = null;
+                var probes = 0;
+                do
+                {
+                    var response = await _browser.RunJsAsync(prepared.Script, ct);
+                    probes++;
+                    if (response?["ok"]?.GetValue<bool>() != true)
+                        return ToolResult.Error("verify_view_js_failed:" + (response?["error"]?.ToString() ?? "unknown"));
+                    observed = response?["value"] as JsonObject;
+                    if (observed == null) return ToolResult.Error("verify_view_result_invalid");
+                    if (observed["status"]?.ToString() != "ok" ||
+                        observed["condition_met"]?.GetValue<bool>() == true ||
+                        watch.ElapsedMilliseconds >= timeout) break;
+                    await Task.Delay(150, ct);
+                } while (true);
+                watch.Stop();
+                var result = observed!.DeepClone().AsObject();
+                result["probes"] = probes;
+                result["elapsed_ms"] = watch.ElapsedMilliseconds;
+                result["full_dom_capture"] = false;
+                var compact = result.ToJsonString();
+                _log.Write("view_probe", "verify_view_finished", "Selective current DOM check",
+                    new { reasonCode = result["reason_code"]?.ToString(), probes,
+                        elapsedMs = watch.ElapsedMilliseconds, responseBytes = System.Text.Encoding.UTF8.GetByteCount(compact),
+                        fullDomCapture = false, runId = _log.CurrentRunId },
+                    result["status"]?.ToString() == "ok" ? "ok" : "warn");
+                return new ToolResult(compact, result["status"]?.ToString() == "ok" &&
+                    result["condition_met"]?.GetValue<bool>() == true);
+            }
+        });
+
+        // A06: one entry point routes interactive forms to get_page and bulk views
+        // to one local capture/filter. Explicit capture_id never touches WebView2.
+        tools.Add(new Tool
+        {
+            Name = "read_view",
+            Description = "Default read entry point. With NO arguments automatically recognize the current view and immediately return a small filtered list/table/inbox or interactive form controls IN ONE CALL, using an exact verified view/account-scoped recipe when available. For explicit list/table/inbox capture once and filter locally. Pass capture_id to query the saved snapshot without WebView2. Explicit auto with a query uses local filtering.",
+            Parameters = Schema(Obj(
+                ("view_type", Str("auto, list, table, inbox, form, detail; default auto")),
+                ("capture_id", Str("Previously returned capture_id; forces file-only query")),
+                ("file_kind", Str("text/elements for live; text/elements/html for stored capture. Defaults to elements for json_select, text otherwise")),
+                ("operation", Str("text_literal, text_regex, text_count, json_select. NDJSON is not a capture artifact")),
+                ("query", Str("Literal/regex/jq query; list/table/inbox default text_regex .+")),
+                ("selector", Str("CSS root for a new capture; default body")),
+                ("require_authenticated", Obj(("type", "boolean"))),
+                ("authenticated_selector", Str("Positive authenticated marker")),
+                ("max_preview_rows", Obj(("type", "integer"))),
+                ("diff", Obj(("type", "boolean"))),
+                ("includeHidden", Obj(("type", "boolean"))))),
+            Handler = async (args, ct) =>
+            {
+                // E03: one wall-clock measurement per logical read_view call.
+                var readWatch = Stopwatch.StartNew();
+                var recipeCandidates = 0;
+                var currentHost = "";
+                var reusedNavigateProbe = false;
+                AutoViewReadPlanner.Plan? autoPlan = null;
+                // No query, no explicit type: recognize the current view locally, then
+                // perform the appropriate short read in this SAME model tool call.
+                if (string.IsNullOrWhiteSpace(args["capture_id"]?.ToString()) &&
+                    (args["view_type"] == null || args["view_type"]?.ToString() == "auto") &&
+                    string.IsNullOrWhiteSpace(args["operation"]?.ToString()) &&
+                    string.IsNullOrWhiteSpace(args["query"]?.ToString()))
+                {
+                    // OF-000044: navigate(content, expected_view_type) already ran
+                    // this exact structural probe after navigation. Reuse its
+                    // last successful, matching result within the SAME tool call.
+                    // Standalone read_view and async views that did not match
+                    // retain a fresh probe.
+                    reusedNavigateProbe = args["_fused_structure"] is JsonObject;
+                    var structural = reusedNavigateProbe
+                        ? args["_fused_structure"]!.DeepClone()
+                        : await _browser.RunJsAsync(SemanticViewInspector.Script, ct);
+                    var manifest = SemanticViewInspector.Summarize(structural as JsonObject);
+                    var currentUrl = await _browser.CurrentUrlAsync(ct);
+                    CaptureRecipe? storedRecipe = null;
+                    bool exactLiveVerified = false;
+                    if (Uri.TryCreate(currentUrl, UriKind.Absolute, out var currentUri))
+                    {
+                        currentHost = currentUri.Host;
+                        // OF-000042: only list/table/inbox can consume signed content
+                        // recipes. Detail and form always route to get_page, so probing
+                        // a recipe there wastes live CDP evaluations and cannot alter
+                        // the routing decision.
+                        if (manifest["view_type"]?.ToString() is "list" or "table" or "inbox")
+                        {
+                            // Match the persisted full SHA256 using the same live probe as page_capture.
+                            // The 20-character semantic signature is only a routing hint.
+                            // A nav/menu capture may be valid for account identity,
+                            // but is not a content recipe for an automatic list read.
+                            var contentRecipes = _recipes.Get(currentUri.Host)
+                                .Where(AutoViewReadPlanner.IsContentRecipe).ToArray();
+                            recipeCandidates = contentRecipes.Count(r =>
+                                r.Path.Equals(currentUri.AbsolutePath, StringComparison.Ordinal) &&
+                                r.Confidence == "verified" && r.Operation == "capture");
+                            var exact = await CaptureRecipeLiveProbe.SelectAsync(
+                                _browser, contentRecipes, currentUri, ct);
+                            storedRecipe = exact ?? _recipes.Best(currentUri.Host, currentUri.AbsolutePath);
+                            if (!AutoViewReadPlanner.IsContentRecipe(storedRecipe))
+                                storedRecipe = null;
+                            exactLiveVerified = exact is not null;
+                        }
+                    }
+                    autoPlan = AutoViewReadPlanner.Choose(
+                        manifest, currentUrl, storedRecipe, exactLiveVerified);
+                }
+                var route = autoPlan is null
+                    ? ViewReadRouter.Select(args["view_type"]?.ToString(),
+                        args["capture_id"]?.ToString(), args["operation"]?.ToString(),
+                        args["query"]?.ToString(), args["file_kind"]?.ToString())
+                    : new ViewReadRouter.Decision(autoPlan.Target, autoPlan.ReasonCode,
+                        autoPlan.Operation, autoPlan.Query);
+                // E03: emit one compact event per actual read, including failed
+                // reads. Filter/file metrics remain in capture_filter events.
+                ToolResult FinishRead(ToolResult result, string? observedReason = null)
+                {
+                    var reason = observedReason ?? route.ReasonCode;
+                    _log.Write("view_read", "read_completed", "One logical view read", new {
+                        runId = _log.CurrentRunId,
+                        host = currentHost,
+                        target = route.Target,
+                        viewType = autoPlan?.ViewType ?? args["view_type"]?.ToString() ?? "auto",
+                        routingReason = reason,
+                        recipeCandidates,
+                        recipeHit = reason == "verified_live_recipe",
+                        recipeMiss = recipeCandidates > 0 &&
+                            reason != "verified_live_recipe",
+                        accountScoped = !string.IsNullOrWhiteSpace(autoPlan?.RecipeAccountScope),
+                        reusedStoredCapture = route.Target == "file_query",
+                        reusedNavigateProbe,
+                        elapsedMs = readWatch.ElapsedMilliseconds,
+                        outputBytes = Encoding.UTF8.GetByteCount(result.Output ?? "")
+                    }, result.Ok ? "ok" : "error");
+                    return result;
+                }
+                if (route.Target == "error") return FinishRead(ToolResult.Error(route.ReasonCode));
+                // On an unknown bulk view, one compact semantic projection replaces a
+                // full text snapshot and arbitrary first eight lines. A known verified
+                // filter still goes through the existing capture/CLI path.
+                if (autoPlan is { Target: "observe_query", ReasonCode: "generic_live_filter" })
+                {
+                    var summary = await tools.First(x => x.Name == "view_digest").Handler(new JsonObject(), ct);
+                    if (summary.Ok)
+                    {
+                        return FinishRead(new ToolResult(new JsonObject
+                        {
+                            ["view_type"] = autoPlan.ViewType,
+                            ["view_signature"] = autoPlan.SemanticSignature,
+                            ["routing_reason"] = "generic_visible_records",
+                            ["source"] = "current_live_view",
+                            ["result"] = JsonNode.Parse(summary.Output)
+                        }.ToJsonString(), true), "generic_visible_records");
+                    }
+                    // A selective DOM read can fail on unusual pages; preserve the
+                    // already tested file-based path rather than returning no data.
+                }
+                var delegated = new JsonObject();
+                if (route.Target == "get_page")
+                {
+                    if (args["diff"] != null) delegated["diff"] = args["diff"]!.DeepClone();
+                    if (args["includeHidden"] != null) delegated["includeHidden"] = args["includeHidden"]!.DeepClone();
+                }
+                else
+                {
+                    delegated["operation"] = route.Operation;
+                    delegated["query"] = route.Query;
+                    if (args["max_preview_rows"] != null)
+                        delegated["max_preview_rows"] = args["max_preview_rows"]!.DeepClone();
+                    if (route.Target == "file_query")
+                    {
+                        delegated["capture_id"] = args["capture_id"]?.ToString();
+                        // A06: an elements capture is JSON; do not silently query its text sibling.
+                        delegated["file_kind"] = ViewReadRouter.ResolveFileKind(
+                            args["file_kind"]?.ToString(), route.Operation);
+                    }
+                    else
+                    {
+                        if (autoPlan != null)
+                        {
+                            delegated["selector"] = autoPlan.Selector;
+                            if (args["max_preview_rows"] == null) delegated["max_preview_rows"] = 8;
+                            if (autoPlan.RecipeSignature is { Length: 64 } &&
+                                route.Target == "observe_query")
+                            {
+                                delegated["_verified_recipe_signature"] = autoPlan.RecipeSignature;
+                                delegated["_verified_recipe_mode"] = autoPlan.RecipeMode;
+                                delegated["_verified_recipe_url"] = await _browser.CurrentUrlAsync(ct);
+                                if (!string.IsNullOrWhiteSpace(autoPlan.RecipeAccountScope))
+                                    delegated["_verified_recipe_account"] = autoPlan.RecipeAccountScope;
+                            }
+                        }
+                        else if (args["selector"] != null)
+                            delegated["selector"] = args["selector"]!.DeepClone();
+                        if (args["require_authenticated"] != null)
+                            delegated["require_authenticated"] = args["require_authenticated"]!.DeepClone();
+                        if (args["authenticated_selector"] != null)
+                            delegated["authenticated_selector"] = args["authenticated_selector"]!.DeepClone();
+                    }
+                }
+                var target = tools.First(x => x.Name == route.Target);
+                var result = await target.Handler(delegated, ct);
+                // OF-000041: a detail page's compact control projection can omit
+                // the article or paragraph the task asked for. Return bounded
+                // visible text in the SAME read, instead of forcing more model
+                // turns and repeated live reads. Forms remain controls-only.
+                if (autoPlan is { ViewType: "detail" } &&
+                    route.Target == "get_page" && result.Ok)
+                {
+                    var detailText = await tools.First(x => x.Name == "read_text")
+                        .Handler(new JsonObject { ["max_chars"] = 1800 }, ct);
+                    if (detailText.Ok && !string.IsNullOrWhiteSpace(detailText.Output))
+                        result = ToolResult.Text(result.Output +
+                            "\nVISIBLE DETAIL TEXT (max 1800 chars):\n" + detailText.Output);
+                }
+                if (autoPlan == null) return FinishRead(result);
+                JsonNode? payload;
+                try { payload = JsonNode.Parse(result.Output); }
+                catch { payload = JsonValue.Create(result.Output); }
+                return FinishRead(new ToolResult(new JsonObject
+                {
+                    ["view_type"] = autoPlan.ViewType,
+                    ["view_signature"] = autoPlan.SemanticSignature,
+                    ["routing_reason"] = autoPlan.ReasonCode,
+                    ["source"] = "current_live_view",
+                    ["result"] = payload
+                }.ToJsonString(), result.Ok));
+            }
+        });
         tools.Add(new Tool
         {
             Name = "act",
             Description = "Performs one action on the element given by an id from get_page. " +
                 "set = put the value in at once; type = type character by character (for autocomplete); click; check/uncheck; select (an option of a <select> list); clear; focus; pressEnter. " +
-                "When the page ignores ordinary actions, use realClick / realType (real mouse and keyboard through the browser) or key (value: Enter|Tab|Escape|ArrowDown|ArrowUp|Backspace…, works on the focused element).",
+                "When the page ignores ordinary actions, use realClick / realType (real mouse and keyboard through the browser) or key (value: Enter|Tab|Escape|ArrowDown|ArrowUp|Backspace…, works on the focused element). Optional verify runs a narrow current-DOM check immediately after the action in the SAME tool call; a failed verification must never trigger automatic re-execution of the action.",
             Parameters = Schema(Obj(
                 ("id", Str("element id from get_page, e.g. of12 (may be empty for 'key')")),
                 ("action", Obj(("type", "string"), ("enum", new JsonArray("set", "type", "click", "check", "uncheck", "select", "clear", "focus", "pressEnter", "realClick", "realType", "key")))),
-                ("value", Str("value for set/type/select/realType, or the key name for key"))),
+                ("value", Str("value for set/type/select/realType, or the key name for key")),
+                ("verify", Obj(("type", "object"), ("properties", Obj(
+                    ("selector", Str("Exact CSS selector after the action")),
+                    ("check", Str("exists, absent, visible, text_contains, value_equals, attribute_equals")),
+                    ("expected", Str("Expected value/text/attribute")),
+                    ("attribute", Str("Attribute name")),
+                    ("expected_host", Str("Exact hostname guard")),
+                    ("timeout_ms", Obj(("type", "integer")))))))),
                 "action"),
             Handler = async (args, ct) =>
             {
                 var id = args["id"]?.GetValue<string>() ?? "";
                 var action = args["action"]?.GetValue<string>() ?? "";
                 var value = args["value"]?.GetValue<string>();
+                var postCondition = args["verify"] as JsonObject;
+                if (postCondition != null)
+                {
+                    // A bad postcondition must not cause a real action with unverifiable evidence.
+                    var preflight = ViewEvidenceProbe.Prepare(postCondition["selector"]?.ToString(),
+                        postCondition["check"]?.ToString(), postCondition["expected"]?.ToString(),
+                        postCondition["attribute"]?.ToString(), postCondition["expected_host"]?.ToString());
+                    if (preflight.Script == null)
+                        return ToolResult.Error("action_not_attempted:postcheck_" + preflight.ReasonCode);
+                }
                 JsonNode? res = action switch
                 {
                     "realClick" => await _browser.RealClickAsync(id, ct),
@@ -303,25 +1442,166 @@ public sealed class ToolRegistry
                     "key" => await KeyOn(id, value ?? "Enter", ct),
                     _ => await _browser.ActAsync(id, action, value, ct)
                 };
-                return new ToolResult(res?.ToJsonString() ?? "{}", res?["ok"]?.GetValue<bool>() == true);
+                var actionOk = res?["ok"]?.GetValue<bool>() == true;
+                if (!actionOk || postCondition == null)
+                    return new ToolResult(res?.ToJsonString() ?? "{}", actionOk);
+                // Verification is a second local operation, never a second action or a model turn.
+                var verified = await tools.First(x => x.Name == "verify_view").Handler(postCondition, ct);
+                JsonNode? evidence;
+                try { evidence = JsonNode.Parse(verified.Output); }
+                catch { evidence = JsonValue.Create(verified.Output); }
+                var combined = new JsonObject
+                {
+                    ["action_executed"] = true,
+                    ["action_result"] = res?.DeepClone(),
+                    ["verification_status"] = verified.Ok ? "observed" : "uncertain",
+                    ["verification_evidence"] = evidence,
+                    ["repeat_action_automatically"] = false
+                };
+                // A successful action is not automatically repeated if postcondition is uncertain.
+                return new ToolResult(combined.ToJsonString(), true);
             }
         });
 
         tools.Add(new Tool
         {
             Name = "act_many",
-            Description = "Performs many actions in one call (fewer rounds). Pass a list of steps {id, action, value}. Ideal for filling a whole form at once.",
+            Description = "Execute a short sequence of actions LOCALLY in one model call. Supply old {id,action,value} steps (only set/type/click/check/uncheck/select/clear/focus/pressEnter) or new semantic {selector,action,value,expected_host,expected_text,verify} steps based on current view_digest. For realClick/realType/key use standalone act, not legacy act_many. For selector steps, stop after the first failure/uncertain verification, never automatically retry an attempted action. Ideal for search -> select -> compose -> send -> verify without model turns between steps. Supports {action:navigate,url,expected_host,verify} between selector-based steps, allowing a multi-page campaign in one model call. Navigation uses the same existing domain rules; verify the recipient before writing or sending. Set include_view_after=true on the FINAL step to return a compact fresh view without another tool call.",
             Parameters = Schema(Obj(
                 ("steps", Obj(
                     ("type", "array"),
                     ("items", Schema(Obj(
-                        ("id", Str()),
-                        ("action", Str("set|type|click|check|uncheck|select|clear|pressEnter")),
-                        ("value", Str())), "id", "action"))))),
+                        ("id", Str("Existing get_page id, if no selector")),
+                        ("selector", Str("Unique CSS selector or semantic row selector")),
+                        ("url", Str("Absolute http(s) destination for action=navigate")),
+                        ("expected_host", Str("Exact current or target hostname for every semantic step")),
+                        ("expected_text", Str("Pick one matching row by text when selector covers several rows")),
+                        ("timeout_ms", Obj(("type", "integer"))),
+                        ("action", Str("navigate for URL or set|click|focus for selectors; legacy ids: set|type|click|check|uncheck|select|clear|focus|pressEnter only")),
+                        ("value", Str()),
+                        ("include_view_after", Obj(("type", "boolean"))),
+                        ("verify", Obj(("type", "object"), ("properties", Obj(
+                            ("selector", Str()), ("check", Str()), ("expected", Str()),
+                            ("attribute", Str()), ("expected_host", Str()),
+                            ("timeout_ms", Obj(("type", "integer")))))))), "action"))))),
                 "steps"),
             Handler = async (args, ct) =>
             {
                 var steps = args["steps"] as JsonArray ?? new JsonArray();
+                if (steps.Count is < 1 or > 40) return ToolResult.Error("act_many_steps_limit_1_40");
+                var semanticMode = steps.Any(x =>
+                    !string.IsNullOrWhiteSpace(x?["selector"]?.ToString()) ||
+                    x?["action"]?.ToString() == "navigate");
+                if (semanticMode)
+                {
+                    // A21: semantic steps may navigate between different routes,
+                    // but never mix stale get_page IDs with fresh DOM selectors.
+                    if (steps.Any(x => x is not JsonObject ||
+                        string.IsNullOrWhiteSpace(x["expected_host"]?.ToString()) ||
+                        (x["action"]?.ToString() == "navigate"
+                            ? string.IsNullOrWhiteSpace(x["url"]?.ToString())
+                            : string.IsNullOrWhiteSpace(x["selector"]?.ToString()))))
+                        return ToolResult.Error("act_many_semantic_steps_required");
+                    var results = new JsonArray();
+                    for (var i = 0; i < steps.Count; i++)
+                    {
+                        var step = ((JsonObject)steps[i]!).DeepClone().AsObject();
+                        ToolResult item;
+                        if (step["action"]?.ToString() == "navigate")
+                        {
+                            var destination = step["url"]?.ToString() ?? "";
+                            var expectedHost = step["expected_host"]?.ToString() ?? "";
+                            if (!Uri.TryCreate(destination, UriKind.Absolute, out var uri) ||
+                                uri.Scheme is not ("http" or "https") ||
+                                !uri.Host.Equals(expectedHost, StringComparison.OrdinalIgnoreCase))
+                                return ToolResult.Error("act_many_navigate_invalid_host_or_url");
+                            // Reuse the existing navigation handler so domain/cost rules
+                            // are enforced identically to a standalone navigation.
+                            var nav = await tools.First(x => x.Name == "navigate")
+                                .Handler(new JsonObject
+                                {
+                                    ["url"] = destination,
+                                    ["view_mode"] = "structure"
+                                }, ct);
+                            var outcome = new JsonObject
+                            {
+                                ["action"] = "navigate", ["url"] = destination,
+                                ["action_attempted"] = nav.Ok,
+                                ["repeat_action_automatically"] = false
+                            };
+                            if (nav.Ok && step["verify"] is JsonObject verify)
+                            {
+                                var confirmation = await tools.First(x => x.Name == "verify_view")
+                                    .Handler(verify.DeepClone().AsObject(), ct);
+                                outcome["verification_status"] = confirmation.Ok ? "observed" : "uncertain";
+                                try { outcome["verification_evidence"] = JsonNode.Parse(confirmation.Output); }
+                                catch { outcome["verification_evidence"] = JsonValue.Create(confirmation.Output); }
+                            }
+                            else if (!nav.Ok)
+                                outcome["reason_code"] = nav.Output.Length > 400 ? nav.Output[..400] : nav.Output;
+                            item = new ToolResult(outcome.ToJsonString(), nav.Ok);
+                        }
+                        else
+                        {
+                            item = await tools.First(x => x.Name == "act_locator")
+                                .Handler(step, ct);
+                        }
+                        JsonNode? detail;
+                        try { detail = JsonNode.Parse(item.Output); }
+                        catch { detail = JsonValue.Create(item.Output); }
+                        results.Add(new JsonObject { ["step"] = i + 1, ["ok"] = item.Ok, ["result"] = detail });
+                        var uncertain = (detail as JsonObject)?["verification_status"]?.ToString() == "uncertain";
+                        _log.Write("semantic_action", "act_many_node",
+                            "Local semantic batch node completed",
+                            new { step = i + 1, total = steps.Count, action = step["action"]?.ToString(),
+                                ok = item.Ok, uncertain,
+                                verification = (detail as JsonObject)?["verification_status"]?.ToString(),
+                                reasonCode = (detail as JsonObject)?["reason_code"]?.ToString(),
+                                runId = _log.CurrentRunId },
+                            status: !item.Ok || uncertain ? "warn" : "ok");
+                        if (!item.Ok || uncertain)
+                        {
+                            return new ToolResult(new JsonObject
+                            {
+                                ["status"] = uncertain ? "uncertain" : "stopped",
+                                ["completed_steps"] = i + 1,
+                                ["total_steps"] = steps.Count,
+                                ["repeat_action_automatically"] = false,
+                                ["results"] = results
+                            }.ToJsonString(), uncertain);
+                        }
+                        if (i + 1 < steps.Count) await Task.Delay(100, ct);
+                    }
+                    var completed = new JsonObject
+                    {
+                        ["status"] = "completed", ["completed_steps"] = steps.Count,
+                        ["repeat_action_automatically"] = false, ["results"] = results
+                    };
+                    // A14: when more records remain, return the refreshed compact
+                    // visible context without another model/tool round. Never treat
+                    // a read failure as failure of actions that already happened.
+                    if (steps[^1]?["include_view_after"]?.GetValue<bool>() == true)
+                    {
+                        try
+                        {
+                            await Task.Delay(150, ct);
+                            var nextView = await tools.First(x => x.Name == "view_digest")
+                                .Handler(new JsonObject(), ct);
+                            completed["next_view_status"] = nextView.Ok ? "available" : "unavailable";
+                            if (nextView.Ok)
+                                completed["next_view"] = JsonNode.Parse(nextView.Output);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            completed["next_view_status"] = "unavailable";
+                        }
+                    }
+                    return new ToolResult(completed.ToJsonString(), true);
+                }
+                // Preflight the entire legacy batch before any potentially effective action.
+                // key/realClick/realType are supported by standalone act, not actions.js actMany.
+                if (!LegacyBatchStepsSupported(steps))
+                    return ToolResult.Error("act_many_legacy_unsupported_step: use standalone act for key, realClick or realType");
                 var res = await _browser.ActManyAsync(steps, ct);
                 return new ToolResult(res?.ToJsonString() ?? "{}", res?["ok"]?.GetValue<bool>() == true);
             }
@@ -330,12 +1610,17 @@ public sealed class ToolRegistry
         tools.Add(new Tool
         {
             Name = "navigate",
-            Description = "Opens the given URL in the current tab, reads any saved operational site memory for the destination host, and returns the live page.",
-            Parameters = Schema(Obj(("url", Str("full address, https://..."))), "url"),
+            Description = "Open an URL. Prefer view_mode=content for ONE-CALL navigation plus compact semantic content, visible record locators and controls. Default full remains for legacy tasks needing detailed controls. view_mode=structure returns shape only, not content.",
+            Parameters = Schema(Obj(("url", Str("full address, https://...")), ("view_mode", Str("full (legacy default), structure (shape only), or content (compact semantic content in one call)")), ("expected_view_type", Str("Optional: inbox, list, table, form, detail. For async pages, locally wait until requested semantic view appears before reading content.")), ("wait_ms", Obj(("type", "integer")))), "url"),
             Handler = async (args, ct) =>
             {
                 var url = args["url"]?.GetValue<string>() ?? "";
                 if (string.IsNullOrWhiteSpace(url)) return ToolResult.Error("Empty URL.");
+                var viewMode = (args["view_mode"]?.ToString() ?? "full").Trim().ToLowerInvariant();
+                if (viewMode is not ("full" or "structure" or "content")) return ToolResult.Error("navigate_view_mode_invalid");
+                var expectedViewType = (args["expected_view_type"]?.ToString() ?? "").Trim().ToLowerInvariant();
+                if (expectedViewType.Length > 0 && expectedViewType is not ("inbox" or "list" or "table" or "form" or "detail"))
+                    return ToolResult.Error("navigate_expected_view_invalid");
                 if (_costs?.BlockedIn(url) is { } blocked)
                     return ToolResult.Error($"The domain {blocked} is blocked: it reached its cost limit. Do not open it. Finish with status partial and say so; only the user can lift the block.");
                 if (_gate?.TryEnter(CostGuard.DomainOf(url)) is { } busy)
@@ -343,6 +1628,84 @@ public sealed class ToolRegistry
 
                 await _browser.NavigateAsync(url, ct);
                 _lastPage = null;
+                // A13: fused navigation and useful page contents in the SAME model turn.
+                // One universal read_view decides between compact semantic records and
+                // interactive controls. The existing full mode remains unchanged.
+                if (viewMode == "content")
+                {
+                    // A17: SPA data can arrive AFTER NavigateAsync. Wait locally for
+                    // the requested universal semantic type before asking Luna to
+                    // inspect the same page repeatedly. No site-specific selectors.
+                    string observedViewType = "";
+                    int viewProbes = 0;
+                    long viewWaitMs = 0;
+                    JsonObject? matchingStructuralReply = null;
+                    if (!string.IsNullOrEmpty(expectedViewType))
+                    {
+                        var budget = Math.Clamp(args["wait_ms"]?.GetValue<int>() ?? 8000, 0, 12000);
+                        var clock = System.Diagnostics.Stopwatch.StartNew();
+                        do
+                        {
+                            var structuralReply = await _browser.RunJsAsync(SemanticViewInspector.Script, ct);
+                            var manifest = SemanticViewInspector.Summarize(structuralReply as JsonObject);
+                            observedViewType = manifest["view_type"]?.ToString() ?? "unknown";
+                            viewProbes++;
+                            if (observedViewType == expectedViewType)
+                                matchingStructuralReply = structuralReply as JsonObject;
+                            if (observedViewType == expectedViewType || clock.ElapsedMilliseconds >= budget)
+                                break;
+                            await Task.Delay(300, ct);
+                        } while (true);
+                        viewWaitMs = clock.ElapsedMilliseconds;
+                        _log.Write("view_inspection", "navigate_wait_for_view",
+                            "Expected semantic view checked locally after navigation",
+                            new { expectedViewType, observedViewType, viewProbes,
+                                viewWaitMs, runId = _log.CurrentRunId });
+                    }
+                    // OF-000044: avoid an immediate duplicate structure probe
+                    // after an already matched expected view in this same navigate.
+                    var readArgs = new JsonObject();
+                    if (matchingStructuralReply is not null)
+                        readArgs["_fused_structure"] = matchingStructuralReply.DeepClone();
+                    var result = await tools.First(x => x.Name == "read_view")
+                        .Handler(readArgs, ct);
+                    if (!result.Ok) return result;
+                    string hint = "";
+                    try
+                    {
+                        var liveUrl = await _browser.CurrentUrlAsync(ct);
+                        if (Uri.TryCreate(liveUrl, UriKind.Absolute, out var uri))
+                        {
+                            hint = _notes.ContextFor(uri.Host) + "\n" +
+                                _recipes.Context(uri.Host, uri.AbsolutePath);
+                            if (hint.Length > 1000) hint = hint[..1000] + " (truncated)";
+                        }
+                    }
+                    catch { }
+                    _log.Write("view_inspection", "navigate_content",
+                        "Navigation with immediate compact content",
+                        new { outputBytes = System.Text.Encoding.UTF8.GetByteCount(result.Output),
+                            readMode = "auto", runId = _log.CurrentRunId });
+                    return ToolResult.Text("Opened. COMPACT CURRENT VIEW (only rendered data, not exhaustive):\n"
+                        + (expectedViewType.Length > 0
+                            ? "EXPECTED VIEW: " + expectedViewType + "; OBSERVED: " + observedViewType
+                                + "; READY: " + (expectedViewType == observedViewType)
+                                + "; PROBES: " + viewProbes + "; LOCAL WAIT MS: " + viewWaitMs + "\n"
+                            : "")
+                        + result.Output + "\nSITE MEMORY (unverified):\n"
+                        + (string.IsNullOrWhiteSpace(hint) ? "(none)" : hint));
+                }
+                if (viewMode == "structure")
+                {
+                    var structuralResponse = await _browser.RunJsAsync(SemanticViewInspector.Script, ct);
+                    var structuralManifest = SemanticViewInspector.Summarize(structuralResponse as JsonObject);
+                    if (structuralManifest["status"]?.ToString() != "ok")
+                        return ToolResult.Error(structuralManifest["reason_code"]?.ToString() ?? "structural_probe_unavailable");
+                    _log.Write("view_inspection", "navigate_structure", "Navigation with structural-only response",
+                        new { viewType = structuralManifest["view_type"]?.ToString(), fullDomCapture = false });
+                    return ToolResult.Text("Opened. STRUCTURAL VIEW (no full page extraction):\n" +
+                        structuralManifest.ToJsonString());
+                }
                 var page = await _browser.ExtractAsync(ct: ct);
                 _lastPage = page;
 
@@ -485,15 +1848,17 @@ public sealed class ToolRegistry
         tools.Add(new Tool
         {
             Name = "run_js",
-            Description = "Runs a JavaScript expression in the page context and returns the result. Use it for unusual cases the other tools do not cover (your own element lookup, reading state, calling a page function). window.__openfill.resolve(id) is available.",
+            Description = "Run JavaScript only for exceptional DOM inspection not covered by get_page, read_view or view_digest. code MUST be a nonempty JS string. mode=expression expects one expression (e.g. (()=>({ok:true}))()), while multiple statements separated by semicolons require mode=statements and an explicit return. A JavaScript syntax/timeout error is not evidence that any attempted side effect failed: do not blindly retry an effect. After repeated read-only inspection failures prefer the built-in view tools or return a concrete partial result. window.__openfill.resolve(id) is available.",
             Parameters = Schema(Obj(
                 ("code", Str("JS expression or statement body (use mode=statements for semicolon-separated statements)")),
                 ("mode", Str("expression (default) or statements")),
                 ("save_to", Str("Optional relative shared path or absolute Windows path: write full value directly to file"))), "code"),
             Handler = async (args, ct) =>
             {
-                var code = args["code"]?.GetValue<string>() ?? "";
-                var mode = args["mode"]?.GetValue<string>() ?? "expression";
+                if (args["code"] is not JsonValue codeValue ||
+                    !codeValue.TryGetValue<string>(out var code) || string.IsNullOrWhiteSpace(code))
+                    return ToolResult.Error("run_js.code_invalid_type: code must be a nonempty JavaScript string, not a number, object, or content hash. Example: code=\"document.title\".");
+                var mode = args["mode"]?.ToString() ?? "expression";
                 if (mode == "statements") code = "(async()=>{ " + code + " })()";
                 else if (mode != "expression") return ToolResult.Error("run_js mode must be expression or statements.");
                 var res = await _browser.RunJsAsync(code, ct);
@@ -620,7 +1985,7 @@ public sealed class ToolRegistry
         tools.Add(new Tool
         {
             Name = "upload_file",
-            Description = "Attaches a file from disk to a file input (input type=file), e.g. a CV or a photo. Pass the field id and the full file path given by the user in the task.",
+            Description = "Attaches a file from disk to a file input (input type=file), e.g. a CV or video. Pass the field id and full local path. If a click opened an intercepted native file chooser and no input is listed in get_page, use id=@filechooser with the file path. The intercepted chooser is one-shot and expires after two minutes; act only on the current intended upload view.",
             Parameters = Schema(Obj(
                 ("id", Str("id of the file field")),
                 ("path", Str("full path of the file on disk"))),
@@ -923,7 +2288,7 @@ public sealed class ToolRegistry
 }
 
 public sealed record TemporaryCredential(string Service, string Login, string Password, bool VaultSaved);
-public sealed record RunConclusion(string Status, string Summary, string? SiteKnowledge, IReadOnlyList<TemporaryCredential>? TemporaryCredentials = null);
+public sealed record RunConclusion(string Status, string Summary, string? SiteKnowledge, IReadOnlyList<TemporaryCredential>? TemporaryCredentials = null, string? FinishReason = null);
 
 /// <summary>Where files are exchanged with the calling model (the shared folder) and where the browser saves downloads.</summary>
 public sealed record SharedFiles(string SharedDir, string DownloadsDir);

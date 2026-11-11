@@ -109,10 +109,13 @@ public static class CapturePipelineTests
                 store.Record("www.example.org", "/feed", "text", "main", "speaker|invite", 200);
                 store.Record("www.example.org", "/feed", "text", "main", "speaker|invite", 120);
                 store.Record("www.example.org", "/about", "html", "body", "", 40);
-                var best = new CaptureRecipeStore(temp).Best("www.example.org", "/feed");
-                T.Eq("reused recipe count", 2, best!.Successes);
-                T.Eq("reused correct selector", "main", best.Selector);
-                T.Eq("reused correct filter", "speaker|invite", best.Pattern);
+                // Candidate recipes stay persisted but are NOT auto-reused until
+                // the complete task has a successful outcome.
+                var candidate = store.Get("www.example.org").Single(r => r.Path == "/feed");
+                T.Eq("candidate recipe count persisted", 2, candidate.Successes);
+                T.Eq("candidate selector stored", "main", candidate.Selector);
+                T.Eq("candidate filter stored", "speaker|invite", candidate.Pattern);
+                T.Check("candidate not automatically trusted", store.Best("www.example.org", "/feed") is null);
                 store.Record("www.example.org","/feed","text","article","hidden",80);
                 store.Record("www.example.org","/feed","text","article","hidden",80);
                 store.Record("www.example.org","/feed","text","article","hidden",80);
@@ -226,8 +229,22 @@ public static class CapturePipelineTests
                 T.Check("Luna handler captures successfully", compact.Ok);
                 registry.RecordCaptureTaskOutcome("success");
                 var lastUri = new Uri(result["url"]!.ToString());
-                var savedBest = new CaptureRecipeStore(Path.Combine(paths.Notes,"recipes")).Best(lastUri.Host,lastUri.AbsolutePath);
-                T.Eq("real ToolRegistry records full task verdict", 1, savedBest!.TaskSuccesses);
+                var registryRecipes = new CaptureRecipeStore(Path.Combine(paths.Notes,"recipes"));
+                var savedScoped = registryRecipes.Get(lastUri.Host)
+                    .FirstOrDefault(x => x.Path == lastUri.AbsolutePath && x.Mode == "text"
+                        && x.TaskSuccesses > 0);
+                T.Check("real ToolRegistry records scoped whole-task verdict", savedScoped?.TaskSuccesses == 1);
+                // A19: verified neutral route recipe is reused without prompting Luna.
+                // Keep the unscoped test method separate from the scoped fingerprint.
+                registryRecipes.Record(lastUri.Host, lastUri.AbsolutePath,
+                    "text", "body", "password|email", 20);
+                registryRecipes.RecordTaskOutcome(lastUri.Host, lastUri.AbsolutePath,
+                    "text", "body", "password|email", "success");
+                var automatic = await captureTool.Handler(new JsonObject {
+                    ["max_matches"] = 10
+                }, CancellationToken.None);
+                T.Check("automatic capture uses verified recipe", automatic.Ok &&
+                    automatic.Output.Contains("verified_neutral_route", StringComparison.Ordinal));
                 T.Check("Luna handler response compact", compact.Output.Length < 2500);
                 var runJsTool = toolList.Single(t => t.Name == "run_js");
                 var js = await runJsTool.Handler(new JsonObject {
@@ -238,6 +255,32 @@ public static class CapturePipelineTests
                 T.Check("run_js value not returned in full", js.Output.Length < 500);
                 var raw = await runJsTool.Handler(new JsonObject { ["code"] = "'legacy expression ok'" }, CancellationToken.None);
                 T.Contains("run_js legacy expression preserved", raw.Output, "legacy expression ok");
+
+                // A27: real CDP browser reuse of a neutral DOM snapshot.
+                // No model calls or external website; change the live DOM to
+                // prove the cache refuses a stale captured value.
+                await browser.NavigateAsync(site.BaseUrl + page("cache_neutral"));
+                var cacheFirst = await capture.CaptureAsync("text", "main", "",
+                    null, 10, CancellationToken.None);
+                T.Eq("CDP cache first capture saved", "saved",
+                    cacheFirst["status"]?.ToString());
+                T.Check("CDP cache first capture is fresh",
+                    cacheFirst["reused_snapshot"] is null);
+                var cacheSecond = await capture.CaptureAsync("text", "main", "",
+                    null, 10, CancellationToken.None);
+                T.Eq("CDP cache second capture reuses verified bytes", "true",
+                    cacheSecond["reused_snapshot"]?.ToString());
+                T.Eq("CDP cache verifies exact live text hash",
+                    "exact_live_dom_text_sha256",
+                    cacheSecond["cache_verification"]?.ToString());
+                var mutation = await browser.RunJsAsync(
+                    "(document.querySelector('main').textContent = 'UPDATED LIVE PAGE', true)");
+                T.Check("CDP fixture actually changed", mutation?["ok"]?.GetValue<bool>() == true);
+                var cacheThird = await capture.CaptureAsync("text", "main", "",
+                    null, 10, CancellationToken.None);
+                T.Eq("CDP changed DOM triggers a fresh snapshot", "saved",
+                    cacheThird["status"]?.ToString());
+                T.Check("CDP changed DOM is not reused", cacheThird["reused_snapshot"] is null);
             }
             finally { await conn.DisposeAsync(); try { Directory.Delete(root, true); } catch { } }
         });

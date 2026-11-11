@@ -1,0 +1,15 @@
+﻿{
+    "created":  "2026-11-10T21:37:18.4461323+01:00",
+    "author":  "GPT-6",
+    "project":  "OpenFill SelfChat Steering",
+    "git_commit":  "db5d68b",
+    "version":  "1.60",
+    "staging_path":  "C:\\Users\\pboru\\OpenFill\\staging\\2026-11-10_21-36-30_CET_GPT-6_OpenFill_SelfChat_ReleaseCandidate_v1.60_DlaKontrolowanegoWdrozenia",
+    "app_exists":  true,
+    "cli_exists":  true,
+    "file_count":  75,
+    "build_exit":  0,
+    "exe_hash":  "20F6CFE55A4C5A6F7081D4EADA88B65CB2B41B1AC48B605E6A2E4D0B0698F18A",
+    "core_hash":  "91E8377A3DE3CB98A4268AAEAA4B267A31FB9467E7F0FC1D1568660B7914BFB8",
+    "exe_version":  "1.60+db5d68b442b018badd4545e5abc35df346e77205"
+}

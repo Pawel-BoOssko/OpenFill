@@ -1,0 +1,213 @@
+// OF-IMP-20261031 D01: bulk WhatsApp reads using EXISTING WhatsAppBrowser.
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Nodes;
+using OpenFill.Core.Browser;
+
+namespace OpenFill.Core.Agent;
+
+// OF-000025: narrow port for the deterministic batch send path.
+// It allows real batch ledger/evidence testing without a network or WebView2.
+public interface IWhatsAppBatchSendPort
+{
+    Task<JsonNode?> OpenAsync(string target, CancellationToken ct);
+    Task<JsonNode?> SendAsync(string target, string message, CancellationToken ct);
+}
+
+public sealed class WhatsAppBrowserBatchSendPort(WhatsAppBrowser browser) : IWhatsAppBatchSendPort
+{
+    public Task<JsonNode?> OpenAsync(string target, CancellationToken ct) => browser.OpenAsync(target, ct);
+    public Task<JsonNode?> SendAsync(string target, string message, CancellationToken ct) =>
+        browser.SendAsync(target, message, ct);
+}
+
+public sealed class WhatsAppBatchService(WhatsAppBrowser whatsapp, OperationalMemoryStore memory)
+{
+    private readonly IWhatsAppBatchSendPort _sendPort = new WhatsAppBrowserBatchSendPort(whatsapp);
+
+    // Injected only for deterministic provider-flow tests; normal reads still
+    // use the existing WhatsAppBrowser passed by production ToolRegistry.
+    public WhatsAppBatchService(IWhatsAppBatchSendPort sendPort, OperationalMemoryStore memory)
+        : this((WhatsAppBrowser)null!, memory)
+    {
+        _sendPort = sendPort ?? throw new ArgumentNullException(nameof(sendPort));
+    }
+
+    // Actual messages are sent ONLY after the caller verifies the expected sender identity.
+    // No second model, no duplicate message actions after a restart.
+    public async Task<JsonObject> SendBatchAsync(string expectedAccountId, string requestId,
+        IReadOnlyList<ProcedureTarget> targets,
+        Func<string, CancellationToken, Task<bool>> verifySenderAccount,
+        string? taskId, string? requester, string? chat, CancellationToken ct,
+        bool candidateStagingOnly = false)
+    {
+        if (verifySenderAccount is null)
+            return new JsonObject { ["status"] = "sender_verification_missing" };
+        if (targets.Count is < 1 or > 100)
+            return new JsonObject { ["status"] = "invalid_count" };
+        var normalized = new List<ProcedureTarget>(targets.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in targets)
+        {
+            var route = WhatsAppBrowser.DirectUrl(item.TargetId);
+            if (route is null) return new JsonObject { ["status"] = "unsupported_identifier", ["target"] = item.TargetId };
+            var number = route.Split("phone=", StringSplitOptions.None)[^1];
+            if (!seen.Add(number))
+                return new JsonObject { ["status"] = "duplicate_target_in_request", ["target"] = number };
+            normalized.Add(new ProcedureTarget(number, item.Payload));
+        }
+        var executor = new ProcedureExecutor(ProcedureCatalog.FromEmbedded(Path.Combine(Path.GetDirectoryName(memory.DatabasePath)!, "procedure-learning")), memory);
+        return await executor.ExecuteBatchAsync("whatsapp.send_batch", expectedAccountId, requestId, normalized,
+            token => verifySenderAccount(expectedAccountId, token),
+            (item, token) => Task.FromResult(new ProcedureActionResult(
+                "blocked", Reason: "operation_id_required")),
+            taskId, requester, chat, ct, candidateStagingOnly,
+            preflight: async (item, token) =>
+            {
+                // OF-000024: a missing conversation or composer is a read-only
+                // preflight failure, NOT an attempted send. Keep the ledger planned.
+                var opened = await _sendPort.OpenAsync(item.TargetId, token);
+                return opened?["ok"]?.GetValue<bool>() == true &&
+                    opened["view"]?["conversation_open"]?.GetValue<bool>() == true &&
+                    opened["view"]?["composer_visible"]?.GetValue<bool>() == true
+                    ? new ProcedureActionResult("ready")
+                    : new ProcedureActionResult("blocked", Reason:
+                        opened?["error"]?.ToString() ?? "whatsapp_conversation_not_ready");
+            },
+            actionWithOperation: async (item, operationId, token) =>
+            {
+                var result = await _sendPort.SendAsync(item.TargetId, item.Payload, token);
+                if (result?["status"]?.ToString() != "sent_ui" ||
+                    result["confirmation"]?.ToString() != "new_outgoing_bubble_visible" ||
+                    result["view"]?["messages"] is not JsonArray)
+                    return new ProcedureActionResult("uncertain", null, null,
+                        result?["error"]?.ToString() ?? result?["confirmation"]?.ToString() ?? "send_not_confirmed");
+
+                // UI proof only. Save the exact operation, sender, recipient and
+                // message hash atomically before marking the operation verified.
+                var directory = Path.Combine(Path.GetDirectoryName(memory.DatabasePath)!, "evidence");
+                Directory.CreateDirectory(directory);
+                var path = Path.Combine(directory, "wa_" + Guid.NewGuid().ToString("N") + ".json");
+                var temporary = path + ".tmp";
+                var evidence = new JsonObject
+                {
+                    ["operation_id"] = operationId,
+                    ["provider"] = "whatsapp",
+                    ["account_id"] = expectedAccountId,
+                    ["target_id"] = item.TargetId,
+                    ["payload_sha256"] = Convert.ToHexString(
+                        SHA256.HashData(Encoding.UTF8.GetBytes(item.Payload))),
+                    ["observed_utc"] = DateTimeOffset.UtcNow.ToString("O"),
+                    ["evidence_type"] = "new_outgoing_bubble_visible_not_delivery",
+                    ["ui_result"] = result.DeepClone()
+                };
+                await File.WriteAllTextAsync(temporary, evidence.ToJsonString(), token);
+                File.Move(temporary, path);
+                return new ProcedureActionResult("verified", path, WhatsAppBrowser.DirectUrl(item.TargetId),
+                    "new_outgoing_bubble_visible_not_delivery");
+            });
+    }
+
+    // A24: one compact result for many chats. Raw loaded messages stay in SQLite;
+    // Luna sees only the recent, currently rendered messages it needs to reason.
+    public static JsonArray ProjectRecentMessages(JsonArray? messages, int limit)
+    {
+        var recent = new JsonArray();
+        if (messages is null || limit <= 0) return recent;
+        foreach (var msg in messages.Skip(Math.Max(0, messages.Count - Math.Min(limit, 10))))
+        {
+            if (msg is not JsonObject row) continue;
+            var text = row["text"]?.ToString() ?? "";
+            if (text.Length > 400) text = text[..400];
+            recent.Add(new JsonObject {
+                ["direction"] = row["direction"]?.ToString() ?? "unknown",
+                ["text"] = text
+            });
+        }
+        return recent;
+    }
+
+    public async Task<JsonObject> ReadBatchAsync(string accountId, IReadOnlyList<string> targets, CancellationToken ct, int maxMessages = 5)
+    {
+        maxMessages = Math.Clamp(maxMessages, 0, 10);
+        if (string.IsNullOrWhiteSpace(accountId))
+            return new JsonObject { ["status"]="account_scope_required" };
+        if (!await whatsapp.AccountMatchesAsync(accountId, ct))
+            return new JsonObject { ["status"]="account_identity_unverified_or_mismatch" };
+        if (targets.Count is < 1 or > 100)
+            return new JsonObject { ["status"]="invalid_count", ["message"]="1 to 100 phone targets." };
+
+        var normalized = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in targets)
+        {
+            var route = WhatsAppBrowser.DirectUrl(raw);
+            if (route is null)
+                return new JsonObject { ["status"]="unsupported_identifier", ["target"]=raw };
+            var number = route.Split("phone=", StringSplitOptions.None)[^1];
+            if (seen.Add(number)) normalized.Add(number);
+        }
+
+        var items = new JsonArray();
+        foreach (var number in normalized)
+        {
+            ct.ThrowIfCancellationRequested();
+            JsonNode? opened;
+            try { opened = await whatsapp.OpenAsync(number, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                items.Add(new JsonObject { ["target"]=number,["status"]="error",["reason"]=ex.GetType().Name });
+                continue;
+            }
+            if (opened?["ok"]?.GetValue<bool>() != true || opened["view"] is not JsonObject view)
+            {
+                items.Add(new JsonObject { ["target"]=number,["status"]="unavailable",
+                    ["reason"]=opened?["error"]?.ToString() ?? "conversation_not_ready" });
+                continue;
+            }
+            var conversation = memory.UpsertConversation("whatsapp",accountId,number,
+                WhatsAppBrowser.DirectUrl(number),null,"whatsapp_loaded_view");
+            var messages = view["messages"] as JsonArray;
+            var stored = 0;
+            if (messages is not null)
+            {
+                // OF-000051: identify id-less messages by visible header/content, not a shifting DOM index.
+                var fallbackOccurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+                for (int i=0; i<messages.Count; i++)
+                {
+                    var item = messages[i];
+                    var providerId = item?["id"]?.ToString() ?? "";
+                    var body = item?["text"]?.ToString() ?? "";
+                    var direction = item?["direction"]?.ToString() ?? "unknown";
+                    if (providerId.Length == 0 && body.Length == 0) continue;
+                    var header = item?["pre_plain_text"]?.ToString() ?? "";
+                    var rawId = "provider:" + providerId;
+                    var identityKind = "provider_id";
+                    if (providerId.Length == 0)
+                    {
+                        var fallbackKey = (header.Length > 0 ? "header:" + header : "text_only") + "|" + direction + "|" + body;
+                        fallbackOccurrences.TryGetValue(fallbackKey, out var occurrence);
+                        fallbackOccurrences[fallbackKey] = occurrence + 1;
+                        rawId = fallbackKey + "|occurrence:" + occurrence;
+                        identityKind = header.Length > 0 ? "visible_header_occurrence" : "inferred_content_occurrence";
+                    }
+                    var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(number + "|" + rawId)));
+                    var bodyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body)));
+                    memory.SaveMessage(hash,conversation,direction,body,bodyHash,
+                        "whatsapp-loaded:" + number, identityKind);
+                    stored++;
+                }
+            }
+            items.Add(new JsonObject {
+                ["target"]=number, ["status"]="loaded", ["scope"]="currently_loaded_messages",
+                ["complete"]=false, ["observed_count"]=stored,
+                ["recent_messages"]=ProjectRecentMessages(messages, maxMessages),
+                ["thread_url"]=WhatsAppBrowser.DirectUrl(number), ["conversation_ref"]=conversation
+            });
+        }
+        return new JsonObject {
+            ["status"]="completed_with_item_status",["account_id"]=accountId,
+            ["requested"]=targets.Count,["unique"]=normalized.Count,["items"]=items
+        };
+    }
+}

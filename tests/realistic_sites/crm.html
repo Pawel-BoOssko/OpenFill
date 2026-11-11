@@ -1,0 +1,34 @@
+<!doctype html><html lang='pl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Operations Desk | Local fixture</title><style>
+*{box-sizing:border-box}body{margin:0;font:14px Segoe UI,Arial;background:#eef2f5;color:#17212b}
+header{height:60px;background:#fff;display:flex;align-items:center;padding:0 25px;gap:32px;border-bottom:1px solid #ddd}
+.brand{font-size:21px;font-weight:700;color:#1866a6}input,textarea,select{font:inherit;padding:9px;border:1px solid #b8c6d3;border-radius:6px}
+button{font:inherit;padding:8px 13px;border:1px solid #a7bdcd;background:white;border-radius:7px;cursor:pointer}
+button:hover{background:#e5f1ff}.shell{display:flex;height:calc(100vh - 60px);max-width:1480px;margin:auto;background:white}
+aside{width:395px;border-right:1px solid #dde5ea;display:flex;flex-direction:column;min-height:0}
+main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.toolbar{padding:16px;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center}
+.scroll{overflow:auto;min-height:0;flex:1}.item{padding:12px 14px;border-bottom:1px solid #eff1f3;min-height:64px;cursor:pointer}
+.item:hover{background:#e8f3ff}.item.active{background:#d9eefb}.name{font-weight:650}.preview{color:#576a78;font-size:12px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title{font-size:17px;font-weight:600;margin-right:auto}.chat{padding:24px;display:flex;flex-direction:column;gap:9px}
+.bubble{max-width:65%;padding:10px 14px;border-radius:12px;background:#fff;box-shadow:0 1px 3px #0001}
+.bubble.out{align-self:flex-end;background:#d5f6df}.composer{display:flex;gap:8px;padding:14px;background:#f8fafb}
+.small{font-size:12px;color:#647280}.pill{background:#d9ebff;color:#1761a0;border-radius:20px;padding:3px 9px;font-size:12px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:12px 15px;border-bottom:1px solid #e4eaef}
+th{background:#f1f5f8;position:sticky;top:0}.card{padding:22px;background:white;border-bottom:1px solid #e8eef1}
+</style></head><body><header><div class="brand">Operations Desk</div><nav role="navigation"><button>Overview</button><button>Pipeline</button><button>Reports</button></nav><span class="pill" id="edited">Changed: 0</span></header>
+<section style="padding:22px;max-width:1480px;margin:auto;background:#fff"><h2>Accounts and opportunities</h2>
+<div class="toolbar"><input id="query" aria-label="Search accounts" placeholder="Find company or owner"><select id="state" aria-label="Filter status"><option>All</option><option>Open</option><option>Won</option><option>Review</option></select><button id="export">Export</button></div>
+<div style="max-height:68vh;overflow:auto"><table aria-label="Opportunity table"><thead><tr><th>Company</th><th>Owner</th><th>Status</th><th>Value</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="toolbar"><button id="prev">Previous</button><span id="page">Page 1</span><button id="next">Next</button></div></section>
+<div id="modal" style="display:none;position:fixed;left:25%;top:16%;width:50%;background:white;border:1px solid #abb;padding:24px;box-shadow:0 5px 25px #0004">
+<h3>Edit opportunity</h3><form id="edit"><label>Company <input id="company" required></label><label>Status <select id="status"><option>Open</option><option>Won</option><option>Review</option></select></label>
+<label>Value <input type="number" id="amount" required></label><button type="submit">Save changes</button><button type="button" id="cancel">Cancel</button></form></div><script>
+const data=Array.from({length:190},(_,i)=>({id:i,company:['Contoso','Northwind','Alpine','Woodgrove','Fabrikam'][i%5]+' '+(i+1),owner:['Anna','Jordan','Lee','Ravi'][i%4],status:['Open','Review','Won'][i%3],value:1000+i*157}));
+let page=0,selection=null,changed=0;
+function refresh(){const q=document.getElementById('query').value.toLowerCase(),st=document.getElementById('state').value;const match=data.filter(x=>(x.company+' '+x.owner).toLowerCase().includes(q)&&(st==='All'||st===x.status));const chunk=match.slice(page*25,(page+1)*25);document.getElementById('rows').innerHTML=chunk.map(x=>'<tr role="row"><td>'+x.company+'</td><td>'+x.owner+'</td><td>'+x.status+'</td><td>$'+x.value+'</td><td><button data-id="'+x.id+'">Edit</button></td></tr>').join('');document.querySelectorAll('#rows button').forEach(b=>b.onclick=()=>edit(Number(b.dataset.id)));document.getElementById('page').textContent='Page '+(page+1)+' of '+Math.ceil(match.length/25)}
+function edit(id){selection=id;const x=data[id];document.getElementById('company').value=x.company;document.getElementById('status').value=x.status;document.getElementById('amount').value=x.value;document.getElementById('modal').style.display='block'}
+document.getElementById('edit').onsubmit=e=>{e.preventDefault();if(selection===null)return;const x=data[selection];x.company=document.getElementById('company').value;x.status=document.getElementById('status').value;x.value=Number(document.getElementById('amount').value);changed++;document.getElementById('edited').textContent='Changed: '+changed;document.getElementById('modal').style.display='none';refresh()};
+document.getElementById('cancel').onclick=()=>document.getElementById('modal').style.display='none';
+document.getElementById('next').onclick=()=>{page++;refresh()};document.getElementById('prev').onclick=()=>{page=Math.max(0,page-1);refresh()};
+document.getElementById('query').oninput=()=>{page=0;refresh()};document.getElementById('state').onchange=()=>{page=0;refresh()};refresh();
+</script></body></html>

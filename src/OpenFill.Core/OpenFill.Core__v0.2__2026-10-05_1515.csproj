@@ -13,5 +13,9 @@
     <EmbeddedResource Include="Assets\public_suffix_list*.dat" LogicalName="OpenFill.Assets.public_suffix_list.dat" />
     <EmbeddedResource Include="Assets\jev_inbound__v1.1__2026-10-29.json" LogicalName="OpenFill.Assets.jev_inbound.json" />
     <EmbeddedResource Include="Assets\jev_outbound*.json" LogicalName="OpenFill.Assets.jev_outbound.json" />
+    <EmbeddedResource Include="..\..\procedures\registry.json" LogicalName="OpenFill.Assets.procedures.registry.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
   </ItemGroup>
 </Project>

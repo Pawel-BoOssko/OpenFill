@@ -12,6 +12,13 @@ public sealed class CaptureRecipe
     public string Mode { get; set; } = "all";
     public string Selector { get; set; } = "body";
     public string Pattern { get; set; } = "";
+    public string Operation { get; set; } = "capture";
+    public string ViewSignature { get; set; } = "";
+    public string AccountScope { get; set; } = "";
+    public string FilterKind { get; set; } = "regex";
+    public string FilterPlan { get; set; } = "";
+    public string Confidence { get; set; } = "candidate";
+    public string SuspendReason { get; set; } = "";
     public int Successes { get; set; } // successful technical DOM captures
     public int TaskSuccesses { get; set; }
     public int TaskFailures { get; set; }
@@ -55,10 +62,13 @@ public sealed class CaptureRecipeStore(string directory)
             (x.TaskSuccesses + 1.0) / (n + 2.0) + Math.Min(n, 20) / 100.0;
     }
 
+    public CaptureRecipe? BestScoped(CaptureRecipeScope request)
+        => CaptureRecipeScopeGate.Select(Get(request.Host), request);
+
+    // Legacy use_best has no trusted account or live view signature. On account-bearing
+    // services it must not select a cross-account or stale route-only recipe.
     public CaptureRecipe? Best(string host, string path)
-        => Get(host).Where(x => string.Equals(x.Path, path, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(Rank).ThenByDescending(x => Observations(x)).ThenByDescending(x => x.Successes)
-            .ThenBy(x => x.LastElapsedMs).FirstOrDefault();
+        => BestScoped(new CaptureRecipeScope(host, path));
 
     public void Record(string host, string path, string mode, string selector, string pattern, long elapsedMs)
     {
@@ -70,11 +80,97 @@ public sealed class CaptureRecipeStore(string directory)
             List<CaptureRecipe> rows;
             try { rows = File.Exists(file) ? JsonSerializer.Deserialize<List<CaptureRecipe>>(File.ReadAllText(file), Json) ?? [] : []; }
             catch { rows = []; }
-            var rec = rows.FirstOrDefault(x => x.Path == path && x.Mode == mode && x.Selector == selector && x.Pattern == pattern);
+            var rec = rows.FirstOrDefault(x => x.Path == path && x.Mode == mode &&
+                x.Selector == selector && x.Pattern == pattern &&
+                string.IsNullOrWhiteSpace(x.ViewSignature) &&
+                string.IsNullOrWhiteSpace(x.AccountScope));
             if (rec is null) { rec = new CaptureRecipe { Host = host, Path = path, Mode = mode, Selector = selector, Pattern = pattern }; rows.Add(rec); }
             rec.Successes++;
             rec.LastElapsedMs = elapsedMs;
             rec.LastSuccessfulUtc = DateTime.UtcNow.ToString("O");
+            var temp = file + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(rows, Json));
+            File.Move(temp, file, true);
+        }
+    }
+
+    // A05: a capture is a candidate until its whole task succeeds. Persist the
+    // exact observed view signature, never silently promote an account-less recipe.
+    public void RecordScoped(string host, string path, string mode, string selector,
+        string pattern, long elapsedMs, string? viewSignature, string? accountScope)
+    {
+        if (string.IsNullOrWhiteSpace(host) || string.IsNullOrWhiteSpace(path) ||
+            pattern.Length > 400 || selector.Length > 400 ||
+            string.IsNullOrWhiteSpace(viewSignature) || viewSignature.Length != 64)
+            return;
+        lock (Gate)
+        {
+            Directory.CreateDirectory(directory);
+            var file = FileFor(host);
+            List<CaptureRecipe> rows;
+            try { rows = File.Exists(file) ? JsonSerializer.Deserialize<List<CaptureRecipe>>(File.ReadAllText(file), Json) ?? [] : []; }
+            catch { rows = []; }
+            var account = accountScope ?? "";
+            var rec = rows.FirstOrDefault(x => x.Path == path && x.Mode == mode &&
+                x.Selector == selector && x.Pattern == pattern &&
+                x.ViewSignature.Equals(viewSignature, StringComparison.OrdinalIgnoreCase) &&
+                x.AccountScope == account);
+            if (rec is null)
+            {
+                rec = new CaptureRecipe { Host = host, Path = path, Mode = mode,
+                    Selector = selector, Pattern = pattern, ViewSignature = viewSignature,
+                    AccountScope = account };
+                rows.Add(rec);
+            }
+            rec.Successes++;
+            rec.LastElapsedMs = elapsedMs;
+            rec.LastSuccessfulUtc = DateTime.UtcNow.ToString("O");
+            var temp = file + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(rows, Json));
+            File.Move(temp, file, true);
+        }
+    }
+
+    public void RecordTaskOutcomeScoped(string host, string path, string mode, string selector,
+        string pattern, string viewSignature, string? accountScope, string outcome)
+    {
+        if (outcome is not ("success" or "partial" or "failed") ||
+            string.IsNullOrWhiteSpace(viewSignature)) return;
+        lock (Gate)
+        {
+            var file = FileFor(host);
+            if (!File.Exists(file)) return;
+            List<CaptureRecipe> rows;
+            try { rows = JsonSerializer.Deserialize<List<CaptureRecipe>>(File.ReadAllText(file), Json) ?? []; }
+            catch { return; }
+            var rec = rows.FirstOrDefault(x => x.Path == path && x.Mode == mode &&
+                x.Selector == selector && x.Pattern == pattern &&
+                x.ViewSignature.Equals(viewSignature, StringComparison.OrdinalIgnoreCase) &&
+                x.AccountScope == (accountScope ?? ""));
+            if (rec is null) return;
+            if (outcome == "success")
+            {
+                rec.TaskSuccesses++;
+                // Success on a login page or unscoped account-bearing service does not
+                // establish a reusable authenticated recipe.
+                if (!CaptureRecipeScopeGate.IsSensitiveHost(host) ||
+                    !string.IsNullOrWhiteSpace(accountScope))
+                {
+                    rec.Confidence = "verified";
+                    rec.SuspendReason = "";
+                }
+            }
+            else if (outcome == "partial") rec.TaskPartials++;
+            else
+            {
+                rec.TaskFailures++;
+                if (rec.TaskFailures >= 3 && rec.TaskSuccesses == 0)
+                {
+                    rec.Confidence = "suspended";
+                    rec.SuspendReason = "three_failed_tasks";
+                }
+            }
+            rec.LastTaskOutcomeUtc = DateTime.UtcNow.ToString("O");
             var temp = file + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(rows, Json));
             File.Move(temp, file, true);
@@ -92,11 +188,12 @@ public sealed class CaptureRecipeStore(string directory)
             try { rows = JsonSerializer.Deserialize<List<CaptureRecipe>>(File.ReadAllText(file), Json) ?? []; }
             catch { return; }
             var rec = rows.FirstOrDefault(x => x.Path == path && x.Mode == mode &&
-                x.Selector == selector && x.Pattern == pattern);
+                x.Selector == selector && x.Pattern == pattern &&
+                string.IsNullOrWhiteSpace(x.ViewSignature));
             if (rec is null) return;
-            if (outcome == "success") rec.TaskSuccesses++;
+            if (outcome == "success") { rec.TaskSuccesses++; rec.Confidence = "verified"; rec.SuspendReason = ""; }
             else if (outcome == "partial") rec.TaskPartials++;
-            else rec.TaskFailures++;
+            else { rec.TaskFailures++; if (rec.TaskFailures >= 3 && rec.TaskSuccesses == 0) { rec.Confidence = "suspended"; rec.SuspendReason = "three_failed_tasks"; } }
             rec.LastTaskOutcomeUtc = DateTime.UtcNow.ToString("O");
             var temp = file + ".tmp";
             File.WriteAllText(temp, JsonSerializer.Serialize(rows, Json));

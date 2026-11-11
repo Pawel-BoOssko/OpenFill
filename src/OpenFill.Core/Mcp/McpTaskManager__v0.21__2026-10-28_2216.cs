@@ -14,12 +14,16 @@ public sealed class McpTaskRecord
 {
     public string Id { get; set; } = "";
     public string TaskText { get; set; } = "";
+    public string? ExecutionMode { get; set; }
+    public string? StartUrl { get; set; }
     /// <summary>Optional stable external request identity for de-duplication.</summary>
     public string? IdempotencyKey { get; set; }
     /// <summary>running | needs_input | waiting_for_user | done | failed | blocked | cancelled</summary>
     public string Status { get; set; } = "running";
     /// <summary>Verdict of the inner model: success | partial | failed.</summary>
     public string? Outcome { get; set; }
+    /// <summary>Origin of a terminal state; persisted separately from outcome.</summary>
+    public string? StopReason { get; set; }
     public string? Summary { get; set; }
     /// <summary>Generated temporary passwords explicitly passed through to the authorized calling model.</summary>
     public List<TemporaryCredential>? TemporaryCredentials { get; set; }
@@ -28,6 +32,10 @@ public sealed class McpTaskRecord
     public string? Question { get; set; }
     /// <summary>Id of the earlier task this one continues (same browser tab or the same last address).</summary>
     public string? ContinuedFrom { get; set; }
+    /// <summary>Stable end-user business goal across explicitly linked runs and continuations.</summary>
+    public string? BusinessGoalId { get; set; }
+    /// <summary>Original end-user goal, not a technical continuation prompt.</summary>
+    public string? BusinessGoalText { get; set; }
     /// <summary>Model steps and estimated cost of the task (filled in when it ends).</summary>
     public int Steps { get; set; }
     public double? CostUsd { get; set; }
@@ -86,6 +94,9 @@ public sealed class McpTaskManager
         lock (_lock) return _open.Values.Select(l => l.Rec).Where(IsOpen).OrderBy(r => r.CreatedUtc).ToList();
     }
 
+    /// <summary>One direct CDP visit and title read, bypassing the browser LLM entirely.</summary>
+    public Task<JsonObject> ReadSelfChatTitleAsync(string platform, string nativeChatId, CancellationToken ct, string? expectedFallbackMarker = null)
+        => _host.ReadSelfChatTitleAsync(platform, nativeChatId, ct, expectedFallbackMarker);
     // ------------------------------------------------------------------ public operations
 
     /// <summary>Direct C# snapshot. Reuses a known task card and verifies both caller identity fields.</summary>
@@ -140,10 +151,37 @@ public sealed class McpTaskManager
         return s.Length > 40 ? s[..40] : s;
     }
 
-    public async Task<JsonObject> StartAsync(string? task, int waitSeconds, CancellationToken ct, string? continueTaskId = null, string? title = null, string? requester = null, string? chat = null, string? idempotencyKey = null)
+    public async Task<JsonObject> StartAsync(string? task, int waitSeconds, CancellationToken ct, string? continueTaskId = null, string? title = null, string? requester = null, string? chat = null, string? idempotencyKey = null,
+        string? executionMode = null, string? startUrl = null)
     {
         task ??= "";
         if (string.IsNullOrWhiteSpace(task)) return Error("The task text is empty. Describe what OpenFill should do in the browser, with all the data it needs.");
+        // Automatic LocalPlan is only for an exact one-field search/filter draft
+        // with a single explicit non-sensitive URL. Any other task remains on
+        // the existing general browser agent, especially send/save workflows.
+        if (LocalPlanAutoRouting.TrySelect(task, continueTaskId, executionMode,
+                startUrl, out var autoStartUrl))
+        {
+            executionMode = "local_plan_v1_draft";
+            startUrl = autoStartUrl;
+        }
+        executionMode = string.IsNullOrWhiteSpace(executionMode) ? null : executionMode.Trim();
+        if (executionMode is not null and not "local_plan_v1_draft")
+            return Error("Unsupported execution_mode; use local_plan_v1_draft or omit.");
+        if (executionMode == "local_plan_v1_draft")
+        {
+            if (!string.IsNullOrWhiteSpace(continueTaskId))
+                return Error("local_plan_v1_draft cannot continue an earlier task.");
+            if (task.Length > 2000)
+                return Error("local_plan_v1_draft task must be at most 2000 characters.");
+            if (!Uri.TryCreate(startUrl, UriKind.Absolute, out var parsed) ||
+                parsed.Scheme is not ("http" or "https") ||
+                !string.IsNullOrEmpty(parsed.UserInfo) || !string.IsNullOrEmpty(parsed.Fragment))
+                return Error("local_plan_v1_draft requires a full http(s) start_url without credentials or fragment.");
+            startUrl = parsed.AbsoluteUri;
+        }
+        else if (!string.IsNullOrWhiteSpace(startUrl))
+            return Error("start_url is only supported with local_plan_v1_draft.");
         var who = CleanWho(requester);
         var chatName = CleanWho(chat);
         if (who is null || chatName is null)
@@ -171,16 +209,18 @@ public sealed class McpTaskManager
             var previousRequest = FindByIdempotencyKey(who, idempotencyKey, out var previousFromDisk);
             if (previousRequest is not null)
             {
-                if (!string.Equals(previousRequest.TaskText, task, StringComparison.Ordinal))
+                if (!string.Equals(previousRequest.TaskText, task, StringComparison.Ordinal) ||
+                    previousRequest.ExecutionMode != executionMode ||
+                    previousRequest.StartUrl != startUrl)
                     return KeyConflict(idempotencyKey, previousRequest.Id);
                 return Snapshot(previousRequest, "The request with this idempotency_key already exists; no duplicate was started.", previousFromDisk);
             }
         }
-        if (_host.CheckBlocked(task) is { } why) return new JsonObject { ["status"] = "blocked", ["message"] = why, ["next_step"] = BlockedStep };
+        if (_host.CheckBlocked(executionMode is null ? task : startUrl!) is { } why) return new JsonObject { ["status"] = "blocked", ["message"] = why, ["next_step"] = BlockedStep };
 
         // The same job again while it is still running: hand back the running one instead of starting a copy.
         McpTaskRecord? same = null;
-        if (idempotencyKey is null) lock (_lock) same = _open.Values.Select(l => l.Rec).FirstOrDefault(r => IsOpen(r) && r.Requester == who && Similar(task, r.TaskText));
+        if (idempotencyKey is null) lock (_lock) same = _open.Values.Select(l => l.Rec).FirstOrDefault(r => IsOpen(r) && r.Requester == who && r.ExecutionMode == executionMode && r.StartUrl == startUrl && Similar(task, r.TaskText));
         if (same is not null)
         {
             int v0; lock (_lock) v0 = same.Ver;
@@ -199,7 +239,10 @@ public sealed class McpTaskManager
             prior = Find(cid, out _);
             if (prior is null) return Error("There is no earlier task with id " + cid + ", so there is nothing to continue. Start the task without continue_task_id.");
         }
-        else prior = idempotencyKey is null ? FindSimilarFinished(task) : null;
+        else prior = idempotencyKey is null && executionMode is null ? FindSimilarFinished(task, who) : null;
+        // Reusing a similar browser tab is NOT proof of continuing the same end-user goal.
+        // Only an explicit continue_task_id inherits business costs and outcome units.
+        var goalPrior = !string.IsNullOrWhiteSpace(continueTaskId) ? prior : null;
 
         var max = Math.Max(1, _host.MaxParallel);
         Live live;
@@ -210,11 +253,12 @@ public sealed class McpTaskManager
                 var racing = _open.Values.Select(l => l.Rec)
                     .FirstOrDefault(r => r.Requester == who && r.IdempotencyKey == idempotencyKey);
                 if (racing is not null)
-                    return string.Equals(racing.TaskText, task, StringComparison.Ordinal)
+                    return string.Equals(racing.TaskText, task, StringComparison.Ordinal) &&
+                        racing.ExecutionMode == executionMode && racing.StartUrl == startUrl
                         ? Snapshot(racing, "Existing request already running; no duplicate was started.")
                         : KeyConflict(idempotencyKey, racing.Id);
                 if (_last?.Requester == who && _last.IdempotencyKey == idempotencyKey)
-                    return string.Equals(_last.TaskText, task, StringComparison.Ordinal)
+                    return string.Equals(_last.TaskText, task, StringComparison.Ordinal) && _last.ExecutionMode == executionMode && _last.StartUrl == startUrl
                         ? Snapshot(_last, "Existing request already completed; no duplicate was started.")
                         : KeyConflict(idempotencyKey, _last.Id);
             }
@@ -225,9 +269,13 @@ public sealed class McpTaskManager
             {
                 Id = $"OF-{DateTime.Now:yyyyMMdd-HHmm}-{Guid.NewGuid().ToString("N")[..4]}",
                 TaskText = task,
+                ExecutionMode = executionMode,
+                StartUrl = startUrl,
                 IdempotencyKey = idempotencyKey,
                 Status = "running",
                 ContinuedFrom = prior?.Id,
+                BusinessGoalId = goalPrior?.BusinessGoalId ?? goalPrior?.Id,
+                BusinessGoalText = goalPrior?.BusinessGoalText ?? goalPrior?.TaskText ?? task,
                 VerifiedActions = prior?.Requester == who ? prior.VerifiedActions?.ToList() : null,
                 VerifiedBatchTotal = prior?.Requester == who ? prior.VerifiedBatchTotal : null,
                 AppVersion = BuildInfo.Describe(),
@@ -239,6 +287,7 @@ public sealed class McpTaskManager
             _open[rec.Id] = live;
         }
         var recNew = live.Rec;
+        recNew.BusinessGoalId ??= recNew.Id;
 
         var options = new RunOptions(recNew.Id, prior?.Id, prior is null ? null : DescribeEarlier(prior, who),
             Ask: (q, o, c) => OnAskAsync(live, q, o, c),
@@ -247,7 +296,9 @@ public sealed class McpTaskManager
             Title: string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
             Requester: who,
             Verified: item => OnVerifiedAction(live, item),
-            AutomaticContinuation: prior is not null && string.IsNullOrWhiteSpace(continueTaskId));
+            AutomaticContinuation: prior is not null && string.IsNullOrWhiteSpace(continueTaskId),
+            ExecutionMode: executionMode, StartUrl: startUrl,
+            GoalId: recNew.BusinessGoalId, GoalText: recNew.BusinessGoalText);
 
         StartResult started;
         try { started = _host.TryStart(task, options); }
@@ -347,13 +398,14 @@ public sealed class McpTaskManager
         lock (_lock)
         {
             rec.Status = "cancelled";
+            rec.StopReason = "requester_cancel";
             rec.Question = null;
             rec.Options = null;
             tcs = _open.TryGetValue(rec.Id, out var live) ? live.Answer : null;
             Touch(rec);
         }
         tcs?.TrySetCanceled();
-        _host.Stop(rec.Id);
+        _host.StopFromRequester(rec.Id);
         return Snapshot(rec, "The task was cancelled.");
     }
 
@@ -383,6 +435,7 @@ public sealed class McpTaskManager
                 var rec = live.Rec;
                 var oldStatus = rec.Status;
                 var oldOutcome = rec.Outcome;
+                var oldStopReason = rec.StopReason;
                 var oldSummary = rec.Summary;
                 var oldQuestion = rec.Question;
                 var oldOptions = rec.Options;
@@ -390,6 +443,7 @@ public sealed class McpTaskManager
                 var oldUpdated = rec.UpdatedUtc;
                 rec.Status = "interrupted";
                 rec.Outcome = "partial";
+                rec.StopReason = "upgrade_interrupted";
                 rec.Summary = notice + " Task id: " + rec.Id + ". Use continue_task_id=" + rec.Id +
                     " only after checking the previous task's effects.";
                 rec.Question = null;
@@ -401,6 +455,7 @@ public sealed class McpTaskManager
                 {
                     rec.Status = oldStatus;
                     rec.Outcome = oldOutcome;
+                    rec.StopReason = oldStopReason;
                     rec.Summary = oldSummary;
                     rec.Question = oldQuestion;
                     rec.Options = oldOptions;
@@ -416,7 +471,7 @@ public sealed class McpTaskManager
         foreach (var (id, answer) in affected)
         {
             try { answer?.TrySetCanceled(); } catch { }
-            try { _host.Stop(id); }
+            try { _host.StopForMaintenance(id); }
             catch
             {
                 lock (_lock)
@@ -541,7 +596,28 @@ public sealed class McpTaskManager
                 Touch(rec);
                 return;
             }
-            if (rec.Status is not ("cancelled" or "interrupted")) rec.Status = c.Status == "failed" ? "failed" : c.Status == "blocked" ? "blocked" : c.Status == "stopped" ? "stopped_by_user" : "done";
+            if (rec.Status is not ("cancelled" or "interrupted"))
+                rec.Status = c.Status switch
+                {
+                    "failed" => "failed",
+                    "blocked" => "blocked",
+                    "stopped" => "stopped_by_user",
+                    "cancelled" => "cancelled",
+                    "interrupted" => "interrupted",
+                    _ => "done"
+                };
+            rec.StopReason ??= c.FinishReason ?? (c.Status switch
+            {
+                "success" => "model_finish",
+                "partial" => "model_partial",
+                "stopped" => "user_stop",
+                "cancelled" => "requester_cancel",
+                "interrupted" => "upgrade_interrupted",
+                "blocked" => "model_blocked",
+                "failed" when c.Summary?.StartsWith("Task ended: timeout.", StringComparison.Ordinal) == true => "timeout",
+                "failed" => "model_or_runtime_error",
+                _ => "model_finish"
+            });
             if (_host.ProgressOf(rec.Id) is { } prog) { rec.Steps = prog.Steps; rec.CostUsd = Math.Round(prog.CostUsd, 4); }
             rec.Outcome = c.Status;
             rec.Summary = c.Summary;
@@ -659,6 +735,7 @@ public sealed class McpTaskManager
             var priorStatus = rec.Status;
             rec.Status = "interrupted";
             rec.Outcome = "partial";
+            rec.StopReason = "crash_interrupted";
             rec.Question = null;
             rec.Options = null;
             rec.UpdatedUtc = DateTime.UtcNow;
@@ -747,7 +824,7 @@ public sealed class McpTaskManager
     }
 
     /// <summary>The most recent finished task (of the last 30 on disk) whose text is about the same thing as the new one.</summary>
-    private McpTaskRecord? FindSimilarFinished(string task)
+    private McpTaskRecord? FindSimilarFinished(string task, string requester)
     {
         try
         {
@@ -757,6 +834,14 @@ public sealed class McpTaskManager
                 McpTaskRecord? r;
                 try { r = JsonSerializer.Deserialize<McpTaskRecord>(File.ReadAllText(f.FullName)); } catch { continue; }
                 if (r is null || IsOpen(r)) continue;
+                // Do not implicitly continue another caller's tab, or any task deliberately
+                // stopped/cancelled by a person, requester or maintenance. A new explicit
+                // user request can still start from scratch or supply continue_task_id.
+                if (!string.Equals(r.Requester, requester, StringComparison.Ordinal)) continue;
+                if (r.StopReason is "user_stop" or "requester_cancel" or "upgrade_interrupted" or "crash_interrupted" or "external_cancel_unknown")
+                    continue;
+                if (r.Status is "stopped_by_user" or "stopped" or "cancelled" or "interrupted")
+                    continue;
                 if (SameJob(task, r.TaskText)) return r;
             }
         }
@@ -916,10 +1001,22 @@ public sealed class McpTaskManager
                 ["started"] = rec.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
                 ["updated"] = rec.UpdatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
             };
+            if (rec.ExecutionMode is not null) o["execution_mode"] = rec.ExecutionMode;
             if (status == "interrupted") o["continue_task_id"] = rec.Id;
             if (rec.ContinuedFrom is not null) o["continued_from"] = rec.ContinuedFrom;
             if (o0Url is not null) o["last_url"] = o0Url;
             if (rec.Outcome is not null) o["outcome"] = rec.Outcome;
+            if (rec.StopReason is not null)
+            {
+                o["stop_reason"] = rec.StopReason;
+                o["stop_actor"] = rec.StopReason switch
+                {
+                    "user_stop" => "user",
+                    "requester_cancel" => "requesting_model",
+                    "model_finish" or "model_partial" or "model_blocked" => "luna",
+                    _ => "system_or_unknown"
+                };
+            }
             if (_host.TabDetailsOf(rec.Id) is { } tabDetails) o["browser_tab"] = tabDetails.DeepClone();
             if (rec.Summary is not null) o["summary"] = rec.Summary;
             if (rec.TemporaryCredentials is { Count: > 0 })

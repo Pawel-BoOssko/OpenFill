@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "procedures": [
+    {
+      "id": "whatsapp.send_batch",
+      "version": "1.0",
+      "provider": "whatsapp",
+      "intent": "send_message_batch",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "execute_existing_action", "verify", "persist", "report"],
+      "adapter": "WhatsAppBrowser.SendAsync",
+      "evidence": "new_outgoing_bubble_visible",
+      "resume": "reconcile_attempted_and_uncertain"
+    },
+    {
+      "id": "whatsapp.read_batch",
+      "version": "1.0",
+      "provider": "whatsapp",
+      "intent": "read_message_batch",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "observe", "persist", "report"],
+      "adapter": "WhatsAppBrowser.OpenAsync"
+    },
+    {
+      "id": "linkedin.send_batch",
+      "version": "1.0",
+      "provider": "linkedin",
+      "intent": "send_message_batch",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "execute_existing_action", "verify", "persist", "report"],
+      "adapter": "linkedin_send_adapter_pending",
+      "resume": "reconcile_attempted_and_uncertain"
+    },
+    {
+      "id": "youtube_studio.audit_channel_readonly",
+      "version": "1.0",
+      "provider": "youtube_studio",
+      "intent": "audit_channel_readonly",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "observe", "persist", "report"],
+      "adapter": "DomainReadAuditService.Inspect",
+      "evidence": "scoped_visible_view_only"
+    },
+    {
+      "id": "youtube_studio.upload_schedule_short",
+      "version": "1.0",
+      "provider": "youtube_studio",
+      "intent": "upload_schedule_short",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "observe", "escalate_to_luna", "report"],
+      "adapter": "DomainReadAuditService.Inspect",
+      "evidence": "preflight_only_publication_not_implemented"
+    },
+    {
+      "id": "meta_business.audit_page_readonly",
+      "version": "1.0",
+      "provider": "meta_business",
+      "intent": "audit_page_readonly",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "observe", "persist", "report"],
+      "adapter": "DomainReadAuditService.Inspect",
+      "evidence": "scoped_visible_view_only"
+    },
+    {
+      "id": "meta_business.reel_editor_workflow",
+      "version": "1.0",
+      "provider": "meta_business",
+      "intent": "reel_editor_workflow",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "observe", "escalate_to_luna", "report"],
+      "adapter": "DomainReadAuditService.Inspect",
+      "evidence": "preflight_only_publication_not_implemented"
+    },
+    {
+      "id": "airbnb.change_price_range",
+      "version": "1.0",
+      "provider": "airbnb",
+      "intent": "update_price_range",
+      "status": "candidate",
+      "stages": ["ensure_auth", "resolve_target", "observe", "execute_existing_action", "verify", "persist", "report"],
+      "adapter": "airbnb_price_adapter_pending",
+      "resume": "reconcile_attempted_and_uncertain"
+    }
+  ]
+}

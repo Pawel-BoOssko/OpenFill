@@ -1,0 +1,187 @@
+// OF-IMP-20261031 C02: minimal deterministic batch executor, no second model or browser.
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Nodes;
+
+namespace OpenFill.Core.Agent;
+
+public sealed record ProcedureTarget(string TargetId, string Payload);
+public sealed record ProcedureActionResult(
+    string Status, string? EvidenceRef = null, string? ExternalRef = null, string? Reason = null);
+
+public sealed class ProcedureExecutor(ProcedureCatalog catalog, OperationalMemoryStore memory)
+{
+    public async Task<JsonObject> ExecuteBatchAsync(
+        string procedureId, string accountId, string requestId, IReadOnlyList<ProcedureTarget> targets,
+        Func<CancellationToken, Task<bool>> ensureAuthenticated,
+        Func<ProcedureTarget, CancellationToken, Task<ProcedureActionResult>> action,
+        string? taskId, string? requester, string? chat,
+        CancellationToken ct = default, bool allowCandidateForStaging = false,
+        Func<ProcedureTarget, CancellationToken, Task<ProcedureActionResult>>? preflight = null,
+        Func<ProcedureTarget, string, CancellationToken, Task<ProcedureActionResult>>? actionWithOperation = null)
+    {
+        // E03: record only durations and counts, never operation payloads.
+        var batchWatch = Stopwatch.StartNew();
+        long preflightElapsedTotalMs = 0;
+        long actionElapsedTotalMs = 0;
+        var executedThisRun = 0;
+        var procedure = catalog.Get(procedureId);
+        if (procedure is null) return Error("procedure_not_found", procedureId);
+        if (procedure.Status == "suspended" || (procedure.Status != "verified" && !allowCandidateForStaging))
+            return Error("procedure_not_verified", procedureId);
+        if (procedure.Stages.Contains("execute_existing_action") is false)
+            return Error("procedure_not_actionable", procedureId);
+        if (string.IsNullOrWhiteSpace(accountId) || string.IsNullOrWhiteSpace(requestId))
+            return Error("missing_identity", "account_id and request_id are required.");
+        if (targets.Count is 0 or > 500)
+            return Error("invalid_target_count", "Provide between 1 and 500 explicit targets.");
+        if (targets.Any(x => string.IsNullOrWhiteSpace(x.TargetId) || string.IsNullOrEmpty(x.Payload)))
+            return Error("invalid_target", "TargetId and Payload are required.");
+
+        var fingerprintInput = new StringBuilder();
+        static void Part(StringBuilder builder, string value) => builder.Append(value.Length).Append(':').Append(value);
+        Part(fingerprintInput, procedure.Id);
+        Part(fingerprintInput, procedure.Version);
+        foreach (var target in targets)
+        {
+            Part(fingerprintInput, target.TargetId);
+            Part(fingerprintInput, target.Payload);
+        }
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintInput.ToString())));
+        var scopedRequestId = (requester ?? "") + "|" + (chat ?? "") + "|" + requestId;
+        var batch = memory.BeginBatch(procedure.Provider, accountId, scopedRequestId,
+            procedure.Id, procedure.Version, taskId, requester, chat);
+        if (!memory.BindRequestFingerprint(batch, fingerprint))
+            return Error("idempotency_conflict", "Same request_id reused for different procedure, targets or payload.", batch);
+        var items = new List<(ProcedureTarget Target, string OperationId)>();
+        foreach (var target in targets)
+        {
+            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(target.Payload)));
+            var operation = memory.PlanOperation(batch, target.TargetId, procedure.Intent, contentHash, target.Payload);
+            items.Add((target, operation));
+        }
+
+        bool authenticated;
+        try { authenticated = await ensureAuthenticated(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { return Error("authentication_check_failed", ex.Message, batch); }
+        if (!authenticated)
+            return Error("authentication_unverified", "Sender account is not positively authenticated.", batch);
+
+        var completed = new JsonArray();
+        foreach (var item in items)
+        {
+            ct.ThrowIfCancellationRequested();
+            long preflightElapsedMs = 0;
+            var state = memory.OperationState(item.OperationId);
+            if (state is "verified" or "skipped" or "uncertain" or "failed" or "blocked")
+            {
+                completed.Add(new JsonObject { ["operation_id"] = item.OperationId,
+                    ["target_id"] = item.Target.TargetId, ["state"] = state, ["executed"] = false });
+                continue;
+            }
+            if (state == "attempted")
+            {
+                memory.MarkOutcome(item.OperationId, "uncertain", null, null, "interrupted_attempt_requires_reconciliation");
+                completed.Add(new JsonObject { ["operation_id"] = item.OperationId,
+                    ["target_id"] = item.Target.TargetId, ["state"] = "uncertain", ["executed"] = false });
+                continue;
+            }
+            // Read-only target/thread/account preflight must precede attempted.
+            // A blocked preflight leaves the operation planned, so the same request
+            // can be resumed after the view is corrected without duplicating effects.
+            if (preflight is not null)
+            {
+                var preflightWatch = Stopwatch.StartNew();
+                ProcedureActionResult gate;
+                try { gate = await preflight(item.Target, ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    gate = new ProcedureActionResult("blocked", null, null,
+                        "preflight_exception:" + ex.GetType().Name);
+                }
+                preflightWatch.Stop();
+                preflightElapsedMs = preflightWatch.ElapsedMilliseconds;
+                preflightElapsedTotalMs += preflightElapsedMs;
+                if (gate.Status != "ready")
+                {
+                    completed.Add(new JsonObject
+                    {
+                        ["operation_id"] = item.OperationId,
+                        ["target_id"] = item.Target.TargetId,
+                        ["state"] = state,
+                        ["preflight_status"] = "blocked",
+                        ["reason"] = gate.Reason ?? "preflight_not_ready",
+                        ["preflight_elapsed_ms"] = preflightElapsedMs,
+                        ["executed"] = false
+                    });
+                    continue;
+                }
+            }
+            if (!memory.MarkAttempted(item.OperationId))
+            {
+                completed.Add(new JsonObject { ["operation_id"] = item.OperationId,
+                    ["target_id"] = item.Target.TargetId, ["state"] = "uncertain", ["executed"] = false });
+                continue;
+            }
+            var actionWatch = Stopwatch.StartNew();
+            ProcedureActionResult outcome;
+            try
+            {
+                outcome = actionWithOperation is null
+                    ? await action(item.Target, ct)
+                    : await actionWithOperation(item.Target, item.OperationId, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                memory.MarkOutcome(item.OperationId, "uncertain", null, null, "cancelled_after_attempt");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                outcome = new ProcedureActionResult("uncertain", null, null, "action_exception:" + ex.GetType().Name);
+            }
+            actionWatch.Stop();
+            actionElapsedTotalMs += actionWatch.ElapsedMilliseconds;
+            executedThisRun++;
+            var nextState = outcome.Status is "verified" or "failed" or "uncertain" or "blocked"
+                ? outcome.Status : "uncertain";
+            memory.MarkOutcome(item.OperationId, nextState, outcome.EvidenceRef, outcome.ExternalRef,
+                outcome.Status == nextState ? outcome.Reason : "unrecognized_action_result");
+            completed.Add(new JsonObject
+            {
+                ["operation_id"] = item.OperationId, ["target_id"] = item.Target.TargetId,
+                ["state"] = nextState, ["executed"] = true, ["evidence_ref"] = outcome.EvidenceRef,
+                ["preflight_elapsed_ms"] = preflightElapsedMs,
+                ["action_elapsed_ms"] = actionWatch.ElapsedMilliseconds,
+                ["reason"] = outcome.Reason
+            });
+        }
+        // E02: persist trusted per-item observed outcomes, never raw message text.
+        // A partial, uncertain, preflight-blocked or resumed batch is not proof.
+        var learning = new ProcedureLearningStore(Path.Combine(
+            Path.GetDirectoryName(memory.DatabasePath)!, "procedure-learning"));
+        var learned = learning.ObserveBatch(procedure, batch, completed);
+        return new JsonObject
+        {
+            ["status"] = "completed_with_item_status",
+            ["procedure_id"] = procedure.Id, ["procedure_version"] = procedure.Version,
+            ["learned_status"] = learned.Status,
+            ["verified_batches"] = learned.VerifiedBatches,
+            ["batch_id"] = batch, ["counts"] = memory.BatchStatus(batch),
+            ["metrics"] = new JsonObject {
+                ["batch_elapsed_ms"] = batchWatch.ElapsedMilliseconds,
+                ["preflight_elapsed_ms"] = preflightElapsedTotalMs,
+                ["action_elapsed_ms"] = actionElapsedTotalMs,
+                ["executed_this_run"] = executedThisRun,
+                ["items_returned"] = completed.Count
+            },
+            ["items"] = completed
+        };
+    }
+
+    private static JsonObject Error(string status, string reason, string? batchId = null) =>
+        new() { ["status"] = status, ["reason"] = reason, ["batch_id"] = batchId };
+}

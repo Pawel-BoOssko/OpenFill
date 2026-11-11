@@ -1,0 +1,528 @@
+// OpenFill - Metadata: version 0.1, 2026-10-29 23:10
+// WhatsApp DOM operations used by the existing Luna; no second model, no screenshots.
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace OpenFill.Core.Browser;
+
+public sealed class WhatsAppBrowser
+{
+    private readonly BrowserController _browser;
+    public WhatsAppBrowser(BrowserController browser) => _browser = browser;
+
+    public static bool IsWhatsAppUrl(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        return uri.Scheme == "https" && uri.Host.Equals("web.whatsapp.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Only explicit phone numbers or phone-type WhatsApp JIDs can be opened by this route.
+    // A non-phone opaque ID needs a separately verified WhatsApp route, never list search.
+    public static string? DirectUrl(string? target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return null;
+        var id = target.Trim();
+        if (id.EndsWith("@c.us", StringComparison.OrdinalIgnoreCase))
+            id = id[..^5];
+        else if (id.EndsWith("@s.whatsapp.net", StringComparison.OrdinalIgnoreCase))
+            id = id[..^15];
+        if (id.StartsWith('+')) id = id[1..];
+        if (id.Length is < 5 or > 20 || !id.All(char.IsAsciiDigit)) return null;
+        return "https://web.whatsapp.com/send?phone=" + id;
+    }
+
+    private const string VisibleScript = """
+(() => {
+ const clean = s => String(s||'').replace(/\s+/g,' ').trim();
+ const unique = x => [...new Set(x.filter(Boolean))];
+ const attrs = (e,limit=80) => unique([...e.querySelectorAll('[title],[aria-label],[data-icon],[data-testid]')]
+  .filter(n=>{const r=n.getBoundingClientRect();return r.height>0&&r.width>0;})
+  .flatMap(n=>[n.getAttribute('title'),n.getAttribute('aria-label'),n.getAttribute('data-icon')])
+  .map(clean).filter(v=>v && v.length<=limit)).slice(0,60);
+ const pane = document.querySelector('#pane-side');
+ let rows = pane ? [...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')] : [];
+ rows = rows.filter(n=>n.getClientRects().length && !rows.some(p=>p!==n && n.contains(p) && p.matches('[role="row"],[data-testid="cell-frame-container"]')));
+ const seen = new Set();
+ const previews = [];
+ for(const node of rows) {
+   const text=clean(node.innerText);
+   if(!text) continue;
+   const titles=attrs(node);
+   const key=text+'|'+titles.join('|');
+   if(seen.has(key)) continue;seen.add(key);
+   previews.push({text,attributes:titles});
+ }
+ const main=document.querySelector('#main');
+ const messageNodes=main?[...main.querySelectorAll('[data-testid="msg-container"],.message-in,.message-out')]:[];
+ const messages=[];
+ const used=new Set();
+ for(const node of messageNodes){
+   if(node.closest('[data-testid="msg-container"],.message-in,.message-out')!==node) continue;
+   const text=clean(node.innerText);
+   const labels=attrs(node);
+   const id=clean(node.getAttribute('data-id')||node.closest('[data-id]')?.getAttribute('data-id')||node.querySelector('[data-id]')?.getAttribute('data-id')||'');
+   if(!text&&!labels.length) continue;
+   const sig=id||text+'|'+labels.join('|');
+   if(used.has(sig)) continue;used.add(sig);
+   const out=node.matches('.message-out')||!!node.closest('.message-out')||!!node.querySelector('.message-out')||id.startsWith('true_')||labels.some(v=>/^(read|sent|delivered|odczytano|wysłano|dostarczono)$/i.test(v));
+   const incoming=node.matches('.message-in')||!!node.closest('.message-in')||!!node.querySelector('.message-in')||id.startsWith('false_');
+   messages.push({id,text,attributes:labels,direction:out?'out':incoming?'in':'unknown'});
+ }
+ const editor=main?.querySelector('[contenteditable="true"][data-tab],[contenteditable="true"][role="textbox"]');
+ return {
+   page:'WhatsApp Web',ready:!!pane,conversation_open:!!main,
+   preview_count:previews.length,previews,
+   messages,composer_visible:!!editor,
+   conversation_header:main?clean(main.querySelector('header')?.innerText):null,
+   interface_status:!pane?'not_loaded_or_login_required':null
+ };
+})()
+""";
+
+    private const string ScrollScript = """
+(async()=>{
+ const pane=document.querySelector('#pane-side');
+ if(!pane)return {complete:false,error:'chat_list_not_loaded',previews:[]};
+ const all=new Map();
+ const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
+ const findScroller=()=>{
+   let nodes=[pane,...pane.querySelectorAll('*')];
+   return nodes.filter(n=>n.scrollHeight>n.clientHeight+80&&n.clientHeight>80)
+     .sort((a,b)=>(b.scrollHeight-b.clientHeight)-(a.scrollHeight-a.clientHeight))[0]||pane;
+ };
+ const scroller=findScroller(),initial=scroller.scrollTop;
+ let still=0, complete=false, count=0;
+ try{
+   scroller.scrollTop=0;
+   await new Promise(resolve=>setTimeout(resolve,75));
+   for(let i=0;i<450;i++){
+     count++;
+     let rows=[...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')];
+     rows=rows.filter(n=>n.getClientRects().length && !rows.some(p=>p!==n&&n.contains(p)&&p.matches('[role="row"],[data-testid="cell-frame-container"]')));
+     let added=0;
+     for(const node of rows){
+       const text=clean(node.innerText);
+       if(!text)continue;
+       const labels=[...new Set([...node.querySelectorAll('[title],[aria-label],[data-icon]')]
+         .filter(e=>e.getClientRects().length)
+         .flatMap(e=>[e.title,e.getAttribute('aria-label'),e.getAttribute('data-icon')])
+         .map(clean).filter(Boolean))];
+       const title=node.querySelector('[data-testid="cell-frame-title"] [title]') ||
+         node.querySelector('[data-testid="cell-frame-title"]') || node.querySelector('span[title]');
+       const name=clean(title?.getAttribute('title')||title?.textContent||
+         String(node.innerText||'').split('\n')[0]||'');
+       const key=name+'|'+text+'|'+labels.join('|');
+       if(!all.has(key)){all.set(key,{name,text,attributes:labels});added++}
+     }
+     const before=scroller.scrollTop;
+     const nearBottom=before+scroller.clientHeight>=scroller.scrollHeight-4;
+     if(nearBottom&&added===0){if(++still>=3){complete=true;break}}
+     else still=0;
+     scroller.scrollTop=Math.min(scroller.scrollHeight,scroller.scrollTop+Math.max(150,scroller.clientHeight*.8));
+     await new Promise(resolve=>setTimeout(resolve,75));
+     if(scroller.scrollTop===before&&added===0){if(++still>=3){complete=nearBottom;break}}
+   }
+ }finally{scroller.scrollTop=initial}
+ return {complete,preview_count:all.size,previews:[...all.values()],scroll_steps:count,opened_conversations:0};
+})()
+""";
+
+    private const string FocusEditorScript = """
+(()=>{
+ const main=document.querySelector('#main');
+ const editor=main?.querySelector('[contenteditable="true"][data-tab],[contenteditable="true"][role="textbox"]');
+ if(!editor)return false;
+ editor.focus();
+ return document.activeElement===editor || editor.contains(document.activeElement);
+})()
+""";
+
+    private const string OutgoingScript = """
+(()=>{
+ const main=document.querySelector('#main');
+ if(!main)return {count:0,last:null};
+ const nodes=[...main.querySelectorAll('.message-out')].filter(x=>x.getClientRects().length);
+ return {count:nodes.length,last:nodes.length?String(nodes.at(-1).innerText||'').trim():null};
+})()
+""";
+
+    private async Task<JsonNode?> EvaluateAsync(string script, CancellationToken ct)
+    {
+        var data=await _browser.RunJsAsync(script,ct);
+        if (data?["ok"]?.GetValue<bool>() != true)
+            return new JsonObject { ["error"]=data?["error"]?.GetValue<string>()??"dom_read_failed" };
+        return data["value"]?.DeepClone();
+    }
+
+    // Deterministic self-identity lookup verified against the real WhatsApp Web DOM on 31.10.2026.
+    // Reads the phone only from the OWN profile's call-icon row, not a chat or sidebar preview.
+    private const string AccountIdentityScript = """
+(async()=>{
+ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const find=async(sel)=>{for(let i=0;i<12;i++){const el=document.querySelector(sel);if(el&&el.getClientRects().length)return el;await pause(180)}return null};
+ const side=document.querySelector('#pane-side');
+ const you=document.querySelector('button[aria-label="You"][data-navbar-item="true"]');
+ if(!side||!you)return {status:'not_authenticated_or_sidebar_missing'};
+ const result={status:'identity_unverified',phone_digits:null,profile_name:null};
+ try{
+   you.click();
+   const profile=await find('button[aria-label="View profile"]');
+   if(!profile){result.status='view_profile_button_missing';return result}
+   profile.click();
+   const nameEl=await find('[data-testid="pushname-section"] [data-testid*="pushname-input-read-only"]');
+   result.profile_name=nameEl?String(nameEl.textContent||'').trim():null;
+   const candidates=new Set();
+   const icons=[...document.querySelectorAll('svg title')].filter(e=>String(e.textContent||'').trim()==='ic-call');
+   const phonePattern=/^\+?[\d\s()\-]{8,25}$/;
+   for(const icon of icons){
+     let ancestor=icon.parentElement;
+     for(let depth=0;depth<8&&ancestor;depth++,ancestor=ancestor.parentElement){
+       const spans=[...ancestor.querySelectorAll('span')].filter(e=>e.getClientRects().length);
+       const numbers=spans.map(e=>String(e.textContent||'').trim()).filter(v=>phonePattern.test(v));
+       if(numbers.length){for(const number of numbers)candidates.add(number.replace(/\D/g,''));break}
+     }
+   }
+   if(candidates.size===1&&result.profile_name){
+     result.phone_digits=[...candidates][0];result.status='verified';
+   } else result.status=candidates.size===0?'phone_marker_missing':'phone_marker_ambiguous';
+   result.evidence={name_selector:'[data-testid="pushname-section"] [data-testid*="pushname-input-read-only"]',phone_anchor:'svg title:ic-call'};
+   return result;
+ }finally{
+   const back=document.querySelector('button[aria-label="Back"]');
+   if(back){back.click();await pause(120)}
+   const chats=document.querySelector('button[aria-label="Chats"][data-navbar-item="true"]');
+   if(chats)chats.click();
+ }
+})()
+""";
+
+    public async Task<JsonNode?> ReadAccountIdentityAsync(CancellationToken ct) =>
+        await EvaluateAsync(AccountIdentityScript, ct);
+
+    public async Task<bool> AccountMatchesAsync(string expectedAccount, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(expectedAccount)) return false;
+        var digits = new string(expectedAccount.Where(char.IsAsciiDigit).ToArray());
+        if (digits.Length < 8) return false;
+        var own = await ReadAccountIdentityAsync(ct);
+        return own?["status"]?.ToString() == "verified" &&
+            string.Equals(own["phone_digits"]?.ToString(), digits, StringComparison.Ordinal);
+    }
+
+    public async Task<JsonNode?> ReadVisibleAsync(CancellationToken ct) =>
+        await EvaluateAsync(VisibleScript,ct);
+
+    // On the first model turn, wait for WhatsApp's asynchronously rendered sidebar.
+    // A loaded page with zero rendered rows is not yet a useful initial snapshot.
+    public async Task<JsonNode?> ReadReadyAsync(CancellationToken ct, int maxWaitMs = 12000)
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? view;
+        do
+        {
+            view = await ReadVisibleAsync(ct);
+            if (view?["ready"]?.GetValue<bool>() == true && (view?["preview_count"]?.GetValue<int>() ?? 0) > 0)
+                return view;
+            var remainingMs = maxWaitMs - (int)timer.ElapsedMilliseconds;
+            if (remainingMs <= 0) return view;
+            await Task.Delay(Math.Min(400, remainingMs), ct);
+        }
+        while (true);
+    }
+
+    public async Task<JsonNode?> ReadAllPreviewsAsync(CancellationToken ct)
+    {
+        // A virtualized list may mount after the page is already navigated.
+        var ready = await ReadReadyAsync(ct, 20000);
+        if (ready?["ready"]?.GetValue<bool>() != true)
+            return new JsonObject { ["complete"] = false, ["error"] = "chat_list_not_loaded", ["preview_count"] = 0 };
+        return await EvaluateAsync(ScrollScript,ct);
+    }
+
+    // WhatsApp's direct phone route resolves asynchronously after browser navigation.
+    private async Task<JsonNode?> WaitForConversationAsync(CancellationToken ct, int maxWaitMs = 12000)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? view;
+        do
+        {
+            view = await ReadVisibleAsync(ct);
+            if (view?["conversation_open"]?.GetValue<bool>() == true &&
+                view?["composer_visible"]?.GetValue<bool>() == true) return view;
+            var remaining = maxWaitMs - (int)clock.ElapsedMilliseconds;
+            if (remaining <= 0) return view;
+            await Task.Delay(Math.Min(400, remaining), ct);
+        }
+        while (true);
+    }
+
+    // A25: open currently rendered sidebar conversations by their exact visible names.
+    // Does not search the global history or guess an unverified phone/JID.
+    private const string ClickVisibleNameScript = """
+    (() => {
+      const desired = __NAME__;
+      const norm = s => String(s||'').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+      const pane = document.querySelector('#pane-side');
+      if(!pane) return {status:'sidebar_not_loaded'};
+      let rows = [...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')];
+      rows = rows.filter(n => n.getClientRects().length &&
+        !rows.some(p => p !== n && n.contains(p) && p.matches('[role="row"],[data-testid="cell-frame-container"]')));
+      const titleOf = row => {
+        const marker = row.querySelector('[data-testid="cell-frame-title"] [title]') ||
+          row.querySelector('[data-testid="cell-frame-title"]') ||
+          row.querySelector('span[title]');
+        return String(marker?.getAttribute('title') || marker?.textContent ||
+          String(row.innerText||'').split('\n')[0] || '').trim();
+      };
+      const matches = rows.map(row => ({row,label:titleOf(row)}))
+        .filter(item => norm(item.label) === norm(desired));
+      if(matches.length !== 1)
+        return {status:matches.length ? 'ambiguous_visible_name' : 'name_not_rendered',
+          matches:matches.length,visible_rows:rows.length};
+      const clickTarget=matches[0].row.querySelector('[role="gridcell"]')||matches[0].row;
+      const rect=clickTarget.getBoundingClientRect();
+      return {status:'coordinates',label:matches[0].label,
+        x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+    })()
+    """;
+
+    // A26: after a single complete sidebar scan, find a named chat inside a
+    // virtualized list locally. One JavaScript call; no model-driven scrolling.
+    private const string FindAndClickNamedScript = """
+    (async()=> {
+      const desired=__NAME__;
+      const norm=s=>String(s||'').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+      const pane=document.querySelector('#pane-side');
+      if(!pane)return {status:'sidebar_not_loaded'};
+      const nodes=[pane,...pane.querySelectorAll('*')];
+      const scroller=nodes.filter(n=>n.scrollHeight>n.clientHeight+80&&n.clientHeight>80)
+        .sort((a,b)=>(b.scrollHeight-b.clientHeight)-(a.scrollHeight-a.clientHeight))[0]||pane;
+      const initial=scroller.scrollTop;
+      const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+      const rows=()=>[...pane.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')]
+        .filter(n=>n.getClientRects().length&&!Array.from(n.querySelectorAll('[role="row"],[data-testid="cell-frame-container"]')).some(e=>e!==n));
+      const labelOf=row=>{
+        const el=row.querySelector('[data-testid="cell-frame-title"] [title]')||
+          row.querySelector('[data-testid="cell-frame-title"]')||row.querySelector('span[title]');
+        return String(el?.getAttribute('title')||el?.textContent||
+          String(row.innerText||'').split('\n')[0]||'').trim();
+      };
+      scroller.scrollTop=0;
+      await pause(90);
+      for(let i=0;i<450;i++){
+        const matches=rows().map(row=>({row,label:labelOf(row)}))
+          .filter(x=>norm(x.label)===norm(desired));
+        if(matches.length>1){
+          scroller.scrollTop=initial;
+          return {status:'ambiguous_visible_name',matches:matches.length};
+        }
+        if(matches.length===1){
+          const clickTarget=matches[0].row.querySelector('[role="gridcell"]')||matches[0].row;
+          const rect=clickTarget.getBoundingClientRect();
+          return {status:'coordinates',label:matches[0].label,
+            x:rect.left+rect.width/2,y:rect.top+rect.height/2};
+        }
+        const before=scroller.scrollTop;
+        if(before+scroller.clientHeight>=scroller.scrollHeight-4)break;
+        scroller.scrollTop=Math.min(scroller.scrollHeight,
+          before+Math.max(150,scroller.clientHeight*.8));
+        await pause(60);
+        if(scroller.scrollTop===before)break;
+      }
+      scroller.scrollTop=initial;
+      return {status:'name_not_rendered_after_scan'};
+    })()
+    """;
+
+    private async Task<JsonNode?> WaitForNamedConversationAsync(string expected, CancellationToken ct)
+    {
+        static string Normal(string value) => string.Join(" ", value.Split((char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? view;
+        do
+        {
+            view = await ReadVisibleAsync(ct);
+            var actual = view?["conversation_header"]?.ToString()
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
+            if (Normal(actual) == Normal(expected) &&
+                view?["composer_visible"]?.GetValue<bool>() == true)
+                return view;
+            if (clock.ElapsedMilliseconds >= 8000) return null;
+            await Task.Delay(300, ct);
+        }
+        while (true);
+    }
+
+    public async Task<JsonObject> ReadVisibleNamesAsync(IReadOnlyList<string> names,
+        int maxMessages, CancellationToken ct)
+    {
+        if (names.Count is < 1 or > 60)
+            return new JsonObject { ["status"]="invalid_target_count", ["items"]=new JsonArray() };
+        maxMessages = Math.Clamp(maxMessages, 0, 10);
+        var current = await _browser.CurrentUrlAsync(ct);
+        if (!IsWhatsAppUrl(current))
+            return new JsonObject { ["status"]="not_whatsapp_web", ["items"]=new JsonArray() };
+        var ready = await ReadReadyAsync(ct, 8000);
+        if (ready?["ready"]?.GetValue<bool>() != true)
+            return new JsonObject { ["status"]="sidebar_not_loaded", ["items"]=new JsonArray() };
+
+        var items = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        JsonNode? sidebarDirectory = null; // one complete local scan at most per batch
+        static string NameKey(string? value) => string.Join(" ",
+            (value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        foreach (var rawName in names)
+        {
+            ct.ThrowIfCancellationRequested();
+            var name = (rawName ?? "").Trim();
+            if (name.Length == 0 || !seen.Add(name)) continue;
+            if (name.Length > 150) {
+                items.Add(new JsonObject { ["name"]=name[..150],["status"]="name_too_long" });
+                continue;
+            }
+            var clicked = await EvaluateAsync(ClickVisibleNameScript.Replace(
+                "__NAME__", JsonSerializer.Serialize(name)), ct);
+            if (clicked?["status"]?.ToString() == "name_not_rendered")
+            {
+                // Only one full sidebar scan for all names in this tool invocation.
+                sidebarDirectory ??= await ReadAllPreviewsAsync(ct);
+                var complete = sidebarDirectory?["complete"]?.GetValue<bool>() == true;
+                var matches = (sidebarDirectory?["previews"] as JsonArray)?.OfType<JsonObject>()
+                    .Count(x => NameKey(x["name"]?.ToString()) == NameKey(name)) ?? 0;
+                clicked = !complete
+                    ? new JsonObject { ["status"]="sidebar_scan_incomplete" }
+                    : matches == 0
+                        ? new JsonObject { ["status"]="name_not_found_in_sidebar" }
+                        : matches > 1
+                            ? new JsonObject { ["status"]="ambiguous_sidebar_name", ["matches"]=matches }
+                            : await EvaluateAsync(FindAndClickNamedScript.Replace(
+                                "__NAME__", JsonSerializer.Serialize(name)), ct);
+            }
+            if (clicked?["status"]?.ToString() == "coordinates")
+            {
+                var exactLabel = clicked["label"]?.ToString() ?? name;
+                var x = clicked["x"]?.GetValue<double>() ?? -1;
+                var y = clicked["y"]?.GetValue<double>() ?? -1;
+                var physicalClick = await _browser.RealClickPointAsync(x, y, ct);
+                clicked = physicalClick["ok"]?.GetValue<bool>() == true
+                    ? new JsonObject { ["status"]="clicked", ["label"]=exactLabel }
+                    : new JsonObject { ["status"]="real_click_failed" };
+            }
+            if (clicked?["status"]?.ToString() != "clicked")
+            {
+                items.Add(new JsonObject { ["name"]=name,
+                    ["status"]=clicked?["status"]?.ToString() ?? "click_unavailable" });
+                continue;
+            }
+            var expectedName = clicked["label"]?.ToString() ?? name;
+            var view = await WaitForNamedConversationAsync(expectedName, ct);
+            if (view is null)
+            {
+                items.Add(new JsonObject { ["name"]=name,["status"]="conversation_not_ready" });
+                continue;
+            }
+            var messages = view["messages"] as JsonArray;
+            var recent = new JsonArray();
+            if (messages is not null && maxMessages > 0)
+                foreach (var message in messages.Skip(Math.Max(0, messages.Count - maxMessages)))
+                {
+                    if (message is not JsonObject m) continue;
+                    var body = m["text"]?.ToString() ?? "";
+                    recent.Add(new JsonObject {
+                        ["direction"]=m["direction"]?.ToString() ?? "unknown",
+                        ["text"]=body.Length <= 400 ? body : body[..400]
+                    });
+                }
+            items.Add(new JsonObject {
+                ["name"]=name, ["status"]="loaded",
+                ["scope"]="currently_loaded_messages", ["complete"]=false,
+                ["observed_count"]=messages?.Count ?? 0,
+                ["recent_messages"]=recent
+            });
+        }
+        return new JsonObject {
+            ["status"]="completed_with_item_status",
+            ["identity_scope"]="exact_sidebar_display_name_not_phone_verified",
+            ["requested"]=names.Count,["unique"]=seen.Count,["items"]=items
+        };
+    }
+
+    public async Task<JsonNode?> OpenAsync(string target, CancellationToken ct)
+    {
+        var url=DirectUrl(target);
+        if(url is null)return new JsonObject{["ok"]=false,["error"]="unsupported_identifier_for_direct_open"};
+        await _browser.NavigateAsync(url,ct);
+        var visible=await WaitForConversationAsync(ct);
+        var ready = visible?["conversation_open"]?.GetValue<bool>() == true &&
+                    visible?["composer_visible"]?.GetValue<bool>() == true;
+        return new JsonObject{["ok"]=ready,["method"]="direct_whatsapp_phone_route",
+            ["error"]=ready?null:"conversation_not_ready_after_navigation",["view"]=visible?.DeepClone()};
+    }
+
+    // Only a newly visible outgoing message with the requested exact text confirms the UI send.
+    // Comparison uses DOM message identity (when available), not the total count of virtualized bubbles.
+    public static bool HasNewOutgoingMessage(JsonNode? before, JsonNode? after, string message)
+    {
+        static string Clean(string s) => string.Join(" ", s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        static List<string> Matches(JsonNode? view, string needle)
+        {
+            var found = new List<string>();
+            if (view?["messages"] is not JsonArray messages) return found;
+            foreach (var node in messages)
+            {
+                if (node?["direction"]?.GetValue<string>() != "out") continue;
+                var text = Clean(node?["text"]?.GetValue<string>() ?? "");
+                if (string.Equals(text, needle, StringComparison.Ordinal))
+                    found.Add(node?["id"]?.GetValue<string>() ?? "");
+            }
+            return found;
+        }
+        var needle = Clean(message);
+        if (needle.Length == 0) return false;
+        var oldMatches = Matches(before, needle);
+        var newMatches = Matches(after, needle);
+        // Virtualized WhatsApp bubbles can appear/disappear without a new send.
+        // Only a NEW provider message ID with the EXACT text is evidence.
+        if (newMatches.Count == 0) return false;
+        var previousIds = oldMatches.Where(id => id.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+        return newMatches.Any(id => id.Length > 0 && !previousIds.Contains(id));
+    }
+
+    public async Task<JsonNode?> SendAsync(string target,string message,CancellationToken ct)
+    {
+        if (message.Length==0) return new JsonObject{["status"]="error",["error"]="empty_message"};
+        var url=DirectUrl(target);
+        if (url is null) return new JsonObject{["status"]="error",["error"]="unsupported_identifier_for_direct_open"};
+        await _browser.NavigateAsync(url,ct);
+        var before = await WaitForConversationAsync(ct);
+        if (before?["conversation_open"]?.GetValue<bool>() != true ||
+            before?["composer_visible"]?.GetValue<bool>() != true)
+            return new JsonObject{["status"]="error",["error"]="conversation_not_ready_for_send"};
+        var focus = await EvaluateAsync(FocusEditorScript,ct);
+        if (focus is not JsonValue f || !f.TryGetValue<bool>(out var focused)||!focused)
+            return new JsonObject{["status"]="error",["error"]="composer_not_available"};
+        await _browser.InsertTextAsync(message,ct);
+        var sent=await _browser.PressKeyAsync("Enter",ct);
+        if(sent?["ok"]?.GetValue<bool>()!=true)
+            return new JsonObject{["status"]="error",["error"]="send_key_failed"};
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        JsonNode? visible;
+        bool matched;
+        do
+        {
+            visible = await ReadVisibleAsync(ct);
+            matched = HasNewOutgoingMessage(before, visible, message);
+            if (matched || clock.ElapsedMilliseconds >= 9000) break;
+            await Task.Delay(350,ct);
+        }
+        while (true);
+        return new JsonObject
+        {
+            ["status"]=matched?"sent_ui":"unconfirmed",
+            ["confirmation"]=matched?"new_outgoing_bubble_visible":"outgoing_bubble_not_confirmed",
+            ["view"]=visible?.DeepClone()
+        };
+    }
+}

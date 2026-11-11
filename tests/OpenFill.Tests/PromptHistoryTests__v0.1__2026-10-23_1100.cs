@@ -62,5 +62,36 @@ public static class PromptHistoryTests
             T.Check("long-run request remains bounded", history.ToJsonString().Length < 28_000);
             return Task.CompletedTask;
         });
+        await T.Section("History: deduplicated search notes and compact context", () =>
+        {
+            var state = new JsonArray(User("Review the next live step."));
+            var ends = new List<int>();
+            var compact = new PromptHistoryCompactor();
+            for (var i = 0; i < 18; i++)
+            {
+                var name = i % 4 == 0 ? "search_logs" : i % 4 == 1 ? "wait" :
+                    i % 4 == 2 ? "screenshot" : "act";
+                var label = name switch {
+                    "search_logs" => "SEARCH_RESULT",
+                    "wait" => "WAIT_NOISE",
+                    "screenshot" => "IMAGE_NOISE",
+                    _ => "ACTION_EVIDENCE" };
+                var id = "c" + i;
+                state.Add(new JsonObject { ["type"] = "function_call",
+                    ["call_id"] = id, ["name"] = name, ["arguments"] = "{}" });
+                state.Add(new JsonObject { ["type"] = "function_call_output",
+                    ["call_id"] = id, ["output"] = label + new string('x', 1700) });
+                ends.Add(state.Count);
+                compact.Apply(state, ends, 15000, out _, out _, out _);
+            }
+            var summary = state[1]!.ToJsonString();
+            T.Contains("previous action evidence retained", summary, "act: ACTION_EVIDENCE");
+            T.NotContains("wait does not pollute checkpoint", summary, "wait: WAIT_NOISE");
+            T.NotContains("screenshot does not pollute checkpoint", summary, "screenshot: IMAGE_NOISE");
+            T.Check("duplicate searches appear at most once in checkpoint",
+                summary.Split("search_logs: SEARCH_RESULT", StringSplitOptions.None).Length <= 2);
+            T.Contains("context discourages repeated search", summary, "do not repeat the same query");
+            return Task.CompletedTask;
+        });
     }
 }

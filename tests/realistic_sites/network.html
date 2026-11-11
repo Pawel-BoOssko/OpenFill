@@ -1,0 +1,38 @@
+<!doctype html><html lang='pl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>People | ProNetwork fixture</title><style>
+*{box-sizing:border-box}body{margin:0;font:14px Segoe UI,Arial;background:#eef2f5;color:#17212b}
+header{height:60px;background:#fff;display:flex;align-items:center;padding:0 25px;gap:32px;border-bottom:1px solid #ddd}
+.brand{font-size:21px;font-weight:700;color:#1866a6}input,textarea,select{font:inherit;padding:9px;border:1px solid #b8c6d3;border-radius:6px}
+button{font:inherit;padding:8px 13px;border:1px solid #a7bdcd;background:white;border-radius:7px;cursor:pointer}
+button:hover{background:#e5f1ff}.shell{display:flex;height:calc(100vh - 60px);max-width:1480px;margin:auto;background:white}
+aside{width:395px;border-right:1px solid #dde5ea;display:flex;flex-direction:column;min-height:0}
+main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.toolbar{padding:16px;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center}
+.scroll{overflow:auto;min-height:0;flex:1}.item{padding:12px 14px;border-bottom:1px solid #eff1f3;min-height:64px;cursor:pointer}
+.item:hover{background:#e8f3ff}.item.active{background:#d9eefb}.name{font-weight:650}.preview{color:#576a78;font-size:12px;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.title{font-size:17px;font-weight:600;margin-right:auto}.chat{padding:24px;display:flex;flex-direction:column;gap:9px}
+.bubble{max-width:65%;padding:10px 14px;border-radius:12px;background:#fff;box-shadow:0 1px 3px #0001}
+.bubble.out{align-self:flex-end;background:#d5f6df}.composer{display:flex;gap:8px;padding:14px;background:#f8fafb}
+.small{font-size:12px;color:#647280}.pill{background:#d9ebff;color:#1761a0;border-radius:20px;padding:3px 9px;font-size:12px}
+table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:12px 15px;border-bottom:1px solid #e4eaef}
+th{background:#f1f5f8;position:sticky;top:0}.card{padding:22px;background:white;border-bottom:1px solid #e8eef1}
+</style></head><body><header><div class="brand">ProNetwork</div><nav role="navigation"><button>Home</button><button>My Network</button><button>Messages</button><button>Jobs</button></nav><span class="pill" id="sent-count">Messages sent: 0</span></header>
+<div class="shell"><aside><div class="toolbar"><strong class="title">People search</strong></div>
+<div class="toolbar"><input id="search" aria-label="Search people" placeholder="Name, company, title" style="width:100%"></div>
+<div class="toolbar"><select id="filter" aria-label="Filter industry"><option>All sectors</option><option>Technology</option><option>Manufacturing</option><option>Finance</option></select></div>
+<div id="scroll" class="scroll"><div role="list" aria-label="Search results" id="results"></div></div></aside>
+<main><div class="toolbar"><span class="title" id="profile">Select a person</span><button>Connect</button><button>Follow</button></div>
+<div class="card"><h2 id="headline">Professional profile</h2><p id="company">Company</p><p id="description">Current role and experience</p></div>
+<div class="toolbar"><span class="title">Messages</span></div><div id="conversation" class="scroll chat" role="log" aria-label="Conversation timeline"></div>
+<div class="composer"><textarea id="draft" aria-label="Write a message" rows="2" style="flex:1" placeholder="Write a message"></textarea><button id="send">Send</button></div></main></div><script>
+const people=Array.from({length:220},(_,i)=>({id:i,name:['Jordan','Alex','Chris','Taylor','Morgan','Pat','Robin'][i%7]+' '+['Hill','Kim','Brown','Lee','Adams','Chen'][Math.floor(i/7)%6]+' #'+(i+1),company:['Northwind Industries','Contoso Systems','Fabrikam','Alpine Group'][i%4],sector:['Technology','Manufacturing','Finance'][i%3],role:['Director of Operations','Chief Technology Officer','Strategy Manager','Business Architect'][i%4]}));
+let filtered=people.slice(),active=1,sent=0;const scroll=document.getElementById('scroll');
+function showList(){const first=Math.floor(scroll.scrollTop/77);const root=document.getElementById('results');root.innerHTML='<div style="height:'+first*77+'px"></div>';
+for(const p of filtered.slice(first,first+22)){const row=document.createElement('div');row.className='item'+(active===p.id?' active':'');row.setAttribute('role','listitem');row.setAttribute('data-profile-id','p'+p.id);row.innerHTML='<div class="name">'+p.name+'</div><div class="preview">'+p.role+' · '+p.company+'</div>';row.onclick=()=>profile(p.id);root.appendChild(row)}
+root.insertAdjacentHTML('beforeend','<div style="height:'+Math.max(0,(filtered.length-first-22)*77)+'px"></div>')}
+function profile(id){active=id;const p=people[id];document.getElementById('profile').textContent=p.name;document.getElementById('headline').textContent=p.role;document.getElementById('company').textContent=p.company;document.getElementById('description').textContent=p.sector+' specialist with 12 years of business transformation experience.';
+const c=document.getElementById('conversation');c.innerHTML='';for(let i=0;i<6;i++){const msg=document.createElement('article');msg.className='bubble'+(i%2?' out':'');msg.setAttribute('role','listitem');msg.textContent=['Hello, nice to connect','Thanks for reaching out','Are you available next week?'][i%3];c.appendChild(msg)}showList()}
+function apply(){const q=document.getElementById('search').value.toLowerCase(),industry=document.getElementById('filter').value;filtered=people.filter(p=>(p.name+' '+p.company+' '+p.role).toLowerCase().includes(q)&&(industry==='All sectors'||p.sector===industry));scroll.scrollTop=0;showList()}
+let searchTimer;document.getElementById('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(apply,350)};document.getElementById('filter').onchange=apply;scroll.onscroll=showList;
+document.getElementById('send').onclick=()=>{const draft=document.getElementById('draft');if(!draft.value.trim())return;const b=document.createElement('article');b.className='bubble out';b.setAttribute('role','listitem');b.textContent=draft.value;document.getElementById('conversation').appendChild(b);sent++;document.getElementById('sent-count').textContent='Messages sent: '+sent;draft.value=''};
+setTimeout(()=>profile(1),1200);
+</script></body></html>

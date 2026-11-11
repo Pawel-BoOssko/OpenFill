@@ -44,6 +44,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         public string? RunId { get; set; }
         public volatile string State = "running";   // running | waiting
         public bool Stopped { get; set; }
+        // Set at the cancellation source, not inferred from the final model outcome.
+        public string? StopReason { get; set; }
         public HistoryRecord Record { get; set; } = null!;
         public DateTime LastUrlSave { get; set; } = DateTime.MinValue;
         public string? Site { get; set; }
@@ -63,6 +65,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     private string? _maintReason, _maintBy;
     private readonly object _lock = new();
     private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingAsks = new();
+    public MobileCardGateway MobileCards { get; }
+    private MobileCardPipeServer MobilePipe { get; }
     private readonly ConcurrentDictionary<string, string> _openCards = new();
     private readonly ConcurrentDictionary<string, string?> _cardRun = new();   // card id -> task key (null: not tied to a task)
     private readonly Dictionary<string, RunState> _runs = new();                // task key -> running task
@@ -112,6 +116,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         _mockFactory = mockModelFactory;
         _mock = mockModelFactory is not null;
         _history = new HistoryStore(Path.Combine(paths.Root, "history", "tasks.ndjson"));
+        // Startup reconciliation only: no tasks from this AppHost exist yet.
+        try { _history.PersistInterruptedFromPreviousProcess(); } catch { /* history must not block startup */ }
         try
         {
             var last = _history.Load(300, Array.Empty<string>()).Where(r => r.EndedUtc is not null).OrderByDescending(r => r.EndedUtc).FirstOrDefault();
@@ -127,6 +133,9 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         Session.Log.Published += OnLogEvent;
         Session.Costs.Changed += () => { try { Send(CostsMessage()); } catch { } };
         _panel.Received += OnPanelMessage;
+        MobileCards = new MobileCardGateway((id, answer) => _pendingAsks.TryGetValue(id, out var tcs) && tcs.TrySetResult(answer));
+        MobilePipe = new MobileCardPipeServer(MobileCards);
+        MobilePipe.Start();
     }
 
     public Task InitAsync(CancellationToken ct = default) => Session.InitAsync(ct);
@@ -706,7 +715,13 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
                 ? "The browser tab of that task is still open, exactly as it was left."
                 : "The earlier tab is no longer known; this is a new tab.";
         var prior = string.IsNullOrWhiteSpace(options?.PriorContext) ? "" : options!.PriorContext!.Trim() + " ";
-        return "Context: this task continues an earlier one. " + prior + note + " Look at the page first (get_page) before you act.\n\nTask: " + task;
+        // OF-000043: a continuation often gets a NEW tab on a generic start
+        // page. Requiring get_page there wasted a full model turn and DOM read.
+        // Only a reused/reopened task page can need an initial view check.
+        var next = start.Continued || start.Reopened
+            ? "Inspect the CURRENT task page only if its state is needed; prefer a targeted check or the initial supplied view over get_page."
+            : "This is a new tab, not the prior task page. Do not call get_page on the unrelated start page. If the task provides an explicit target URL, navigate there directly with view_mode=content.";
+        return "Context: this task continues an earlier one. " + prior + note + " " + next + "\n\nTask: " + task;
     }
 
     public Task<RunConclusion>? StartRun(string task) => StartRun(task, null);
@@ -892,6 +907,9 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
 
             run = Session.CreateRun(cdp, new RunInteraction(this, st), new Gate(this, st), _mock ? _mockFactory!() : null);
             st.Run = run;
+            run.SetUsageScope(st.Key, options?.ContinueFromKey, st.Who,
+                options?.GoalId, options?.GoalText ?? task);
+            run.SetStopReasonAccessor(() => st.StopReason);
             var runId = run.Begin();
             lock (_lock)
             {
@@ -914,7 +932,18 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             }
             else
                 await run.Browser.InitAsync(ct);
-            result = await run.FillAsync(prompt, ct, options?.Verified);
+            if (options?.ExecutionMode == "local_plan_v1_draft")
+            {
+                if (string.IsNullOrWhiteSpace(options.StartUrl))
+                    throw new ArgumentException("local_plan_start_url_required");
+                await run.Browser.NavigateAsync(options.StartUrl, ct);
+                prompt = task;
+                run.Log.Write("archflow", "plan_route",
+                    "Explicit bounded draft-mode plan after initial navigation",
+                    new { taskKey = st.Key, mode = options.ExecutionMode,
+                          startHost = new Uri(options.StartUrl).Host });
+            }
+            result = await run.FillAsync(prompt, ct, options?.Verified, options?.ExecutionMode);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -935,9 +964,17 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
 
         // A stop by the person at the OpenFill window is final: it is reported as "stopped", not as a failure,
         // so a caller (ChatGPT) does not start the task again on its own.
-        if (st.Stopped && ct.IsCancellationRequested)
-            result = new RunConclusion("stopped", "The task was stopped by the person at the OpenFill window, on purpose.", result.SiteKnowledge);
-        var finalStatus = ct.IsCancellationRequested ? "stopped" : result.Status;
+        if (ct.IsCancellationRequested)
+        {
+            result = st.StopReason switch
+            {
+                "user_stop" => new RunConclusion("stopped", "The person at the OpenFill window stopped this task.", result.SiteKnowledge),
+                "requester_cancel" => new RunConclusion("cancelled", "The calling model cancelled this task through MCP.", result.SiteKnowledge),
+                "upgrade_interrupted" => new RunConclusion("interrupted", "The task was interrupted by an OpenFill upgrade.", result.SiteKnowledge),
+                _ => new RunConclusion("failed", "The task was cancelled from an unknown source.", result.SiteKnowledge)
+            };
+        }
+        var finalStatus = result.Status;
         if (run is not null) _finishedProgress[st.Key] = run.Meter.Snapshot();
         TrimFinishedProgress();
         var resultMsg = ResultMessage(st, result, finalStatus);
@@ -977,8 +1014,12 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         return await t;
     }
 
-    /// <summary>Stops one task (by its key), or all of them when the key is null.</summary>
-    public void Stop(string? taskKey)
+    /// <summary>Stops one task from the OpenFill window, or all tasks when no key is given.</summary>
+    public void Stop(string? taskKey) => StopWithReason(taskKey, "user_stop");
+    public void StopFromRequester(string? taskKey) => StopWithReason(taskKey, "requester_cancel");
+    public void StopForMaintenance(string? taskKey) => StopWithReason(taskKey, "upgrade_interrupted");
+
+    private void StopWithReason(string? taskKey, string reason)
     {
         List<RunState> targets;
         lock (_lock)
@@ -989,8 +1030,12 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         }
         foreach (var st in targets)
         {
-            st.Stopped = true;
-            (st.Run?.Log ?? Session.Log).Write("app", "stop", "Stopped at the user's request", status: "warn");
+            // First stop wins: maintenance must not overwrite a deliberate user stop.
+            if (st.StopReason is not null) continue;
+            st.StopReason = reason;
+            st.Stopped = reason == "user_stop";
+            (st.Run?.Log ?? Session.Log).Write("app", "stop", "Task cancellation requested",
+                new { stopReason = reason, taskKey = st.Key }, status: "warn");
             try { st.Cts.Cancel(); } catch { }
             CancelOpenCards(st.Key);
         }
@@ -999,6 +1044,107 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
     public void Stop() => Stop((string?)null);
 
     /// <summary>Screenshot of a task's browser tab (the newest running task's, or the open tab) saved under screenshots\ (MCP serves it as a private link). Keeps the newest 60 files.</summary>
+    /// <summary>
+    /// Zero browser-model calls: a single direct CDP navigation to the previously bound
+    /// native URL and a single title/URL DOM evaluation. Uses the normal tab lifecycle
+    /// and domain lock, does not search chat history or invoke the planner.
+    /// </summary>
+    public async Task<JsonObject> ReadSelfChatTitleAsync(
+        string platform, string nativeChatId, CancellationToken ct, string? expectedFallbackMarker = null)
+    {
+        if (platform is not ("chatgpt" or "claude") ||
+            !Guid.TryParse(nativeChatId, out var parsed) || nativeChatId.Length != 36)
+            return new JsonObject { ["status"]="invalid_native_id" };
+
+        var domain = platform == "chatgpt" ? "chatgpt.com" : "claude.ai";
+        var url = "https://" + domain + (platform == "chatgpt" ? "/c/" : "/chat/") + parsed.ToString("D");
+        if (Tabs is null) return new JsonObject { ["status"]="direct_read_unavailable",
+            ["message"]="OpenFill has no active WebView2 tab manager." };
+
+        var key = "self-title-" + Guid.NewGuid().ToString("N");
+        if (Locks.TryAcquireOne(key, "mcp_self_chat", "read own chat title", domain) is { } holder)
+            return new JsonObject { ["status"]="domain_busy",
+                ["message"]="Another task is using " + domain, ["open_task_id"]=holder.TaskKey };
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(20));
+        Browser.BrowserController? browser = null;
+        var begun = false;
+        try
+        {
+            var start = await Tabs.BeginAsync(key, "Self chat title", null,
+                deadline.Token, shortLabel:"Self chat title", requester:"OpenFill SelfChat Direct",
+                preferredDomain:domain);
+            begun = true;
+            var connection = Tabs.ConnectionOf(start.TabId);
+            if (connection is null)
+                return new JsonObject { ["status"]="browser_tab_unavailable" };
+
+            browser = new Browser.BrowserController(new CdpSession(connection), Session.Log);
+            await browser.InitAsync(deadline.Token);
+            await browser.NavigateAsync(url, deadline.Token);
+
+            // One combined DOM read after page readiness. Never infer from navigation task labels.
+            // The second argument is a plain alphanumeric exact-match token, never
+            // a full message or a search query. Evaluate a Boolean in the chat's
+            // central message pane and never transmit message text to the server.
+            var expression = expectedFallbackMarker is null
+                ? "({url:location.href,title:document.title,ready:document.readyState})"
+                : "({url:location.href,title:document.title,ready:document.readyState," +
+                  "markerVisible:(document.querySelector('main')?.innerText?.includes(" +
+                  System.Text.Json.JsonSerializer.Serialize(expectedFallbackMarker) + ")===true)})";
+            var node = await browser.RunJsAsync(expression, deadline.Token);
+            if (node?["ok"]?.GetValue<bool>() != true || node["value"] is not JsonObject value)
+                return new JsonObject { ["status"]="dom_read_failed" };
+
+            var actual = value["url"]?.GetValue<string>();
+            if (!Uri.TryCreate(actual, UriKind.Absolute, out var uri) ||
+                !string.Equals(uri.GetLeftPart(UriPartial.Path).TrimEnd('/'),
+                    url, StringComparison.OrdinalIgnoreCase))
+                return new JsonObject { ["status"]="target_mismatch",
+                    ["expected_url"]=url, ["actual_url"]=actual };
+
+            if (expectedFallbackMarker is not null &&
+                value["markerVisible"]?.GetValue<bool>() != true)
+                return new JsonObject { ["status"]="marker_not_visible",
+                    ["verified_url"]=actual, ["native_chat_id"]=parsed.ToString("D"),
+                    ["fallback_visible"]=false };
+
+            var originalTitle = value["title"]?.GetValue<string>()?.Trim() ?? "";
+            var title = originalTitle;
+            if (platform == "chatgpt" && title.EndsWith(" | ChatGPT", StringComparison.OrdinalIgnoreCase))
+                title = title[..^" | ChatGPT".Length].Trim();
+            if (platform == "claude" && title.EndsWith(" - Claude", StringComparison.OrdinalIgnoreCase))
+                title = title[..^" - Claude".Length].Trim();
+
+            if (expectedFallbackMarker is null && (title.Length == 0 || title is "ChatGPT" or "Claude"))
+                return new JsonObject { ["status"]="title_unavailable", ["verified_url"]=actual,
+                    ["native_chat_id"]=parsed.ToString("D"),
+                    ["message"]="Page loaded but did not expose a specific chat title." };
+
+            return new JsonObject {
+                ["status"]="ok", ["platform"]=platform, ["native_chat_id"]=parsed.ToString("D"),
+                ["verified_url"]=actual, ["name"]=title, ["browser_title"]=originalTitle,
+                ["native_url_bound"]=true, ["browser_model_calls"]=0, ["search_calls"]=0,
+                ["fallback_visible"]=expectedFallbackMarker is null ? null : true
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new JsonObject { ["status"]="direct_read_timeout",
+                                    ["message"]="Direct browser title read was cancelled or exceeded 20 seconds." };
+        }
+        catch (Exception ex)
+        {
+            return new JsonObject { ["status"]="direct_read_error", ["message"]=ex.Message };
+        }
+        finally
+        {
+            try { browser?.Detach(); } catch { }
+            if (begun) { try { await Tabs.EndAsync(key); } catch { } }
+            Locks.ReleaseAll(key);
+        }
+    }
     /// <summary>Direct model-free snapshot of an existing tab: no new task, no navigation.</summary>
     public async Task<JsonObject> CapturePageAsync(string taskKey, string? expectedUrl, string mode,
         string selector, string regex, string? directory, int maxMatches, CancellationToken ct)
@@ -1143,6 +1289,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         _cardRun[id] = st?.Key;
         var json = card.ToJsonString(EventLog.Ndjson);
         _openCards[id] = json;
+        MobileCards.Open(card, st?.Key, TimeSpan.FromMinutes(Config.UserAnswerTimeoutMinutes));
         _panel.Send(json);
         if (st is not null) { st.State = "waiting"; Tabs?.SetState(st.Key, "waiting"); SendState(); }
         try { Attention?.Invoke(true, card["question"]?.GetValue<string>() ?? card["what"]?.GetValue<string>() ?? ""); } catch { }
@@ -1156,6 +1303,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         }
         finally
         {
+            MobileCards.Close(id, tcs.Task.IsCompletedSuccessfully ? "answered" : "expired_or_cancelled");
             _pendingAsks.TryRemove(id, out _);
             _openCards.TryRemove(id, out _);
             _cardRun.TryRemove(id, out _);
@@ -1207,6 +1355,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         }
         catch { }
         _panel.Received -= OnPanelMessage;
+        await MobilePipe.DisposeAsync();
         await Session.DisposeAsync();
     }
 

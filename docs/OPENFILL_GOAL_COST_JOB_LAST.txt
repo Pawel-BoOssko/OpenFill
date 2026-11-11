@@ -1,0 +1,7 @@
+GOAL_COST_REPORT_OK 317 goals
+invitation goals 1 tokens 310075 provider_units 0
+message goals 152 tokens 106669115 provider_units 0
+other goals 43 tokens 56699771 provider_units 0
+publication goals 17 tokens 18736319 provider_units 0
+reading goals 101 tokens 88635440 provider_units 0
+registration goals 3 tokens 7748420 provider_units 0

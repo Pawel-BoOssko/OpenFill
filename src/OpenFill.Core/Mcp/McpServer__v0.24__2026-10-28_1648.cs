@@ -6,6 +6,8 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using OpenFill.Core.Agent;
+using OpenFill.Core.Config;
 
 namespace OpenFill.Core.Mcp;
 
@@ -29,14 +31,33 @@ public sealed class McpServer : IAsyncDisposable
 
     private readonly string? _shotsDir;
     private readonly FileTransfer? _files;
+    private readonly string? _sharedFolder;
+    private readonly string? _operationalDatabasePath;
+    private readonly SelfChatBindingStore _selfChatBindings;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SelfChatSteering.Context>
+        _pendingSelfChats = new(StringComparer.Ordinal);
+
+    // A06 OF-000026: MCP capture lookup must use the SAME configured shared
+    // directory as PageCaptureService and the file-transfer endpoint.
+    // Never reconstruct a separate path from UserProfile.
+    private string SharedCaptureDirectory => Path.Combine(
+        _sharedFolder ?? throw new InvalidOperationException("mcp_shared_folder_unavailable"),
+        "captures");
+    private string SharedFilterDirectory => Path.Combine(
+        _sharedFolder ?? throw new InvalidOperationException("mcp_shared_folder_unavailable"),
+        "filters");
 
     /// <summary>Address of the MCP endpoint as the caller sees it (public when there is one). Screenshot links are built from it.</summary>
     public string? LinkBase { get; set; }
 
-    public McpServer(McpTaskManager tasks, string secret, int port = 0, Action<string>? log = null, string? screenshotsDir = null, string? sharedFolder = null, IJevMessageInspector? jevInspector = null)
+    public McpServer(McpTaskManager tasks, string secret, int port = 0, Action<string>? log = null, string? screenshotsDir = null, string? sharedFolder = null, IJevMessageInspector? jevInspector = null, string? operationalDatabasePath = null)
     {
         _shotsDir = screenshotsDir;
-        _files = string.IsNullOrWhiteSpace(sharedFolder) ? null : new FileTransfer(sharedFolder);
+        _sharedFolder = string.IsNullOrWhiteSpace(sharedFolder)
+            ? null : Path.GetFullPath(sharedFolder);
+        _files = _sharedFolder is null ? null : new FileTransfer(_sharedFolder);
+        _operationalDatabasePath = operationalDatabasePath;
+        _selfChatBindings = new SelfChatBindingStore(operationalDatabasePath);
         _tasks = tasks;
         _jevInspector = jevInspector;
         _secret = secret;
@@ -129,14 +150,14 @@ public sealed class McpServer : IAsyncDisposable
             {
                 var replies = new JsonArray();
                 foreach (var item in batch)
-                    if (item is JsonObject o && await HandleMessageAsync(o) is { } r) replies.Add(r);
+                    if (item is JsonObject o && await HandleMessageAsync(o, req) is { } r) replies.Add(r);
                 if (replies.Count == 0) { res.StatusCode = 202; res.Close(); return; }
                 await WriteAsync(res, 200, "application/json", replies.ToJsonString());
                 return;
             }
             if (parsed is JsonObject single)
             {
-                var reply = await HandleMessageAsync(single);
+                var reply = await HandleMessageAsync(single, req);
                 if (reply is null) { res.StatusCode = 202; res.Close(); return; }
                 await WriteAsync(res, 200, "application/json", reply.ToJsonString());
                 return;
@@ -181,7 +202,7 @@ public sealed class McpServer : IAsyncDisposable
 
     // ------------------------------------------------------------------ JSON-RPC
 
-    private async Task<JsonObject?> HandleMessageAsync(JsonObject msg)
+    private async Task<JsonObject?> HandleMessageAsync(JsonObject msg, HttpListenerRequest req)
     {
         var method = msg["method"]?.GetValue<string>();
         var id = msg["id"];
@@ -195,7 +216,7 @@ public sealed class McpServer : IAsyncDisposable
             case "tools/list":
                 return Rpc.Result(id, new JsonObject { ["tools"] = ToolList() });
             case "tools/call":
-                return Rpc.Result(id, await CallToolAsync(msg["params"] as JsonObject));
+                return Rpc.Result(id, await CallToolAsync(msg["params"] as JsonObject, req));
             default:
                 return Rpc.Error(id, -32601, "Method not found: " + method);
         }
@@ -210,7 +231,8 @@ public sealed class McpServer : IAsyncDisposable
             ["protocolVersion"] = version,
             ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
             ["serverInfo"] = new JsonObject { ["name"] = "openfill-mcp", ["version"] = BuildInfo.Version },
-            ["instructions"] = "OpenFill drives a real web browser (with the user's own logged-in sessions) through its own built-in agent. " +
+            ["instructions"] = "API/MCP FIRST: Before delegating to OpenFill, check whether an already connected provider API or MCP tool can perform the requested operation. Prefer that direct interface over browser automation for ordinary Gmail email, Google Calendar events, Drive files, Slack and other structured services. GITHUB OPTIONAL HINT: for GitHub repository and file work, consider the native GitHub connector and/or a Git autosync workflow when available and suitable. This is only a suggestion, never an obligation or a condition for starting an OpenFill task. The calling model decides how to proceed according to the user's actual request; OpenFill must not enforce GitHub routing. Autosync is an option to consider, not a request to configure synchronization. EXCEPTION: when OpenFill's own Luna agent is completing an authentication flow, it may open a mailbox in its browser to obtain a one-time sign-in code, sign-in link or temporary credentials. The calling model should not be required to retrieve those authentication messages through its API/MCP. Use OpenFill for capabilities not supported by an available authorized connector, when browser UI interaction/verification is explicitly required, and for its own in-flow authentication. Do not assume a connector is available; verify the capability. Do not split one task between interfaces unnecessarily. " +
+                               "OpenFill drives a real web browser (with the user's own logged-in sessions) through its own built-in agent. " +
                                "Hand it a web task with openfill_start_task, then follow the returned status until it is done. Call openfill_info for the version, settings, costs and recent errors when something looks wrong. " +
                                "READ THIS FIRST: OpenFill has its own autonomous model. Delegate one complete result-oriented task, not a sequence of login, navigation and submission microtasks. OpenFill first attempts authentication with authorized available information. If it asks you a question (needs_input), answer with openfill_reply using available data. If it waits for the person at the computer (waiting_for_user), that person interacts in the OpenFill window; do not ask them to say ready in chat, and monitor using openfill_task_status (each call waits up to 30 seconds). Do not restart the task merely because login or human input is needed. " +
                                "HOW TO WORK WITH IT. (1) State the full desired result and how to verify success. Include ALL known relevant information in one task (site, account, names, contact details, addresses, texts, dates, values, full file paths and authorized authentication data). Foresee task-specific decisions, giving preferred choices and fallbacks, but avoid generic instructions and micromanagement. " +
@@ -253,8 +275,47 @@ public sealed class McpServer : IAsyncDisposable
         JsonObject taskId() => Prop("string", "Task id returned by openfill_start_task. Optional while only one task is open; required when several are open.");
         return new JsonArray
         {
+            ToolDef("openfill_self_chat_identity",
+                "Return calling chat's stable session identity when OpenAI MCP metadata exists. Native ChatGPT/Claude URL ID requires unique browser verification; never confuse MCP transport session ID with native conversation ID.",
+                new JsonObject {
+                    ["platform"] = Prop("string", "Optional chatgpt or claude; may be obtained from metadata"),
+                    ["fallback_id"] = Prop("string", "OPTIONAL. 20-32 random alphanumeric ASCII characters. MUST be visibly printed in THIS chat before passing to MCP; use to find exact native URL if session ID cannot be converted."),
+                    ["wait_seconds"] = wait()
+                }, Array.Empty<string>(), idempotent:true, readOnly:true),
+            ToolDef("openfill_self_chat_name",
+                "Read the title of THIS chat only. First publish a random 20-32 alphanumeric fallback_id visibly in the calling conversation, then pass the same token. One-token search only if no direct URL.",
+                new JsonObject {
+                    ["platform"] = Prop("string", "Optional chatgpt or claude; automatically detected for ChatGPT when session metadata exists"),
+                    ["fallback_id"] = Prop("string", "REQUIRED: first generate one random 20-32 character ASCII letters/digits token and WRITE IT as a visible message in THIS chat, not only in tool arguments or a file; pass the exact token. Browser searches this token once."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"fallback_id"}, idempotent:true, readOnly:true),
+            ToolDef("openfill_self_chat_rename",
+                "Rename only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this conversation, then pass it unchanged. No preceding ID lookup. When native URL known, open direct; otherwise one exact-token search.",
+                new JsonObject {
+                    ["new_name"] = Prop("string", "Exact new title, 1-120 printable characters"),
+                    ["platform"] = Prop("string", "Optional chatgpt or claude"),
+                    ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"new_name", "fallback_id"}, idempotent:false),
+            ToolDef("openfill_self_chat_archive",
+                "Archive only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known; else one exact-token search.",
+                new JsonObject {
+                    ["platform"] = Prop("string", "Optional chatgpt or claude"),
+                    ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"fallback_id"}, idempotent:false),
+            ToolDef("openfill_self_chat_move_project",
+                "Move only THIS calling chat to the named project. First publish random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known, otherwise one search by exact token.",
+                new JsonObject {
+                    ["project_name"] = Prop("string", "Unique exact target project name, 1-150 characters"),
+                    ["platform"] = Prop("string", "Optional chatgpt or claude"),
+                    ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
+                    ["wait_seconds"] = wait()
+                }, new[] {"project_name", "fallback_id"}, idempotent:false),
             ToolDef("openfill_start_task",
 """
+API/MCP FIRST: Check the connected API/MCP tools available to your own client before starting browser automation. Prefer provider-native APIs/MCP for supported operations. For example, read/search/send Gmail mail through a Gmail connector, not through a browser; use connected calendar, Drive or Slack tools likewise. For GitHub tasks you may consider using your own GitHub connector and/or an existing Git autosync mechanism, if appropriate. This is a nonbinding suggestion, not a required route: choose based on the user's task and the capabilities actually available. Do not configure autosync unless explicitly asked. When direct connectors cannot perform the requested operation, normal OpenFill browser workflow remains available. AUTHENTICATION EXCEPTION: Luna within OpenFill may itself read email in its own browser to obtain one-time login codes, sign-in links or temporary credentials needed in the current task. Do not require the calling model to fetch those messages via API/MCP. Never claim a connector exists without checking. This is a routing preference, not a blanket prohibition.
+
 You delegate complete, outcome-oriented web tasks to OpenFill, an autonomous AI agent operating a real browser with access to the user's existing browser sessions.
 
 OpenFill is not a simple browser automation tool. It has its own reasoning model and can independently navigate websites, research information, fill forms, make decisions within the task's scope, handle authentication, execute multi-step workflows, and verify results.
@@ -417,6 +478,8 @@ For external applications such as Networking Radar, supply a unique idempotency_
                     ["chat"] = Prop("string", "REQUIRED. The fixed name of this chat (for example 'Skakanka', 'Lupus website'): chosen once, then the same string in every call from this chat and in every tool of this workspace. OpenFill refuses the task without it. It sets the second colour, so the person sees at once which chat of which model asked for the task."),
                     ["title"] = Prop("string", "Optional. A short name for the task (2 to 5 words, for example 'Skakanka - Google Business profile'). It is shown on the browser tab and on the cards in the OpenFill window, so the person can tell the tasks apart."),
                     ["idempotency_key"] = Prop("string", "Optional stable caller request ID (1-128 ASCII letters, digits, dot, dash, underscore or colon). Reusing it with the same requester/chat and identical task returns the existing task_id, including after restart. Reusing it for different task text returns idempotency_conflict. Recommended for event registrations; distinct users/events need distinct keys."),
+                    ["execution_mode"] = Prop("string", "Optional EXPLICIT opt-in: local_plan_v1_draft. One bounded plan from Luna then local same-origin link navigation and draft textbox editing, verified locally; no save/send/submit, no automatic fallback. Requires start_url. Omit for normal tasks."),
+                    ["start_url"] = Prop("string", "Required only for execution_mode=local_plan_v1_draft: absolute http(s) URL with no credentials or fragment. The browser navigates there before the one-call local plan."),
                     ["wait_seconds"] = wait()
                 },
                 new[] { "task", "requester", "chat" }, idempotent: false),
@@ -515,6 +578,106 @@ This is a current loaded-DOM snapshot, not a complete remote-site crawl.
                     ["max_matches"] = Prop("integer","Maximum filtered matches stored; default 50")
                 },
                 new[] { "task_id","requester","chat" }, idempotent:false, readOnly:true),
+            ToolDef("openfill_operation_metrics",
+"""
+Compact aggregate counts from the current instance's SQLite operational ledger:
+batches, items, attempts, verified, uncertain, failed, skipped, planned and evidence counts
+grouped by procedure. No browser access and no model invocations.
+Filters provider/account_id if supplied; empty means all accounts in this local instance.
+""",
+                new JsonObject {
+                    ["provider"] = Prop("string", "Optional provider, e.g. linkedin"),
+                    ["account_id"] = Prop("string", "Optional exact account ID")
+                }, Array.Empty<string>(), idempotent:true, readOnly:true),
+            ToolDef("openfill_procedures",
+"""
+Returns the small catalog of supported, versioned procedures and whether they are candidate, verified or suspended.
+Only verified procedures are eligible for automatic deterministic execution. The ordinary OpenFill autonomous agent remains available for other tasks.
+""",
+                new JsonObject(), Array.Empty<string>(), idempotent: true, readOnly: true),
+            ToolDef("openfill_prepare_airbnb_price_batch",
+"""
+Prepare Airbnb price changes for a complete inclusive date range. Requires actual per-date observed prices and evidence references. Computes old/new values, saves one operation per date, produces a file manifest. Does NOT modify the Airbnb website.
+""",
+                new JsonObject {
+                    ["account_id"] = Prop("string", "Exact host account ID"),
+                    ["listing_id"] = Prop("string", "Exact Airbnb listing ID"),
+                    ["currency"] = Prop("string", "Currency code ISO 4217"),
+                    ["rate_plan"] = Prop("string", "Rate plan or empty"),
+                    ["request_id"] = Prop("string", "Stable caller request ID"),
+                    ["requester"] = Prop("string", "Caller name"),
+                    ["chat"] = Prop("string", "Caller conversation"),
+                    ["first_date"] = Prop("string", "YYYY-MM-DD inclusive"),
+                    ["last_date"] = Prop("string", "YYYY-MM-DD inclusive"),
+                    ["percent_change"] = Prop("number", "Percentage change, e.g. 35 for +35%"),
+                    ["price_decimals"] = Prop("integer", "0 or 2 decimal places"),
+                    ["observations"] = new JsonObject {
+                        ["type"] = "array",
+                        ["items"] = new JsonObject {
+                            ["type"]="object",
+                            ["properties"] = new JsonObject {
+                                ["date"]=Prop("string", "YYYY-MM-DD"),
+                                ["old_price"]=Prop("number", "Observed existing day rate"),
+                                ["source_ref"]=Prop("string", "Capture or trustworthy observed source")
+                            },
+                            ["required"] = new JsonArray("date","old_price","source_ref")
+                        }
+                    }
+                },
+                new[] { "account_id", "listing_id", "currency", "rate_plan", "request_id", "requester", "chat",
+                         "first_date", "last_date", "percent_change", "price_decimals", "observations" },
+                idempotent: true, readOnly: false),
+            ToolDef("openfill_prepare_linkedin_batch",
+"""
+Prepare a persisted LinkedIn message batch with exact sender account, requester, chat, request ID and list of target/message pairs. One SQLite pass resolves cached threads and profile links; returns operation IDs. No navigation or sending occurs.
+""",
+                new JsonObject {
+                    ["account_id"] = Prop("string", "Verified sender account scope"),
+                    ["request_id"] = Prop("string", "Stable idempotent request ID"),
+                    ["requester"] = Prop("string", "Caller name"),
+                    ["chat"] = Prop("string", "Caller conversation"),
+                    ["items"] = new JsonObject {
+                        ["type"]="array",
+                        ["items"] = new JsonObject {
+                            ["type"]="object",
+                            ["properties"]= new JsonObject {
+                                ["target"]=Prop("string", "Exact provider ID, profile or thread URL"),
+                                ["message"]=Prop("string", "Exact intended text")
+                            },
+                            ["required"]=new JsonArray("target","message")
+                        }
+                    }
+                },
+                new[] { "account_id", "request_id", "requester", "chat", "items" },
+                idempotent: true, readOnly: false),
+            ToolDef("openfill_memory_query",
+"""
+Queries durable OpenFill operational memory on PBOX1, scoped by exact provider and sender account.
+Read-only, no WebView2. mode=identities searches provider IDs, profile links and names; mode=messages searches SQLite FTS5; mode=observations finds prior capture files by host and URL substring without a browser read.
+""",
+                new JsonObject {
+                    ["mode"] = Prop("string", "identities, messages or observations"),
+                    ["provider"] = Prop("string", "Exact provider name"),
+                    ["account_id"] = Prop("string", "Known provider sender account identifier"),
+                    ["search"] = Prop("string", "Provider ID, profile URL, contact name or full-text expression"),
+                    ["limit"] = Prop("integer", "Maximum 100, default 20")
+                },
+                new[] { "mode", "provider", "search" }, idempotent: true, readOnly: true),
+            ToolDef("openfill_query_capture",
+"""
+Search an ALREADY SAVED capture by capture_id (preferred) or a local file by source_path, without WebView2 navigation or Luna.
+capture_id resolves the immutable manifest and verifies SHA256 before filtering. Historical capture data is not proof of current website state.
+Accepted operations: text_literal, text_regex, text_count, json_select, ndjson_select. An empty match is not a tool failure.
+""",
+                new JsonObject {
+                    ["capture_id"] = Prop("string", "Existing capture ID; preferred over source_path"),
+                    ["file_kind"] = Prop("string", "text, elements or html; default text"),
+                    ["source_path"] = Prop("string", "Legacy absolute path when capture_id is not provided"),
+                    ["operation"] = Prop("string", "text_literal, text_regex, text_count, json_select, ndjson_select"),
+                    ["query"] = Prop("string", "Literal text, regex or jq expression"),
+                    ["max_preview_rows"] = Prop("integer", "At most 30 preview lines, default 10")
+                },
+                new[] { "operation", "query" }, idempotent: true, readOnly: true),
             ToolDef("openfill_screenshot",
 """
 Takes a screenshot of the current OpenFill browser page and returns the JPEG image itself (an image in the tool result) plus a private URL as a fallback.
@@ -587,7 +750,160 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
         return fallback;
     }
 
-    private async Task<JsonObject> CallToolAsync(JsonObject? p)
+    private JsonObject PrepareLinkedInBatch(JsonObject? args)
+    {
+        if (string.IsNullOrWhiteSpace(_operationalDatabasePath))
+            return new JsonObject { ["status"] = "storage_unconfigured" };
+        var items = (args?["items"] as JsonArray)?.OfType<JsonObject>()
+            .Select(x => new ProcedureTarget(Str(x,"target") ?? "", Str(x,"message") ?? ""))
+            .ToArray() ?? [];
+        return new LinkedInBatchPlanner(new OperationalMemoryStore(_operationalDatabasePath)).Prepare(
+            Str(args,"account_id") ?? "", Str(args,"request_id") ?? "", items,
+            Str(args,"requester") ?? "", Str(args,"chat") ?? "");
+    }
+
+    private JsonObject PrepareAirbnbBatch(JsonObject? args)
+    {
+        if (string.IsNullOrWhiteSpace(_operationalDatabasePath))
+            return new JsonObject { ["status"] = "storage_unconfigured" };
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var observed = (args?["observations"] as JsonArray)?.OfType<JsonObject>()
+            .Select(x => new AirbnbPriceObservation(
+                DateOnly.ParseExact(Str(x,"date") ?? "", "yyyy-MM-dd", culture),
+                decimal.Parse(x["old_price"]?.ToString() ?? "", culture),
+                Str(x,"source_ref") ?? "")).ToArray() ?? [];
+        return new AirbnbPricePlanner(new OperationalMemoryStore(_operationalDatabasePath)).Prepare(
+            Str(args,"account_id") ?? "", Str(args,"listing_id") ?? "",
+            Str(args,"currency") ?? "", Str(args,"rate_plan") ?? "",
+            Str(args,"request_id") ?? "", Str(args,"requester") ?? "",
+            Str(args,"chat") ?? "",
+            DateOnly.ParseExact(Str(args,"first_date") ?? "", "yyyy-MM-dd", culture),
+            DateOnly.ParseExact(Str(args,"last_date") ?? "", "yyyy-MM-dd", culture),
+            decimal.Parse(args?["percent_change"]?.ToString() ?? "", culture),
+            Int(args,"price_decimals",0), observed);
+    }
+
+    private JsonObject MemoryQuery(JsonObject? args)
+    {
+        if (string.IsNullOrWhiteSpace(_operationalDatabasePath))
+            return new JsonObject { ["status"] = "storage_unconfigured" };
+        var provider = Str(args, "provider");
+        var accountId = Str(args, "account_id");
+        var search = Str(args, "search");
+        var mode = Str(args, "mode");
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(search) ||
+            (mode != "observations" && string.IsNullOrWhiteSpace(accountId)))
+            return new JsonObject { ["status"] = "invalid_query", ["reason"] = "provider/search required; account_id required for identities and messages" };
+        var memory = new OperationalMemoryStore(_operationalDatabasePath);
+        var limit = Math.Clamp(Int(args, "limit", 20), 1, 100);
+        var results = mode switch {
+            "identities" => memory.FindIdentities(provider, accountId, search, limit),
+            "messages" => memory.SearchMessages(provider, accountId, search, limit),
+            "observations" => memory.RecentObservations(provider, accountId, search, limit),
+            _ => null
+        };
+        return results is null
+            ? new JsonObject { ["status"] = "invalid_mode", ["reason"] = "identities, messages or observations" }
+            : new JsonObject { ["status"] = "ok", ["results"] = results, ["count"] = results.Count };
+    }
+
+    private async Task<JsonObject> RunSelfChatAsync(string action, HttpListenerRequest req, JsonObject? args, JsonObject? requestMeta)
+    {
+        var ctx = SelfChatSteering.Resolve(req, args, requestMeta);
+        if (_selfChatBindings.TryGet(ctx.SelfSessionHash, ctx.Platform, out var nativeId))
+            ctx = ctx with { NativeChatId = nativeId, IdentitySource = "server_verified_binding" };
+        if (action == "identity" && (!ctx.HasFallbackId || ctx.IdentitySource == "server_verified_binding" || ctx.Platform.Length == 0))
+            return SelfChatSteering.IdentityStatus(ctx);
+        if (SelfChatSteering.ValidateAction(ctx, action, args) is { } rejected)
+            return rejected;
+        if (action == "name" && ctx.IdentitySource == "server_verified_binding" &&
+            ctx.NativeChatId is not null)
+        {
+            var direct = await _tasks.ReadSelfChatTitleAsync(ctx.Platform, ctx.NativeChatId, _cts.Token);
+            direct["identity_source"] = "server_verified_binding";
+            direct["self_chat_operation"] = action;
+            return direct;
+        }
+        var taskText = SelfChatSteering.BuildBrowserTask(ctx, action, args);
+        var result = await _tasks.StartAsync(
+            taskText, Math.Clamp(Int(args, "wait_seconds", 5), 0, 10), _cts.Token,
+            title: "Self chat " + action,
+            requester: "OpenFill Self Chat Steering",
+            chat: SelfChatSteering.TaskChatLabel(ctx));
+        result["self_chat_operation"] = action;
+        result["identity_source"] = ctx.IdentitySource;
+        result["verification"] = ctx.IdentitySource == "server_verified_binding" ?
+            "Direct URL mode: verify target and account before action." :
+            "First binding: exact visible fallback_id search, URL and account verification.";
+        if (result["task_id"]?.GetValue<string>() is { } taskId)
+            _pendingSelfChats[taskId] = ctx;
+        await ObserveSelfChatCompletionAsync(result);
+        return result;
+    }
+    private async Task<JsonObject> SelfChatStatusAsync(string? taskId, int wait)
+    {
+        if (taskId is not null && _pendingSelfChats.ContainsKey(taskId))
+            wait = Math.Clamp(wait, 0, 10);
+        var result = await _tasks.StatusAsync(taskId, wait, _cts.Token);
+        await ObserveSelfChatCompletionAsync(result);
+        return result;
+    }
+
+    private async Task<JsonObject> SelfChatReplyAsync(string? taskId, string? answer, int wait)
+    {
+        if (taskId is not null && _pendingSelfChats.ContainsKey(taskId))
+            wait = Math.Clamp(wait, 0, 10);
+        var result = await _tasks.ReplyAsync(taskId, answer, wait, _cts.Token);
+        await ObserveSelfChatCompletionAsync(result);
+        return result;
+    }
+
+    private async Task ObserveSelfChatCompletionAsync(JsonObject snapshot)
+    {
+        var id = snapshot["task_id"]?.GetValue<string>();
+        if (id is null || !_pendingSelfChats.TryGetValue(id, out var context)) return;
+        var status = snapshot["status"]?.GetValue<string>();
+        if (status is "done")
+        {
+            var summary = snapshot["summary"]?.GetValue<string>();
+            var outcome = snapshot["outcome"]?.GetValue<string>();
+            var independentProof = false;
+
+            if (context.IdentitySource != "server_verified_binding" &&
+                context.FallbackId is not null && outcome == "success" &&
+                SelfChatBindingStore.CandidateNativeId(summary) is { } candidateId)
+            {
+                // An LLM assertion is not enough to permanently bind a caller to a URL.
+                // One additional direct CDP visit verifies the exact printed marker in
+                // that chat's message pane, without further model calls or searching.
+                var check = await _tasks.ReadSelfChatTitleAsync(context.Platform, candidateId,
+                    _cts.Token, context.FallbackId);
+                var expectedUrl = context.Platform == "chatgpt" ?
+                    "https://chatgpt.com/c/" + candidateId :
+                    "https://claude.ai/chat/" + candidateId;
+                independentProof =
+                    check["status"]?.ToString() == "ok" &&
+                    check["fallback_visible"]?.ToString() == "true" &&
+                    string.Equals(check["native_chat_id"]?.ToString(), candidateId,
+                                  StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(check["verified_url"]?.ToString(), expectedUrl,
+                                  StringComparison.OrdinalIgnoreCase);
+                snapshot["independent_cdp_status"] = check["status"]?.ToString();
+                snapshot["independent_cdp_marker_verified"] = independentProof;
+            }
+
+            var saved = _selfChatBindings.TryRecord(context, summary, outcome,
+                                                     independentlyVerified: independentProof);
+            snapshot["native_url_bound"] = saved ||
+                context.IdentitySource == "server_verified_binding";
+            snapshot["binding_saved_now"] = saved;
+            _pendingSelfChats.TryRemove(id, out _);
+        }
+        else if (status is "failed" or "blocked" or "cancelled" or "interrupted" or "stopped_by_user")
+            _pendingSelfChats.TryRemove(id, out _);
+    }
+
+    private async Task<JsonObject> CallToolAsync(JsonObject? p, HttpListenerRequest req)
     {
         var name = p?["name"]?.GetValue<string>() ?? "";
         var args = p?["arguments"] as JsonObject;
@@ -599,9 +915,14 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
             var wait = Int(args, "wait_seconds", 25);
             result = name switch
             {
-                "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key")),
-                "openfill_task_status" => await _tasks.StatusAsync(Str(args, "task_id"), wait, _cts.Token),
-                "openfill_reply" => await _tasks.ReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait, _cts.Token),
+                "openfill_self_chat_identity" => await RunSelfChatAsync("identity", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_name" => await RunSelfChatAsync("name", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_rename" => await RunSelfChatAsync("rename", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_archive" => await RunSelfChatAsync("archive", req, args, p?["_meta"] as JsonObject),
+                "openfill_self_chat_move_project" => await RunSelfChatAsync("move_project", req, args, p?["_meta"] as JsonObject),
+                "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key"), Str(args, "execution_mode"), Str(args, "start_url")),
+                "openfill_task_status" => await SelfChatStatusAsync(Str(args, "task_id"), wait),
+                "openfill_reply" => await SelfChatReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait),
                 "openfill_cancel_task" => _tasks.Cancel(Str(args, "task_id")),
                 "openfill_info" => _tasks.ShortInfo(),
                 "openfill_full_status" => InfoResult(),
@@ -610,6 +931,26 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
                     Str(args, "task_id"), Str(args, "requester"), Str(args, "chat"), Str(args, "url"),
                     Str(args, "mode"), Str(args, "selector"), Str(args, "regex"),
                     Str(args, "output_folder"), Int(args, "max_matches", 50), _cts.Token),
+                "openfill_procedures" => new JsonObject { ["status"] = "ok", ["procedures"] = ProcedureCatalog.FromEmbedded(
+                    _operationalDatabasePath is null ? null : Path.Combine(
+                        Path.GetDirectoryName(_operationalDatabasePath)!, "procedure-learning")).List() },
+                "openfill_operation_metrics" => new OperationalMemoryStore(_operationalDatabasePath ?? throw new InvalidOperationException("Operational database unavailable")).Metrics(Str(args, "provider") ?? "", Str(args, "account_id") ?? ""),
+                "openfill_prepare_linkedin_batch" => PrepareLinkedInBatch(args),
+                "openfill_prepare_airbnb_price_batch" => PrepareAirbnbBatch(args),
+                "openfill_memory_query" => MemoryQuery(args),
+                "openfill_query_capture" => !string.IsNullOrWhiteSpace(Str(args, "capture_id"))
+                    ? await CaptureArtifactQueryService.QueryAsync(
+                        SharedCaptureDirectory,
+                        Str(args, "capture_id") ?? "", Str(args, "file_kind") ?? "text",
+                        Str(args, "operation") ?? "", Str(args, "query") ?? "",
+                        SharedFilterDirectory,
+                        Int(args, "max_preview_rows", 10), _cts.Token)
+                    : !string.IsNullOrWhiteSpace(Str(args, "source_path"))
+                        ? await FileFilterService.QueryAsync(
+                            Str(args, "source_path"), Str(args, "operation"), Str(args, "query"),
+                            SharedFilterDirectory,
+                            Int(args, "max_preview_rows", 10), 60, _cts.Token)
+                        : new JsonObject { ["status"] = "error", ["reason_code"] = "capture_reference_missing" },
                 "openfill_screenshot" => await ScreenshotResultAsync(Str(args, "task_id")),
                 "openfill_file_transfer" => _files is null
                     ? new JsonObject { ["status"] = "error", ["message"] = "No shared directory configured" }
