@@ -1,4 +1,5 @@
 import os
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -175,6 +176,48 @@ class BridgeTests(unittest.TestCase):
         self.bridge.deliver_receipts()
         self.assertEqual(len(self.bot.messages), 0)
         self.assertEqual(self.bridge.db.execute("SELECT count(*) FROM receipts").fetchone()[0], 0)
+
+    def register_phone_test(self):
+        code = "FIZYCZNY-TELEFON-1112-0104"
+        self.bridge.db.execute("""
+            INSERT INTO phone_acceptance_tests
+            (test_id,chat_id,bot_message_id,expected_sha256,state)
+            VALUES(?,?,?,?,?)
+        """, ("C3", 12, 57, hashlib.sha256(code.encode()).hexdigest(), "pending"))
+        return code
+
+    def test_phone_acceptance_exact_reply_captured_once(self):
+        code = self.register_phone_test()
+        self.bridge.ingest(update(2, code, reply=57))
+        self.bridge.ingest(update(2, code, reply=57))
+        item = self.bridge.db.execute("""
+            SELECT state,update_id,reply_message_id FROM phone_acceptance_tests
+            WHERE test_id='C3'
+        """).fetchone()
+        self.assertEqual(tuple(item), ("response_received", 2, 1002))
+
+    def test_phone_acceptance_plain_code_not_sufficient(self):
+        code = self.register_phone_test()
+        self.bridge.ingest(update(2, code))
+        item = self.bridge.db.execute("""
+            SELECT state,update_id FROM phone_acceptance_tests WHERE test_id='C3'
+        """).fetchone()
+        self.assertEqual(tuple(item), ("pending", None))
+
+    def test_phone_acceptance_wrong_reply_or_code_not_sufficient(self):
+        code = self.register_phone_test()
+        self.bridge.ingest(update(2, code, reply=99))
+        self.bridge.ingest(update(3, "wrong code", reply=57))
+        self.assertEqual(self.bridge.db.execute("""
+            SELECT state FROM phone_acceptance_tests WHERE test_id='C3'
+        """).fetchone()[0], "pending")
+
+    def test_phone_acceptance_wrong_sender_not_sufficient(self):
+        code = self.register_phone_test()
+        self.bridge.ingest(update(2, code, reply=57, user=99,chat=99))
+        self.assertEqual(self.bridge.db.execute("""
+            SELECT state FROM phone_acceptance_tests WHERE test_id='C3'
+        """).fetchone()[0], "pending")
 
     def test_two_cards_reverse_reply(self):
         self.ipc.cards = [card("A"), card("B")]
