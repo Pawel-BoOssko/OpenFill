@@ -57,8 +57,17 @@ public sealed class TaskRun
     public void Detach() => Browser.Detach();
 
     /// <summary>Runs the task: the model loop until it finishes, is stopped or hits a limit.</summary>
-    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Func<VerifiedAction, int>? verified = null, string? executionMode = null)
+    public async Task<RunConclusion> FillAsync(string task, CancellationToken ct = default, Func<VerifiedAction, int>? verified = null, string? executionMode = null,
+        TaskSafetyLimits? safety = null, Func<bool>? isWaitingForHuman = null)
     {
+        using var controlled = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var watchdogStop = new CancellationTokenSource();
+        var watchdog = new TaskSafetyWatchdog();
+        var monitor = safety is null ? Task.CompletedTask : watchdog.MonitorAsync(
+            safety, Meter, isWaitingForHuman ?? (() => false), controlled,
+            reason => Log.Write("session", "safety_limit", "Task guard cancelled task: " + reason,
+                new { taskKey = _usageTaskKey, reason, costUsd = Meter.CostUsd, steps = Meter.Steps },
+                status: "error"), watchdogStop.Token);
         var runId = Begin();
         Log.Write("session", "start", "New task", new { runId, preview = OutputLimiter.Head(task, 200) });
         BusinessGoalMeter? goalMeter = null;
@@ -94,12 +103,13 @@ public sealed class TaskRun
             var registry = new ToolRegistry(Browser, Log, config, limiter, notes, _ui, gaps, _s.Costs,
                 new SharedFiles(paths.SharedFor(config.SharedFolder), paths.Downloads), _gate, trackedVerification);
             runner = new AgentRunner(_model, registry, config, Log, _s.Costs, Meter, _gate);
+            runner.MaxTaskCostUsd = safety?.MaxCostUsd;
             runner.ToolResultObserver = (name, ok, output) => goalMeter?.RecordToolResult(name, ok, output);
             var conclusion = executionMode == "local_plan_v1_draft"
                 ? await runner.RunPlannedDraftAsync(task,
                     new LocalPlanCdpBrowser(Browser.LocalPlanSession),
-                    _usageTaskKey ?? runId, runId, ct)
-                : await runner.RunAsync(task, ct);
+                    _usageTaskKey ?? runId, runId, controlled.Token)
+                : await runner.RunAsync(task, controlled.Token);
             finalOutcome = conclusion.Status;
             finalStopReason = conclusion.FinishReason
                 ?? (conclusion.Status == "success" ? "model_finish"
@@ -121,19 +131,21 @@ public sealed class TaskRun
         }
         catch (OperationCanceledException)
         {
-            finalStopReason = _stopReasonAccessor?.Invoke()
+            finalStopReason = watchdog.StopReason ?? _stopReasonAccessor?.Invoke()
                 ?? (ct.IsCancellationRequested ? "external_cancel_unknown" : "timeout");
             finalOutcome = finalStopReason switch
             {
                 "user_stop" => "stopped",
                 "requester_cancel" => "cancelled",
                 "upgrade_interrupted" => "interrupted",
+                "max_cost_usd" => "blocked",
                 _ => "failed"
             };
             Log.Write("session", "cancel", "Task cancelled or timed out",
                 new { stopReason = finalStopReason, taskKey = _usageTaskKey },
                 status: finalStopReason == "timeout" ? "error" : "warn");
-            return new RunConclusion(finalOutcome, "Task ended: " + finalStopReason + ".", null);
+            return new RunConclusion(finalOutcome, "Task ended: " + finalStopReason + ".", null,
+                FinishReason: finalStopReason);
         }
         catch (Exception ex)
         {
@@ -266,6 +278,8 @@ public sealed class TaskRun
                           stopReason = earlyReason, modelCalls = 0, executionMode },
                     status: finalOutcome == "failed" ? "error" : "warn");
             }
+            watchdogStop.Cancel();
+            try { await monitor; } catch (OperationCanceledException) { }
             Log.EndRun();
         }
     }

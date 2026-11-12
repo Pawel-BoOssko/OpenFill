@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using OpenFill.Core.Agent;
 using OpenFill.Core.Logging;
+using OpenFill.Core.Hosting;
 
 namespace OpenFill.Core.Mcp;
 
@@ -16,6 +17,9 @@ public sealed class McpTaskRecord
     public string TaskText { get; set; } = "";
     public string? ExecutionMode { get; set; }
     public string? StartUrl { get; set; }
+    public double? MaxCostUsd { get; set; }
+    public int? MaxDurationSeconds { get; set; }
+    public int? MaxIdleSeconds { get; set; }
     /// <summary>Optional stable external request identity for de-duplication.</summary>
     public string? IdempotencyKey { get; set; }
     /// <summary>running | needs_input | waiting_for_user | done | failed | blocked | cancelled</summary>
@@ -152,9 +156,13 @@ public sealed class McpTaskManager
     }
 
     public async Task<JsonObject> StartAsync(string? task, int waitSeconds, CancellationToken ct, string? continueTaskId = null, string? title = null, string? requester = null, string? chat = null, string? idempotencyKey = null,
-        string? executionMode = null, string? startUrl = null)
+        string? executionMode = null, string? startUrl = null,
+        double? maxCostUsd = null, int? maxDurationSeconds = null, int? maxIdleSeconds = null)
     {
         task ??= "";
+        var effectiveIdleSeconds = maxIdleSeconds ?? 180;
+        if (TaskSafetyLimits.Validate(maxCostUsd, maxDurationSeconds, effectiveIdleSeconds) is { } safetyError)
+            return Error(safetyError + " Nothing was started.");
         if (string.IsNullOrWhiteSpace(task)) return Error("The task text is empty. Describe what OpenFill should do in the browser, with all the data it needs.");
         // Automatic LocalPlan is only for an exact one-field search/filter draft
         // with a single explicit non-sensitive URL. Any other task remains on
@@ -211,7 +219,10 @@ public sealed class McpTaskManager
             {
                 if (!string.Equals(previousRequest.TaskText, task, StringComparison.Ordinal) ||
                     previousRequest.ExecutionMode != executionMode ||
-                    previousRequest.StartUrl != startUrl)
+                    previousRequest.StartUrl != startUrl ||
+                    previousRequest.MaxCostUsd != maxCostUsd ||
+                    previousRequest.MaxDurationSeconds != maxDurationSeconds ||
+                    (previousRequest.MaxIdleSeconds ?? 180) != effectiveIdleSeconds)
                     return KeyConflict(idempotencyKey, previousRequest.Id);
                 return Snapshot(previousRequest, "The request with this idempotency_key already exists; no duplicate was started.", previousFromDisk);
             }
@@ -220,7 +231,9 @@ public sealed class McpTaskManager
 
         // The same job again while it is still running: hand back the running one instead of starting a copy.
         McpTaskRecord? same = null;
-        if (idempotencyKey is null) lock (_lock) same = _open.Values.Select(l => l.Rec).FirstOrDefault(r => IsOpen(r) && r.Requester == who && r.ExecutionMode == executionMode && r.StartUrl == startUrl && Similar(task, r.TaskText));
+        if (idempotencyKey is null) lock (_lock) same = _open.Values.Select(l => l.Rec).FirstOrDefault(r => IsOpen(r) && r.Requester == who && r.ExecutionMode == executionMode && r.StartUrl == startUrl &&
+            r.MaxCostUsd == maxCostUsd && r.MaxDurationSeconds == maxDurationSeconds &&
+            (r.MaxIdleSeconds ?? 180) == effectiveIdleSeconds && Similar(task, r.TaskText));
         if (same is not null)
         {
             int v0; lock (_lock) v0 = same.Ver;
@@ -254,11 +267,15 @@ public sealed class McpTaskManager
                     .FirstOrDefault(r => r.Requester == who && r.IdempotencyKey == idempotencyKey);
                 if (racing is not null)
                     return string.Equals(racing.TaskText, task, StringComparison.Ordinal) &&
-                        racing.ExecutionMode == executionMode && racing.StartUrl == startUrl
+                        racing.ExecutionMode == executionMode && racing.StartUrl == startUrl &&
+                        racing.MaxCostUsd == maxCostUsd && racing.MaxDurationSeconds == maxDurationSeconds &&
+                        (racing.MaxIdleSeconds ?? 180) == effectiveIdleSeconds
                         ? Snapshot(racing, "Existing request already running; no duplicate was started.")
                         : KeyConflict(idempotencyKey, racing.Id);
                 if (_last?.Requester == who && _last.IdempotencyKey == idempotencyKey)
-                    return string.Equals(_last.TaskText, task, StringComparison.Ordinal) && _last.ExecutionMode == executionMode && _last.StartUrl == startUrl
+                    return string.Equals(_last.TaskText, task, StringComparison.Ordinal) && _last.ExecutionMode == executionMode && _last.StartUrl == startUrl &&
+                        _last.MaxCostUsd == maxCostUsd && _last.MaxDurationSeconds == maxDurationSeconds &&
+                        (_last.MaxIdleSeconds ?? 180) == effectiveIdleSeconds
                         ? Snapshot(_last, "Existing request already completed; no duplicate was started.")
                         : KeyConflict(idempotencyKey, _last.Id);
             }
@@ -271,6 +288,9 @@ public sealed class McpTaskManager
                 TaskText = task,
                 ExecutionMode = executionMode,
                 StartUrl = startUrl,
+                MaxCostUsd = maxCostUsd,
+                MaxDurationSeconds = maxDurationSeconds,
+                MaxIdleSeconds = effectiveIdleSeconds,
                 IdempotencyKey = idempotencyKey,
                 Status = "running",
                 ContinuedFrom = prior?.Id,
@@ -298,7 +318,8 @@ public sealed class McpTaskManager
             Verified: item => OnVerifiedAction(live, item),
             AutomaticContinuation: prior is not null && string.IsNullOrWhiteSpace(continueTaskId),
             ExecutionMode: executionMode, StartUrl: startUrl,
-            GoalId: recNew.BusinessGoalId, GoalText: recNew.BusinessGoalText);
+            GoalId: recNew.BusinessGoalId, GoalText: recNew.BusinessGoalText,
+            Safety: new TaskSafetyLimits(maxCostUsd, maxDurationSeconds, effectiveIdleSeconds));
 
         StartResult started;
         try { started = _host.TryStart(task, options); }
@@ -1006,6 +1027,9 @@ public sealed class McpTaskManager
             if (rec.ContinuedFrom is not null) o["continued_from"] = rec.ContinuedFrom;
             if (o0Url is not null) o["last_url"] = o0Url;
             if (rec.Outcome is not null) o["outcome"] = rec.Outcome;
+            if (rec.MaxCostUsd is { } ceiling) o["max_cost_usd"] = ceiling;
+            if (rec.MaxDurationSeconds is { } seconds) o["max_duration_seconds"] = seconds;
+            if (rec.MaxIdleSeconds is { } idleCap) o["max_idle_seconds"] = idleCap;
             if (rec.StopReason is not null)
             {
                 o["stop_reason"] = rec.StopReason;

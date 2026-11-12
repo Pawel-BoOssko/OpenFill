@@ -480,6 +480,9 @@ For external applications such as Networking Radar, supply a unique idempotency_
                     ["idempotency_key"] = Prop("string", "Optional stable caller request ID (1-128 ASCII letters, digits, dot, dash, underscore or colon). Reusing it with the same requester/chat and identical task returns the existing task_id, including after restart. Reusing it for different task text returns idempotency_conflict. Recommended for event registrations; distinct users/events need distinct keys."),
                     ["execution_mode"] = Prop("string", "Optional EXPLICIT opt-in: local_plan_v1_draft. One bounded plan from Luna then local same-origin link navigation and draft textbox editing, verified locally; no save/send/submit, no automatic fallback. Requires start_url. Omit for normal tasks."),
                     ["start_url"] = Prop("string", "Required only for execution_mode=local_plan_v1_draft: absolute http(s) URL with no credentials or fragment. The browser navigates there before the one-call local plan."),
+                    ["max_cost_usd"] = Prop("number", "Optional HARD stop per task in USD, 0.001..50. The current in-flight model request can exceed the cap; no new model/browser action runs after reaching it. Other site cost limits still apply."),
+                    ["max_duration_seconds"] = Prop("integer", "Optional wall-clock lifetime of this task, 10..36000 seconds, including waiting and setup. On expiry cancel this task only."),
+                    ["max_idle_seconds"] = Prop("integer", "Optional no-progress watchdog, 15..3600 seconds; default 180. Count model steps, not repeated polling; human-input waiting is excluded."),
                     ["wait_seconds"] = wait()
                 },
                 new[] { "task", "requester", "chat" }, idempotent: false),
@@ -739,6 +742,20 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
 
     private static string? Str(JsonObject? a, string key) => a?[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
+    private static double? OptionalDouble(JsonObject? a, string key)
+    {
+        if (a?[key] is null) return null;
+        if (a[key] is JsonValue v && v.TryGetValue<double>(out var number)) return number;
+        return double.NaN; // Rejected before any side effects by TaskSafetyLimits.Validate.
+    }
+
+    private static int? OptionalInt(JsonObject? a, string key)
+    {
+        if (a?[key] is null) return null;
+        if (a[key] is JsonValue v && v.TryGetValue<int>(out var number)) return number;
+        return -1; // Rejected before any side effects by TaskSafetyLimits.Validate.
+    }
+
     private static int Int(JsonObject? a, string key, int fallback)
     {
         if (a?[key] is JsonValue v)
@@ -920,7 +937,8 @@ Maintenance blocks new tasks; it does NOT itself terminate the application. For 
                 "openfill_self_chat_rename" => await RunSelfChatAsync("rename", req, args, p?["_meta"] as JsonObject),
                 "openfill_self_chat_archive" => await RunSelfChatAsync("archive", req, args, p?["_meta"] as JsonObject),
                 "openfill_self_chat_move_project" => await RunSelfChatAsync("move_project", req, args, p?["_meta"] as JsonObject),
-                "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key"), Str(args, "execution_mode"), Str(args, "start_url")),
+                "openfill_start_task" => await _tasks.StartAsync(Str(args, "task"), wait, _cts.Token, Str(args, "continue_task_id"), Str(args, "title"), Str(args, "requester"), Str(args, "chat"), Str(args, "idempotency_key"), Str(args, "execution_mode"), Str(args, "start_url"),
+                    OptionalDouble(args, "max_cost_usd"), OptionalInt(args, "max_duration_seconds"), OptionalInt(args, "max_idle_seconds")),
                 "openfill_task_status" => await SelfChatStatusAsync(Str(args, "task_id"), wait),
                 "openfill_reply" => await SelfChatReplyAsync(Str(args, "task_id"), Str(args, "answer"), wait),
                 "openfill_cancel_task" => _tasks.Cancel(Str(args, "task_id")),

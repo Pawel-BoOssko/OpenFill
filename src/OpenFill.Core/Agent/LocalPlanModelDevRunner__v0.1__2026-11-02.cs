@@ -149,7 +149,8 @@ public sealed class LocalPlanModelDevRunner
     public async Task<LocalPlanModelDevOutcome> ExecuteAsync(
         IModelClient model, string modelName, string goal,
         ILocalPlanBrowser browser, string businessOperationId, string taskId,
-        string runId, CancellationToken ct = default)
+        string runId, CancellationToken ct = default,
+        Func<long, long, bool>? allowBeforeBrowserActions = null)
     {
         if (string.IsNullOrWhiteSpace(modelName) || modelName.Length > 100)
             throw new ArgumentException("planner_invalid_model");
@@ -209,6 +210,13 @@ public sealed class LocalPlanModelDevRunner
                         inputTokens += Math.Max(0, input);
                     if (long.TryParse(u["output_tokens"]?.ToString(), out var output))
                         outputTokens += Math.Max(0, output);
+                }
+                if (allowBeforeBrowserActions is not null &&
+                    !allowBeforeBrowserActions(inputTokens, outputTokens))
+                {
+                    status = "budget_exceeded";
+                    reason = "max_cost_usd";
+                    break;
                 }
                 JsonObject plan;
                 try { plan = ParsePlan(response, snapshot.Host); }

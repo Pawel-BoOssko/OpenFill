@@ -2,6 +2,7 @@
 // OpenFill - Metadata: wersja 0.10, data 2026-10-12 18:10
 using System.Text.Json.Nodes;
 using OpenFill.Core.Agent;
+using OpenFill.Core.Hosting;
 
 namespace OpenFill.Core.Mcp;
 
@@ -22,7 +23,7 @@ public sealed record VerifiedAction(string Recipient, int Total, string Evidence
 public sealed record RunOptions(string? TaskKey = null, string? ContinueFromKey = null, string? PriorContext = null,
     AskHandler? Ask = null, Action<string>? Activity = null, Action<string?>? UserWaiting = null, string? Title = null, string? Requester = null, Func<VerifiedAction, int>? Verified = null,
     bool AutomaticContinuation = false, string? ExecutionMode = null, string? StartUrl = null,
-    string? GoalId = null, string? GoalText = null);
+    string? GoalId = null, string? GoalText = null, TaskSafetyLimits? Safety = null);
 
 /// <summary>Why a task was not started. Kind: limit (too many tasks at once), domain_busy (another task works on the site), no_key, empty, other.</summary>
 public sealed record RunRefusal(string Kind, string Message);

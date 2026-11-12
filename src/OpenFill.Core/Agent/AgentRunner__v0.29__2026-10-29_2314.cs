@@ -70,6 +70,7 @@ public sealed class AgentRunner
     public int PlanActionAttempts { get; private set; }
     /// <summary>Optional local observer of tool outcomes. Never sent to the model.</summary>
     public Action<string, bool, string>? ToolResultObserver { get; set; }
+    public double? MaxTaskCostUsd { get; set; }
     private readonly HashSet<string> _pageReadKeysSinceAction = new(StringComparer.Ordinal);
     private static readonly HashSet<string> PageReadTools = new(StringComparer.Ordinal)
     {
@@ -144,9 +145,21 @@ public sealed class AgentRunner
         string goal, ILocalPlanBrowser browser,
         string taskId, string runId, CancellationToken ct)
     {
+        if (MaxTaskCostUsd is not null &&
+            (_config.FindPrice(_config.Model) is not { } priceKnown ||
+             (priceKnown.Input <= 0 && priceKnown.Output <= 0)))
+            return new RunConclusion("blocked", "Cannot enforce the local plan cost limit: price unknown.",
+                null, FinishReason: "cost_price_unknown");
         var operationId = "local-plan:" + taskId;
         var result = await new LocalPlanModelDevRunner().ExecuteAsync(
-            _model, _config.Model, goal, browser, operationId, taskId, runId, ct);
+            _model, _config.Model, goal, browser, operationId, taskId, runId, ct,
+            (inTokens, outTokens) =>
+            {
+                if (MaxTaskCostUsd is not { } limit) return true;
+                var unit = _config.FindPrice(_config.Model);
+                return unit is not null &&
+                    (inTokens * unit.Input + outTokens * unit.Output) / 1_000_000.0 < limit;
+            });
         Usage.Calls += result.ModelCalls;
         Usage.InputTokens += result.InputTokens;
         Usage.OutputTokens += result.OutputTokens;
@@ -176,6 +189,9 @@ public sealed class AgentRunner
                   result.TotalDomReads, result.TotalBrowserActionAttempts,
                   result.ElapsedMs },
             status: result.Status == "completed" ? "ok" : "warn");
+        if (result.Reason == "max_cost_usd")
+            return new RunConclusion("blocked", "Stopped the local plan at the requested cost ceiling before browser actions.",
+                null, FinishReason: "max_cost_usd");
         return result.Status == "completed"
             ? new RunConclusion("success",
                 "Bounded local plan completed and verified. Model calls: " +
@@ -339,6 +355,11 @@ Do not submit forms, send messages, publish, purchase, modify accounts or data, 
 
     public async Task<RunConclusion> RunAsync(string task, CancellationToken externalCt = default)
     {
+        if (MaxTaskCostUsd is not null &&
+            (_config.FindPrice(_config.Model) is not { } configured ||
+             (configured.Input <= 0 && configured.Output <= 0)))
+            return new RunConclusion("blocked", "Cannot enforce the task cost limit: no positive model price is configured.",
+                null, FinishReason: "cost_price_unknown");
         var tools = _registry.Build();
         var simpleUrlRead = IsSimpleUrlRead(task);
         var singleHostTools = simpleUrlRead ? null : SingleHostToolProfile.Select(tools, task);
@@ -663,6 +684,16 @@ Do not submit forms, send messages, publish, purchase, modify accounts or data, 
                 if (_meter is not null) _meter.Warning = msg;
                 return new RunConclusion("blocked", msg, null);
             }
+        }
+
+        if (MaxTaskCostUsd is { } maxTaskCost && run >= maxTaskCost)
+        {
+            var message = "Task reached maximum cost USD " + maxTaskCost.ToString("0.####") +
+                " (estimated spend USD " + run.ToString("0.####") +
+                "). Stopped before further model or browser actions.";
+            _log.Write("agent", "task_cost_stop", message, status: "error");
+            if (_meter is not null) _meter.Warning = message;
+            return new RunConclusion("blocked", message, null, FinishReason: "max_cost_usd");
         }
 
         if (run >= _config.CostInfoUsd && !_infoRaised)

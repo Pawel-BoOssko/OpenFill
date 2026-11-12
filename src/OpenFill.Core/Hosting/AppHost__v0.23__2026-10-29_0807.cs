@@ -39,6 +39,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
         public required DateTime StartedUtc { get; init; }
         public RunOptions? Options { get; init; }
         public CancellationTokenSource Cts { get; } = new();
+        public CancellationTokenSource DeadlineStop { get; } = new();
+        public Task? DeadlineTask { get; set; }
         public Task<RunConclusion>? Completion { get; set; }
         public TaskRun? Run { get; set; }
         public string? RunId { get; set; }
@@ -875,6 +877,18 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             st.Site = domains.FirstOrDefault();
             st.Record = new HistoryRecord(historyId, source, shownTask, st.StartedUtc, null, "running", null, null, st.Who);
             _runs[key] = st;
+            if (options?.Safety?.MaxDurationSeconds is { } maxSeconds)
+            {
+                st.DeadlineTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(maxSeconds), st.DeadlineStop.Token);
+                        StopWithReason(st.Key, "max_duration_seconds");
+                    }
+                    catch (OperationCanceledException) when (st.DeadlineStop.IsCancellationRequested) { }
+                });
+            }
             _numberByKey[key] = st.Number;
             _finishedProgress.TryRemove(key, out _);
             _history.Append(st.Record);
@@ -943,7 +957,7 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
                     new { taskKey = st.Key, mode = options.ExecutionMode,
                           startHost = new Uri(options.StartUrl).Host });
             }
-            result = await run.FillAsync(prompt, ct, options?.Verified, options?.ExecutionMode);
+            result = await run.FillAsync(prompt, ct, options?.Verified, options?.ExecutionMode, options?.Safety, () => st.State == "waiting");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -971,6 +985,8 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
                 "user_stop" => new RunConclusion("stopped", "The person at the OpenFill window stopped this task.", result.SiteKnowledge),
                 "requester_cancel" => new RunConclusion("cancelled", "The calling model cancelled this task through MCP.", result.SiteKnowledge),
                 "upgrade_interrupted" => new RunConclusion("interrupted", "The task was interrupted by an OpenFill upgrade.", result.SiteKnowledge),
+                "max_duration_seconds" => new RunConclusion("failed", "The task reached its requested maximum duration and was cancelled.", result.SiteKnowledge,
+                    FinishReason: "max_duration_seconds"),
                 _ => new RunConclusion("failed", "The task was cancelled from an unknown source.", result.SiteKnowledge)
             };
         }
@@ -994,6 +1010,12 @@ public sealed class AppHost : IUserInteraction, IRunHost, IAsyncDisposable
             _recentResults.Add(resultMsg);
             while (_recentResults.Count > 5) _recentResults.RemoveAt(0);
         }
+        st.DeadlineStop.Cancel();
+        if (st.DeadlineTask is not null)
+        {
+            try { await st.DeadlineTask; } catch (OperationCanceledException) { }
+        }
+        st.DeadlineStop.Dispose();
         st.Cts.Dispose();
         SendState();
         Send(resultMsg);
