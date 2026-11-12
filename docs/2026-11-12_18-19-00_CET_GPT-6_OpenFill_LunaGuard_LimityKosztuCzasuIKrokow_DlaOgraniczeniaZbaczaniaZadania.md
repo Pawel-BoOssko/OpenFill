@@ -20,8 +20,18 @@ W zadaniu wysłania dokładnie jednej wiadomości na jeden adres czatu ChatGPT L
 - Testy izolowane `OpenFill.LunaGuard.Smoke`: 14/14 PASS.
 - Modyfikacje nie obejmują niezatwierdzonych lokalnych usunięć plików mostu Telegrama, które muszą pozostać poza wydaniem.
 
-## Wdrożenie
-Do weryfikacji po przygotowaniu czystego wydania i aktualizacji OpenFill na PBOX1.
+## Wdrożenie, 2026-11-12 18:24 CET
+- Git commit źródła: `e65a3ed68b80b56ecf94992964c2a254e06e6ba2`, istniejąca gałąź `feature/openfill-telegram-20261111`.
+- Czysty odłączony Git worktree pozwolił wydać program razem z kodem Telegrama, bez niezapisanych lokalnych usunięć gatewaya.
+- Build/publish OpenFill 1.64 wykonano na PBOX1. SHA256 pliku EXE: `D328AD12BBB72A25AC6BB0EE6B356426FF5BEAA5D65A82C831AF89E6AAE31CC1`.
+- Instalacja przez interaktywną sesję Windows 1 i kontrolowany skrypt z rollbackiem: `DEPLOY_OK version=1.64 session=1 mcp=ok`.
+- Wersja LIVE: `1.64+e65a3ed68b80b56ecf94992964c2a254e06e6ba2`. PID 20988, odpowiada, HTTP /health 200.
+- Zadania Windows `OpenFill` i `OpenFillTelegramBridge`: Running. Telegram supervisor PID 12316, worker PID 18504.
+- Nowe zadanie MCP `OF-20261112-1824-0b68` dostało automatycznie limity 0.15 USD / 900 s / 150 s, wykonało 4 kroki i zakończyło się statusem done; koszt 0.0012 USD.
+- W teście odczytu strony model poprawnie podał jej tytuł, ale podał `brak H1`, co nie jest wiarygodnym odczytem standardowej strony example.org. To osobna kwestia poprawności ekstrakcji/odpowiedzi, nie dowód na błąd limitów.
+- Poprzednia produkcja 1.63 zachowana w `C:\Users\pboru\OpenFill\app__rollback__2026-11-12_18-24-01_CET_GPT-6_OpenFill_v1.63_BinariaPrzedAktualizacja_DlaAutomatycznegoCofniecia`.
+- Szczegółowy log wdrożenia: `artifacts\2026-11-12_18-22-00_CET_GPT-6_OpenFill_v1-64_PBOX1_BinariaLunaGuard_DlaBezpiecznegoWdrazania\2026-11-12_18-23-00_CET_GPT-6_OpenFill_v1-64_PBOX1_WdrozenieLunaGuard_WalidacjaIOpcjaRollback.log`.
+
 
 ## Ścieżki
 - `src/OpenFill.Core/Agent/LunaTaskGuardProfile__v0.1__2026-11-12_1812.cs`
