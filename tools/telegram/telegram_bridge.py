@@ -1,5 +1,7 @@
-"""OpenFill mobile Telegram bridge. No inbound network listeners."""
+"""OpenFill mobile Telegram bridge 1.62.1. No inbound network listeners."""
 import json
+import hashlib
+import hmac
 import os
 import secrets
 import sqlite3
@@ -101,6 +103,15 @@ class Bridge:
           chat_id INTEGER NOT NULL,source_message_id INTEGER NOT NULL,
           card_id TEXT,state TEXT NOT NULL,body TEXT NOT NULL,
           next_attempt REAL NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS phone_acceptance_tests(
+          test_id TEXT PRIMARY KEY,
+          chat_id INTEGER NOT NULL,
+          bot_message_id INTEGER NOT NULL,
+          expected_sha256 TEXT NOT NULL,
+          state TEXT NOT NULL,
+          update_id INTEGER,
+          reply_message_id INTEGER,
+          received_at TEXT);
         """)
 
     def get_meta(self, key, default=""):
@@ -213,6 +224,25 @@ class Bridge:
         paired = self.db.execute("SELECT 1 FROM pairing WHERE user_id=? AND chat_id=?",
                                  (user_id, chat_id)).fetchone()
         if paired:
+            # A mobile acceptance reply is not an OpenFill task response.
+            # Preserve only the matching update's metadata, not the secret code.
+            if not callback:
+                reply_target = (msg.get("reply_to_message") or {}).get("message_id")
+                if reply_target is not None and text:
+                    candidates = self.db.execute("""
+                        SELECT test_id,expected_sha256
+                        FROM phone_acceptance_tests
+                        WHERE chat_id=? AND bot_message_id=? AND state='pending'
+                    """, (chat_id, reply_target)).fetchall()
+                    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                    for candidate in candidates:
+                        if hmac.compare_digest(digest, candidate["expected_sha256"]):
+                            self.db.execute("""
+                                UPDATE phone_acceptance_tests
+                                SET state='response_received',update_id=?,
+                                    reply_message_id=?,received_at=?
+                                WHERE test_id=? AND state='pending'
+                            """, (update_id, msg.get("message_id"), utc_now(), candidate["test_id"]))
             card_id, answer = None, None
             action_queued = False
             if callback:

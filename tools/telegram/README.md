@@ -58,3 +58,19 @@ are not blindly retried when delivery outcome is unknown. An IPC outage delays a
 positive acknowledgment until OpenFill actually accepts the answer.
 
 The bot token and the user's answer text are never written to receipt contents.
+
+## C3 mobile-phone acceptance capture (bridge 1.62.1)
+
+A dedicated phone_acceptance_tests table allows a controlled acceptance
+challenge to be registered without introducing any new inbound network listener.
+The bridge records the matching Telegram update only when it is a private
+message from the paired account, explicitly replies to the configured bot
+message ID, and contains the exact SHA256-matched test string. The challenge
+text is not stored by the new table, only its digest and response metadata.
+A Telegram Web or desktop client can produce the same reply, so this proves
+message transport but DOES NOT independently prove physical mobile device.
+The person running acceptance must attest they responded from the phone.
+
+The initial live challenge is bot message 57 and is registered locally on
+PBOX1 as C3_2026-11-12_phone_57. The test remains pending until a matching
+reply is actually received; do not mark the acceptance complete prematurely.
