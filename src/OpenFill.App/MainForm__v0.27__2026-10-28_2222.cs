@@ -20,7 +20,7 @@ namespace OpenFill.App;
 /// the live panel on the right with the version and date at the very top, the task field and the event stream.
 /// All logic lives in the core (AppHost) - the window only connects WebView2 to the core.
 /// </summary>
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     private readonly AppPaths _paths;
     private readonly AppConfig _config;
@@ -301,6 +301,7 @@ public sealed class MainForm : Form
         _host.Tabs = _tabMgr;
         _tabMgr.RegisterFree(firstTab.Id, "Start");
         await _host.InitAsync();
+        StartDirectBrowserServices();
 
         _telemetry = new ResourceTelemetry(_paths, _config, () => new ResourceActivity(
             _host?.ActiveTaskCount ?? 0,
@@ -488,6 +489,7 @@ public sealed class MainForm : Form
         view.BringToFront();
         await view.EnsureCoreWebView2Async(_browserEnv);
         var core = view.CoreWebView2;
+        await InstallChatGptActivityHookAsync(core);
         core.Settings.AreDevToolsEnabled = true;
         core.Settings.IsStatusBarEnabled = true;
         // alert/confirm/prompt windows must not block the page while the model works: we accept them
@@ -534,9 +536,12 @@ public sealed class MainForm : Form
         };
         core.SourceChanged += (_, _) =>
         {
+            CaptureChatGptVisit(core);
+            _ = RefreshChatGptTitleAsync(core, core.Source);
             if (_addressHistory.Remember(core.Source)) RefreshAddressHistory();
             if (ReferenceEquals(_active, tab) && !_address.Focused) _address.Text = core.Source;
         };
+        core.DocumentTitleChanged += (_, _) => CaptureChatGptVisit(core);
         core.HistoryChanged += (_, _) => { if (ReferenceEquals(_active, tab)) { _back.Enabled = core.CanGoBack; _forward.Enabled = core.CanGoForward; } };
         core.DownloadStarting += (_, e) =>
         {
@@ -572,6 +577,7 @@ public sealed class MainForm : Form
             _address.Text = core.Source ?? "";
             _back.Enabled = core.CanGoBack;
             _forward.Enabled = core.CanGoForward;
+            CaptureChatGptVisit(core);
         }
     }
 
@@ -938,6 +944,7 @@ public sealed class MainForm : Form
         // The MCP server uses JSON-RPC long polling: allow pending status replies to observe
         // persisted interrupted notices before closing the HTTP transport.
         if (_mcp is not null) { try { await Task.Delay(1500); } catch { } }
+        try { if (_directBrowserApi is not null) await _directBrowserApi.DisposeAsync(); _directBrowserApi = null; } catch { }
         try { _telemetry?.Dispose(); _telemetry = null; } catch { }
         try { if (_mcp is not null) await _mcp.DisposeAsync(); } catch { }
         try { await Task.WhenAny(_host.DisposeAsync().AsTask(), Task.Delay(4000)); } catch { }
