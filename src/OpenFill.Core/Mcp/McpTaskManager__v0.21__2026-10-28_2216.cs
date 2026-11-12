@@ -160,7 +160,10 @@ public sealed class McpTaskManager
         double? maxCostUsd = null, int? maxDurationSeconds = null, int? maxIdleSeconds = null)
     {
         task ??= "";
-        var effectiveIdleSeconds = maxIdleSeconds ?? 180;
+        var defaults = LunaTaskGuardProfile.Defaults(task);
+        maxCostUsd ??= defaults.CostUsd;
+        maxDurationSeconds ??= defaults.DurationSeconds;
+        var effectiveIdleSeconds = maxIdleSeconds ?? defaults.IdleSeconds;
         if (TaskSafetyLimits.Validate(maxCostUsd, maxDurationSeconds, effectiveIdleSeconds) is { } safetyError)
             return Error(safetyError + " Nothing was started.");
         if (string.IsNullOrWhiteSpace(task)) return Error("The task text is empty. Describe what OpenFill should do in the browser, with all the data it needs.");
