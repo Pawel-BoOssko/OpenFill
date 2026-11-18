@@ -276,21 +276,21 @@ public sealed class McpServer : IAsyncDisposable
         return new JsonArray
         {
             ToolDef("openfill_self_chat_identity",
-                "Return calling chat's stable session identity when OpenAI MCP metadata exists. Native ChatGPT/Claude URL ID requires unique browser verification; never confuse MCP transport session ID with native conversation ID.",
+                "This tool may work only with ChatGPT. Claude support is unverified. Return calling chat's stable session identity when OpenAI MCP metadata exists. Native ChatGPT/Claude URL ID requires unique browser verification; never confuse MCP transport session ID with native conversation ID.",
                 new JsonObject {
                     ["platform"] = Prop("string", "Optional chatgpt or claude; may be obtained from metadata"),
                     ["fallback_id"] = Prop("string", "OPTIONAL. 20-32 random alphanumeric ASCII characters. MUST be visibly printed in THIS chat before passing to MCP; use to find exact native URL if session ID cannot be converted."),
                     ["wait_seconds"] = wait()
                 }, Array.Empty<string>(), idempotent:true, readOnly:true),
             ToolDef("openfill_self_chat_name",
-                "Read the title of THIS chat only. First publish a random 20-32 alphanumeric fallback_id visibly in the calling conversation, then pass the same token. One-token search only if no direct URL.",
+                "This tool may work only with ChatGPT. Claude support is unverified. Read the title of THIS chat only. First publish a random 20-32 alphanumeric fallback_id visibly in the calling conversation, then pass the same token. One-token search only if no direct URL.",
                 new JsonObject {
                     ["platform"] = Prop("string", "Optional chatgpt or claude; automatically detected for ChatGPT when session metadata exists"),
                     ["fallback_id"] = Prop("string", "REQUIRED: first generate one random 20-32 character ASCII letters/digits token and WRITE IT as a visible message in THIS chat, not only in tool arguments or a file; pass the exact token. Browser searches this token once."),
                     ["wait_seconds"] = wait()
                 }, new[] {"fallback_id"}, idempotent:true, readOnly:true),
             ToolDef("openfill_self_chat_rename",
-                "Rename only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this conversation, then pass it unchanged. No preceding ID lookup. When native URL known, open direct; otherwise one exact-token search.",
+                "This tool may work only with ChatGPT. Claude support is unverified. Rename only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this conversation, then pass it unchanged. No preceding ID lookup. When native URL known, open direct; otherwise one exact-token search.",
                 new JsonObject {
                     ["new_name"] = Prop("string", "Exact new title, 1-120 printable characters"),
                     ["platform"] = Prop("string", "Optional chatgpt or claude"),
@@ -298,14 +298,14 @@ public sealed class McpServer : IAsyncDisposable
                     ["wait_seconds"] = wait()
                 }, new[] {"new_name", "fallback_id"}, idempotent:false),
             ToolDef("openfill_self_chat_archive",
-                "Archive only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known; else one exact-token search.",
+                "This tool may work only with ChatGPT. Claude support is unverified. Archive only THIS calling chat. First publish a random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known; else one exact-token search.",
                 new JsonObject {
                     ["platform"] = Prop("string", "Optional chatgpt or claude"),
                     ["fallback_id"] = Prop("string", "Generate random 20-32 alphanumeric ASCII token. Publish the EXACT token visibly in THIS conversation before calling. Pass the token in fallback_id; OpenFill searches it once if direct URL is unavailable."),
                     ["wait_seconds"] = wait()
                 }, new[] {"fallback_id"}, idempotent:false),
             ToolDef("openfill_self_chat_move_project",
-                "Move only THIS calling chat to the named project. First publish random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known, otherwise one search by exact token.",
+                "This tool may work only with ChatGPT. Claude support is unverified. Move only THIS calling chat to the named project. First publish random 20-32 alphanumeric fallback_id visibly in this chat, pass unchanged. Direct URL when known, otherwise one search by exact token.",
                 new JsonObject {
                     ["project_name"] = Prop("string", "Unique exact target project name, 1-150 characters"),
                     ["platform"] = Prop("string", "Optional chatgpt or claude"),
